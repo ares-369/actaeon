@@ -10,6 +10,10 @@ Actaeon is pre-alpha. These are the limits we know about.
 - The verdict checks make sure every claim cites a result that exists and
   succeeded. They cannot check that the model read the result correctly. Read
   the cited evidence before acting.
+- One informal check: a 7B local model was run on the demo data, where the attack is
+  present. Its tool calls worked, and the field guard corrected its made-up field
+  names, but its query logic was still wrong and it answered `no_results`, a
+  false negative. Use a stronger model for the analyst role.
 - No benchmark has been run. There are no published detection or accuracy numbers.
 - The JSON action protocol works on any provider but uses more tokens than
   native tool calling.
