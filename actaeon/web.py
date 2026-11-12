@@ -11,6 +11,11 @@ from .config import LLM_ROLES, PROVIDERS, apply_llm_update, get_config, preview_
 from .jobs import JobManager
 
 
+def requests_exc():
+    import requests
+    return requests.RequestException
+
+
 def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     cfg = cfg or get_config()
     app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -308,12 +313,58 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         return app.response_class(steps_csv(_hunt_or_404(hid)), mimetype="text/csv",
                                   headers={"Content-Disposition": f'attachment; filename="hunt-{hid}.csv"'})
 
+    @app.route("/api/hunts/<hid>/feedback", methods=["POST"])
+    def hunt_feedback(hid):
+        b = request.get_json(silent=True) or {}
+        try:
+            return jsonify(hs.add_feedback(get_config(), hid, finding=int(b.get("finding", -1)),
+                                           kind=str(b.get("kind", "")), comment=str(b.get("comment", "")),
+                                           author=_actor()))
+        except LookupError:
+            return jsonify({"error": "not found"}), 404
+        except (ValueError, TypeError) as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.route("/api/decode", methods=["POST"])
+    def decode_api():
+        from .decode import decode
+        return jsonify(decode(str((request.get_json(silent=True) or {}).get("text", ""))[:200_000]))
+
+    @app.route("/api/intel/advisories/import", methods=["POST"])
+    def intel_import_advisory():
+        from .intel.fetch import FetchError, fetch_url, pdf_to_text
+        c = get_config()
+        try:
+            if request.files.get("file"):
+                f = request.files["file"]
+                data = f.read(15_000_001)
+                if len(data) > 15_000_000:
+                    return jsonify({"error": "file is larger than 15 MB"}), 400
+                text = pdf_to_text(data) if data[:5] == b"%PDF-" else data.decode("utf-8", "replace")
+                doc = {"title": (f.filename or "upload")[:200], "text": text, "url": ""}
+                form = request.form
+            else:
+                form = request.get_json(silent=True) or {}
+                doc = fetch_url(str(form.get("url", "")),
+                                allow_private=bool((c.intel or {}).get("allow_private_urls", False)))
+        except FetchError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except requests_exc() as exc:
+            return jsonify({"error": f"could not fetch: {exc}"}), 502
+        title = str(form.get("title") or doc["title"] or doc.get("url") or "Imported advisory")[:300]
+        try:
+            conf = int(form.get("confidence", 50))
+        except (TypeError, ValueError):
+            conf = 50
+        r = intel_store().add_advisory(title, doc["text"], source="import", url=doc.get("url", ""), confidence=conf)
+        return jsonify({**r, "title": title, "chars": len(doc["text"])})
+
     @app.route("/api/hunts/<hid>/narrative", methods=["POST"])
     def hunt_narrative(hid):
         from .hunt.report import narrative
         from .providers import get_llm
         h = _hunt_or_404(hid)
-        text = narrative(get_llm(), h)
+        text = narrative(hs.privacy_llm(get_config(), get_llm()), h)
         if not text:
             return jsonify({"error": "the reporter model did not answer"}), 502
         store_for(get_config()).update(hid, narrative=text)

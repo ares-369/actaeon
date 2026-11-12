@@ -115,8 +115,11 @@ function renderHunt(hu) {
       h("div", { class: "row" }, badge(v.outcome), h("span", {}, `confidence ${v.confidence}`),
         v.needs_review && h("span", { class: "badge b-logs_missing" }, icon("eye"), "needs review")),
       h("p", {}, v.summary || ""),
-      (v.findings || []).length ? [h("h3", {}, "Findings"), h("ul", {}, v.findings.map((f) =>
-        h("li", {}, f.claim, " ", f.evidence.map((e) => h("a", { href: "#", onclick: (ev) => { ev.preventDefault(); const t = document.getElementById("step-" + e); if (t) { t.open = true; t.scrollIntoView(); } } }, `[${e}] `)))))] : null,
+      (v.findings || []).length ? [h("h3", {}, "Findings"), h("ul", {}, v.findings.map((f, i) =>
+        h("li", {}, f.claim, " ", f.evidence.map((e) => h("a", { href: "#", onclick: (ev) => { ev.preventDefault(); const t = document.getElementById("step-" + e); if (t) { t.open = true; t.scrollIntoView(); } } }, `[${e}] `)),
+          feedbackButtons(hu, i))))] : null,
+      (hu.feedback || []).length ? [h("h3", {}, "Analyst feedback"), h("ul", {}, hu.feedback.map((f) =>
+        h("li", { class: "small" }, `${f.kind.replace("_", " ")}: ${f.claim}`, f.comment ? ` (${f.comment})` : "", f.by ? ` by ${f.by}` : "")))] : null,
       (v.unsupported_claims || []).length ? [h("h3", { class: "warn" }, "Claims without evidence (not verified)"),
         h("ul", {}, v.unsupported_claims.map((f) => h("li", { class: "muted" }, f.claim)))] : null,
       (v.attack || []).length ? h("p", {}, "ATT&CK: ", v.attack.join(", ")) : null,
@@ -131,6 +134,19 @@ function renderHunt(hu) {
   }
   out.push(section("Steps", "format-list-numbered", (hu.steps || []).filter((s) => s.kind !== "verdict").map(stepView)));
   return h("div", {}, out);
+}
+function feedbackButtons(hu, i) {
+  const send = (kind) => async () => {
+    const comment = prompt(kind === "confirmed" ? "Comment (optional)" : "Why is this benign? This is saved to memory for future hunts.") ;
+    if (comment === null) return;
+    await api(`/api/hunts/${hu.id}/feedback`, { finding: i, kind, comment });
+    toast(kind === "confirmed" ? "Marked as confirmed." : "Saved; related hunts will see this note.");
+    route();
+  };
+  return h("span", { class: "fb" },
+    h("button", { class: "ghost small", title: "Known benign", onclick: send("benign") }, icon("check-circle-outline"), "Benign"),
+    h("button", { class: "ghost small", title: "False positive", onclick: send("false_positive") }, icon("close-circle-outline"), "False positive"),
+    h("button", { class: "ghost small", title: "Confirmed", onclick: send("confirmed") }, icon("alert-circle-outline"), "Confirmed"));
 }
 const list = (title, items) => (items && items.length ? [h("h3", {}, title), h("ul", {}, items.map((x) => h("li", {}, x)))] : null);
 
@@ -215,6 +231,26 @@ async function intel() {
         show(`Added: ${r.new} new, ${r.updated} updated` + (r.advisory_id ? ` (advisory ${r.advisory_id})` : ""));
         text.value = ""; title.value = "";
       } }, icon("plus"), "Add")), out));
+  const url = h("input", { class: "grow", placeholder: "Advisory URL (web page or PDF)" });
+  const file = h("input", { type: "file", accept: ".pdf,.txt,.html,.htm,.md" });
+  const imp = h("pre", { class: "hidden" });
+  const done = (r) => { imp.textContent = `Advisory ${r.advisory_id} "${r.title}": ${r.new} new, ${r.updated} updated indicators`; imp.classList.remove("hidden"); };
+  main.append(section("Import an advisory", "file-import",
+    h("div", { class: "row" }, url, h("button", { onclick: async () => { if (url.value.trim()) done(await api("/api/intel/advisories/import", { url: url.value })); } }, icon("web"), "Fetch")),
+    h("div", { class: "row" }, file, h("button", { class: "ghost", onclick: async () => {
+      if (!file.files.length) return toast("Choose a file first.");
+      const fd = new FormData(); fd.append("file", file.files[0]);
+      const r = await fetch("/api/intel/advisories/import", { method: "POST", body: fd });
+      const d = await r.json(); if (!r.ok) return toast(d.error || "Import failed"); done(d);
+    } }, icon("upload"), "Upload")), imp));
+  const enc = h("textarea", { placeholder: "Paste an obfuscated command line or script. It is decoded as text and never run." });
+  const decOut = h("pre", { class: "hidden" });
+  main.append(section("Decode", "lock-open-variant-outline", enc, h("div", { class: "row" }, h("button", { class: "ghost", onclick: async () => {
+    const r = await api("/api/decode", { text: enc.value });
+    decOut.textContent = (r.layers.length ? r.layers.map((l) => `[${l.depth}] ${l.method}\n${l.decoded}`).join("\n\n") : "No known encoding found.") +
+      (r.keywords.length ? "\n\nKeywords: " + r.keywords.join(", ") : "") + (r.urls.length ? "\nURLs: " + r.urls.join(", ") : "") + (r.ips.length ? "\nIPs: " + r.ips.join(", ") : "");
+    decOut.classList.remove("hidden");
+  } }, icon("lock-open-variant-outline"), "Decode")), decOut));
   const q = h("input", { class: "grow", placeholder: "Look up a value" });
   const res = h("pre", { class: "hidden" });
   main.append(section("Look up", "magnify", h("div", { class: "row" }, q, h("button", { onclick: async () => {

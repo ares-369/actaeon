@@ -157,6 +157,11 @@ def load_config() -> Config:
     from .intel.feeds import validate_feed
     for f in intel.get("feeds") or []:
         validate_feed(f)
+    from .privacy import validate as validate_privacy
+    validate_privacy(data.get("privacy") or {})
+    env = data.get("environment") or {}
+    if not isinstance(env, dict):
+        raise ValueError("environment: must be a mapping (summary, platforms, crown_jewels, not_present, notes)")
 
     data_dir = Path(str(srv.get("data_dir", "") or (home_dir() / "data"))).expanduser()
     return Config(

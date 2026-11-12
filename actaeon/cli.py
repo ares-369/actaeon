@@ -99,8 +99,16 @@ def cmd_intel(a) -> int:
         r = store.add_text(text, source=a.source or "paste", ttl_days=a.ttl_days, **kw)
         out = {k: r[k] for k in ("found", "new", "updated")}
     elif a.action == "advisory":
-        text = Path(a.file).read_text() if a.file else sys.stdin.read()
-        out = store.add_advisory(a.title, text, source=a.source or "advisory", url=a.url, **kw)
+        from .intel.fetch import fetch_url, read_file
+        if a.url and not a.file:
+            doc = fetch_url(a.url, allow_private=bool(cfg.intel.get("allow_private_urls", False)))
+        elif a.file:
+            doc = read_file(a.file)
+        else:
+            doc = {"title": "", "text": sys.stdin.read()}
+        title = a.title or doc.get("title") or "Untitled advisory"
+        out = store.add_advisory(title, doc["text"], source=a.source or "advisory", url=a.url or doc.get("url", ""),
+                                 **kw)
     elif a.action == "import":
         out = import_file(store, a.file, a.format, kind=a.type, value_field=a.value_field, list_key=a.list_key,
                           extract=a.extract, ttl_days=a.ttl_days, **({"source": a.source} if a.source else {}), **kw)
@@ -258,8 +266,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_con.add_argument("name", nargs="?")
     p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
     br = p_br.add_subparsers(dest="kind", required=True)
-    from .bridges import local_intel, openapi, search_index, taxii
-    bridges = {"search-index": search_index, "taxii": taxii, "openapi": openapi, "local-intel": local_intel}
+    from .bridges import local_intel, local_tools, openapi, search_index, taxii
+    bridges = {"search-index": search_index, "taxii": taxii, "openapi": openapi, "local-intel": local_intel,
+               "local-tools": local_tools}
     for kind, mod in bridges.items():
         mod.add_args(br.add_parser(kind))
     p_in = sub.add_parser("intel", help="add, import, pull and look up intel in the local store")
@@ -274,9 +283,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     x.add_argument("--type", default=None)
     x = isub.add_parser("paste", parents=[common], help="extract indicators from text on stdin or a file")
     x.add_argument("file", nargs="?")
-    x = isub.add_parser("advisory", parents=[common], help="add an advisory (text file or stdin)")
+    x = isub.add_parser("advisory", parents=[common], help="add an advisory (text/HTML/PDF file, --url, or stdin)")
     x.add_argument("file", nargs="?")
-    x.add_argument("--title", required=True)
+    x.add_argument("--title", default="")
     x.add_argument("--url", default="")
     x = isub.add_parser("import", parents=[common], help="import a file (text/csv/stix/json)")
     x.add_argument("file")
@@ -306,6 +315,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_lib.add_argument("--name", default="")
     p_lib.add_argument("--every", type=int, default=0, help="replay interval in minutes (0 = manual)")
     p_lib.add_argument("--escalate", action="store_true", help="start a full hunt when a replay finds matches")
+    p_dec = sub.add_parser("decode", help="decode an obfuscated command line (argument or stdin); runs nothing")
+    p_dec.add_argument("text", nargs="?")
     p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
     p_sw.add_argument("--full", action="store_true", help="sweep every indicator, not only changed ones")
     p_note = sub.add_parser("note", help="add an analyst note to hunt memory")
@@ -328,6 +339,12 @@ def cli_main(argv: list[str] | None = None) -> None:
         sys.exit(cmd_hunt(a))
     if a.cmd == "intel":
         sys.exit(cmd_intel(a))
+    if a.cmd == "decode":
+        import json as _json
+
+        from .decode import decode
+        print(_json.dumps(decode(a.text if a.text else sys.stdin.read()), indent=2))
+        return
     if a.cmd in ("library", "sweep", "note"):
         sys.exit(cmd_phase5(a))
     if a.cmd == "connectors":

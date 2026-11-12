@@ -40,10 +40,32 @@ def _hub(cfg, hub=None):
     return get_hub(cfg)
 
 
+def environment_context(cfg) -> str:
+    """The analyst-written environment profile, so hunts fit what actually runs here."""
+    env = (cfg.raw or {}).get("environment") or {}
+    if not env:
+        return ""
+    lines = ["About this environment (written by the team):"]
+    if env.get("summary"):
+        lines.append(str(env["summary"])[:1500])
+    for key, label in (("platforms", "Platforms in use"), ("crown_jewels", "Most important assets"),
+                       ("not_present", "Not present here (do not hunt for these)"), ("notes", "Notes")):
+        vals = env.get(key)
+        if vals:
+            vals = vals if isinstance(vals, list) else [vals]
+            lines.append(f"{label}: " + "; ".join(str(v)[:300] for v in vals[:30]))
+    return "\n".join(lines)
+
+
+def privacy_llm(cfg, llm):
+    from ..privacy import PrivacyLLM
+    return PrivacyLLM(llm, (cfg.raw or {}).get("privacy") or {})
+
+
 def make_engine(cfg, *, checkpoint=None, on_event=None, max_steps: int | None = None, llm=None, hub=None):
     from ..providers import get_llm
-    return HuntEngine(llm or get_llm(), _hub(cfg, hub), store_for(cfg), limits_for(cfg, max_steps),
-                      checkpoint=checkpoint, on_event=on_event)
+    return HuntEngine(privacy_llm(cfg, llm or get_llm()), _hub(cfg, hub), store_for(cfg),
+                      limits_for(cfg, max_steps), checkpoint=checkpoint, on_event=on_event)
 
 
 def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = "manual", actor: str = "",
@@ -51,11 +73,44 @@ def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = 
              hub=None) -> dict:
     """Run a hunt in this thread with memory context, then remember the result."""
     mem = memory_for(cfg)
-    ctx = "\n\n".join(x for x in (context, mem.context(hypothesis)) if x)
+    ctx = "\n\n".join(x for x in (environment_context(cfg), context, mem.context(hypothesis)) if x)
     eng = make_engine(cfg, checkpoint=checkpoint, on_event=on_event, max_steps=max_steps, llm=llm, hub=hub)
     res = eng.run(hypothesis, hunt_id=hunt_id, origin=origin, actor=actor, context=ctx)
+    counts = eng.llm.masker.counts
+    if counts:
+        store = store_for(cfg)
+        store.add_step(res["id"], len(res.get("steps") or []) + 1, "note", ok=True,
+                       note="privacy: masked before sending to a cloud model: "
+                            + ", ".join(f"{n} {k.lower()}" for k, n in sorted(counts.items())))
+        res = store.get(res["id"]) or res
     mem.remember(res)
     return res
+
+
+FEEDBACK_KINDS = ("benign", "false_positive", "confirmed")
+
+
+def add_feedback(cfg, hid: str, *, finding: int, kind: str, comment: str = "", author: str = "") -> dict:
+    """Record an analyst's view of one finding. Benign and false-positive calls become memory notes."""
+    if kind not in FEEDBACK_KINDS:
+        raise ValueError(f"kind must be one of {FEEDBACK_KINDS}")
+    store = store_for(cfg)
+    h = store.get(hid, with_steps=False)
+    if not h:
+        raise LookupError("no such hunt")
+    findings = (h.get("verdict") or {}).get("findings") or []
+    if not 0 <= int(finding) < len(findings):
+        raise ValueError("no finding with that index")
+    claim = findings[int(finding)]["claim"]
+    entry = {"finding": int(finding), "claim": claim, "kind": kind, "comment": comment[:1000], "by": author}
+    fb = (h.get("feedback") or []) + [entry]
+    store.update(hid, feedback=fb)
+    note = None
+    if kind in ("benign", "false_positive"):
+        label = "Known benign" if kind == "benign" else "False positive"
+        note = memory_for(cfg).add_note(f"{label}: {claim}" + (f" Analyst: {comment}" if comment else ""),
+                                        author=author, tags=[kind, f"hunt:{hid}"])
+    return {"feedback": entry, "note": note}
 
 
 def start_hunt(jobs, cfg, hypothesis: str, *, actor: str = "", origin: str = "manual", context: str = "",

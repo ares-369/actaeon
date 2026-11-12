@@ -31,6 +31,7 @@ Rules:
 - Each tool result is labelled E1, E2, ... Cite only those labels. Never state a fact you cannot cite.
 - Learn field names before searching (for example get_fields) and always bound searches by time.
 - Pivot on what you find (host, user, hash, IP, domain), and check intel for indicators you see.
+- If a command line looks encoded or obfuscated, decode it with an analysis tool before judging it.
 - Missing data is not a clean result: if the data was not searchable, the outcome is logs_missing.
 - Prefer few, precise queries. Do not repeat a call you already made.
 {OUTCOME_HELP}

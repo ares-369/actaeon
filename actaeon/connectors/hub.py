@@ -32,6 +32,15 @@ def local_intel_connector(data_dir) -> dict:
             "description": "Indicators and advisories added in Actaeon", "rate_per_min": 600, "timeout_sec": 15}
 
 
+LOCAL_TOOLS = "local-tools"
+
+
+def local_tools_connector() -> dict:
+    return {"name": LOCAL_TOOLS, "roles": ["analysis"], "transport": "stdio", "command": "actaeon",
+            "args": ["bridge", "local-tools"], "description": "Offline analysis helpers (decoder)",
+            "rate_per_min": 600, "timeout_sec": 15}
+
+
 class ToolCallError(RuntimeError):
     pass
 
@@ -69,6 +78,7 @@ class ConnectorHub:
         items = list(cfg.connectors)
         if (getattr(cfg, "intel", {}) or {}).get("local", True):
             items.append(local_intel_connector(cfg.data_dir))
+        items.append(local_tools_connector())
         return cls(parse_connectors(items), AuditLog(cfg.data_dir / "audit.sqlite"),
                    max_result_bytes=cfg.hunt.max_result_bytes)
 

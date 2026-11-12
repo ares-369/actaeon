@@ -132,7 +132,7 @@ def replay(saved: dict, hub, store: HuntStore, library: Library, *, max_results:
     hid = store.create(saved["hypothesis"], origin=f"replay:{saved['id']}", actor=actor)
     store.update(hid, status="running")
     tools: dict[tuple[str, str], dict] = {}
-    for role in ("log_search", "endpoint", "identity", "email", "asset", "network", "cloud", "intel"):
+    for role in ("log_search", "endpoint", "identity", "email", "asset", "network", "cloud", "intel", "analysis"):
         for t in hub.tools_for_role(role):
             tools.setdefault((t["connector"], t["name"]), {**t, "role": role})
     n, total, ok_calls, err_calls, changed = 0, 0, 0, 0, 0

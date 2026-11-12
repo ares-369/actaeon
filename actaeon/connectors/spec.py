@@ -30,7 +30,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-ROLES = ("log_search", "endpoint", "identity", "email", "asset", "network", "cloud", "intel")
+ROLES = ("log_search", "endpoint", "identity", "email", "asset", "network", "cloud", "intel", "analysis")
+DATA_ROLES = ("log_search", "endpoint", "identity", "email", "asset", "network", "cloud")
 AUTH_TYPES = ("none", "api_key", "bearer", "oauth_client_credentials")
 _NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
 _VAR_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")

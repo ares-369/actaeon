@@ -29,7 +29,7 @@ class HuntStore:
                 id TEXT PRIMARY KEY, created TEXT NOT NULL, finished TEXT, hypothesis TEXT NOT NULL,
                 origin TEXT NOT NULL DEFAULT 'manual', actor TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL, outcome TEXT, plan TEXT, verdict TEXT, error TEXT,
-                steps_used INTEGER NOT NULL DEFAULT 0, models TEXT, job_id TEXT, narrative TEXT);
+                steps_used INTEGER NOT NULL DEFAULT 0, models TEXT, job_id TEXT, narrative TEXT, feedback TEXT);
             CREATE TABLE IF NOT EXISTS steps (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, hunt_id TEXT NOT NULL, n INTEGER NOT NULL,
                 ts TEXT NOT NULL, kind TEXT NOT NULL, connector TEXT, tool TEXT, role TEXT,
@@ -37,7 +37,7 @@ class HuntStore:
             CREATE INDEX IF NOT EXISTS steps_hunt ON steps(hunt_id, n);
             """)
             cols = {r[1] for r in c.execute("PRAGMA table_info(hunts)")}
-            for col in ("job_id", "narrative"):
+            for col in ("job_id", "narrative", "feedback"):
                 if col not in cols:
                     c.execute(f"ALTER TABLE hunts ADD COLUMN {col} TEXT")
 
@@ -54,7 +54,7 @@ class HuntStore:
         return hid
 
     def update(self, hid: str, **fields: Any) -> None:
-        for k in ("plan", "verdict", "models"):
+        for k in ("plan", "verdict", "models", "feedback"):
             if k in fields and not isinstance(fields[k], str) and fields[k] is not None:
                 fields[k] = json.dumps(fields[k])
         cols = ", ".join(f"{k}=?" for k in fields)
@@ -74,8 +74,9 @@ class HuntStore:
     @staticmethod
     def _hunt(r: sqlite3.Row) -> dict:
         d = dict(r)
-        for k in ("plan", "verdict", "models"):
+        for k in ("plan", "verdict", "models", "feedback"):
             d[k] = json.loads(d[k]) if d.get(k) else None
+        d["feedback"] = d["feedback"] or []
         return d
 
     def get(self, hid: str, with_steps: bool = True) -> dict | None:

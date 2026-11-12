@@ -46,6 +46,23 @@ llm:
       base_url: ""             # OPENAI_COMPAT_API_KEY in .env
       default_model: ""
 
+# Describe your environment so hunts fit it (all optional).
+environment: {}
+#  summary: "Mostly Windows endpoints, a few Linux web servers, one cloud tenant."
+#  platforms: [windows, linux, cloud]
+#  crown_jewels: ["payroll database", "domain controllers"]
+#  not_present: ["macOS", "on-prem email"]
+#  notes: ["Admins use a jump host for remote work"]
+
+# Mask personal data before prompts go to cloud models (restored in replies).
+# Local models (ollama) are not masked unless listed. See docs/privacy.md.
+privacy:
+  mask_for: [anthropic, gemini, openai, azure_openai, openai_compatible]
+  types: [email, ipv4, ipv6, user]
+  terms: []          # e.g. your company and domain names
+  patterns: []       # extra regexes, e.g. '\bWS-\d{4,}\b' for hostnames
+  keep_public_ips: false
+
 # Hunt safety limits.
 hunt:
   max_steps: 25
@@ -58,6 +75,7 @@ hunt:
 # connector (role: intel). See docs/intel.md.
 intel:
   local: true
+  allow_private_urls: false   # advisory import from internal URLs
   feeds: []
   sweep:
     interval_minutes: 0

@@ -29,7 +29,8 @@ from .store import OUTCOMES, HuntStore
 from .validator import ValidationError, validate_call
 
 TECHNIQUE = re.compile(r"^T\d{4}(?:\.\d{3})?$")
-DATA_ROLES = tuple(r for r in ROLES if r != "intel")
+from ..connectors.spec import DATA_ROLES  # noqa: E402
+
 KEEP_FULL = 4          # newest results kept in full in the prompt
 TRIM_TO = 1500
 

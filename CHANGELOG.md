@@ -27,3 +27,8 @@
   no inline script, untrusted data only rendered as text.
 - Reports: Markdown report, JSON and CSV export (formula-safe), optional reporter-model
   narrative kept apart from the record. ATT&CK coverage view from hunts, saved hunts and starters.
+- Privacy masking for cloud model providers (emails, IPs, labelled usernames, custom terms and
+  patterns), restored in replies so tools get real values.
+- Offline decoder (`actaeon decode`, built-in `local-tools` connector, role `analysis`).
+- Environment profile, finding feedback (benign / false positive / confirmed, saved to memory),
+  advisory import from URL, PDF or HTML with private-address and redirect checks.

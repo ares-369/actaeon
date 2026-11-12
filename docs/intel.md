@@ -16,6 +16,9 @@ connector with the `intel` role.
   extraction is pattern-based and can miss values or pick up wrong ones.
 - **Advisory:** give the text a title and it is kept as an advisory with its
   techniques and CVEs, and its indicators are tagged `advisory:<id>`.
+- **Import an advisory from a URL, PDF or HTML file:** `actaeon intel advisory --url https://...`,
+  `actaeon intel advisory report.pdf`, or the Import box in the UI. PDF needs the `pdf` extra.
+  URLs that resolve to private addresses are refused unless `intel.allow_private_urls: true`.
 - **Import a file:** `text`, `csv`, `stix` (2.x bundle) or `json`.
 - **Feeds:** URLs under `intel.feeds` in `config.yaml`, pulled on demand.
 

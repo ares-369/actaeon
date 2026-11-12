@@ -32,6 +32,14 @@ a different provider: local Ollama, Anthropic, Gemini, OpenAI, Azure OpenAI or a
 OpenAI-compatible endpoint. Change them under **Models** in the UI or in `config.yaml`.
 Keys go in `.env`. Cloud SDKs are optional extras (`pip install 'actaeon[all]'`).
 
+## Also included
+
+- Personal data masking before prompts reach cloud models ([docs/privacy.md](docs/privacy.md)).
+- An offline decoder for obfuscated command lines (`actaeon decode`, and a tool hunts can use). It never runs them.
+- An environment profile in `config.yaml` (platforms, key assets, what is not present) given to every hunt.
+- Feedback on findings (benign, false positive, confirmed). Benign calls become memory for later hunts.
+- Advisory import from a URL, a PDF or HTML file, or pasted text.
+
 ## Authentication
 
 `auth.mode` can be `none` (loopback only), `basic`, `local`, `oidc` or `proxy`, with
