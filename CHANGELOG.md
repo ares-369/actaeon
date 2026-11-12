@@ -63,3 +63,4 @@
   (e.g. create a case); `actaeon outputs test`.
 - Query guides per connector (notes, file, examples, plus queries that found data before) and a compact
   prompt mode for cheaper models.
+- Docker image (non-root, read-only root, health check) and compose file; CI builds and checks it.

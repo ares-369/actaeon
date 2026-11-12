@@ -1,0 +1,26 @@
+# docker compose up -d   ->  http://127.0.0.1:8601
+# Config and data live in ./actaeon-data (config.yaml, .env, databases). Edit them there.
+services:
+  actaeon:
+    build: .
+    image: actaeon:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8601:8601"     # loopback only; put a reverse proxy with login in front for remote use
+    volumes:
+      - ./actaeon-data:/data
+    env_file:
+      - path: ./actaeon-data/.env
+        required: false
+    environment:
+      # Listening on 0.0.0.0 inside the container is needed for the port mapping.
+      # The port is still only published on the host's loopback (above).
+      ACTAEON_ALLOW_UNAUTHENTICATED_NETWORK: "true"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    pids_limit: 256

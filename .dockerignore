@@ -1,0 +1,11 @@
+.git
+.venv*
+**/__pycache__
+data
+config.yaml
+.env
+actaeon-data
+dist
+build
+*.egg-info
+tests

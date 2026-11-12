@@ -28,6 +28,14 @@ See [docs/demo.md](docs/demo.md). Before relying on it, read
 [docs/known-limitations.md](docs/known-limitations.md) and
 [docs/threat-model.md](docs/threat-model.md).
 
+## Run with Docker
+
+```bash
+docker compose up -d      # http://127.0.0.1:8601, data in ./actaeon-data
+```
+
+See [docs/deploy.md](docs/deploy.md) for hardening and the network rules it needs.
+
 ## Quick start
 
 ```bash

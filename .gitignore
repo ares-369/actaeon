@@ -33,3 +33,4 @@ Thumbs.db
 .venv-test/
 actaeon/_app/
 .venv-test/
+actaeon-data/
