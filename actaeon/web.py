@@ -432,6 +432,45 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         d = Conversations(store_for(get_config()).path).get(cid)
         return (jsonify(d), 200) if d else (jsonify({"error": "not found"}), 404)
 
+    def _send_report(doc, fmt, name):
+        from .reporting import MIMES, render
+        try:
+            data = render(doc, fmt)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except RuntimeError as exc:
+            return jsonify({"error": str(exc)}), 501
+        return app.response_class(data, mimetype=MIMES[fmt],
+                                  headers={"Content-Disposition": f'attachment; filename="{name}.{fmt}"'})
+
+    @app.route("/api/hunts/<hid>/report.<fmt>")
+    def hunt_report_any(hid, fmt):
+        from .hunt.report import markdown
+        from .reporting import hunt_doc
+        h = _hunt_or_404(hid)
+        if fmt == "md" and request.args.get("style") != "summary":
+            return app.response_class(markdown(h, narrative=h.get("narrative") or ""), mimetype="text/markdown",
+                                      headers={"Content-Disposition": f'attachment; filename="hunt-{hid}.md"'})
+        return _send_report(hunt_doc(h, case=cases_store().by_hunt(hid)), fmt, f"hunt-{hid}")
+
+    @app.route("/api/cases/<int:cid>/report.<fmt>")
+    def case_report(cid, fmt):
+        from .reporting import case_doc
+        c = cases_store().get(cid)
+        h = store_for(get_config()).get(c["hunt_id"]) if c else None
+        if not c or not h:
+            return jsonify({"error": "not found"}), 404
+        return _send_report(case_doc(c, h), fmt, f"case-{cid}")
+
+    @app.route("/api/reports/summary.<fmt>")
+    def summary_report(fmt):
+        from .reporting import summary_doc
+        try:
+            days = max(1, min(int(request.args.get("days", 7)), 366))
+        except ValueError:
+            days = 7
+        return _send_report(summary_doc(get_config(), days), fmt, f"actaeon-summary-{days}d")
+
     @app.route("/api/coverage")
     def coverage():
         from .hunt.coverage import build
@@ -444,13 +483,6 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             from flask import abort
             abort(404)
         return h
-
-    @app.route("/api/hunts/<hid>/report.md")
-    def hunt_report(hid):
-        from .hunt.report import markdown
-        h = _hunt_or_404(hid)
-        return app.response_class(markdown(h, narrative=h.get("narrative") or ""), mimetype="text/markdown",
-                                  headers={"Content-Disposition": f'attachment; filename="hunt-{hid}.md"'})
 
     @app.route("/api/hunts/<hid>/export.json")
     def hunt_export_json(hid):

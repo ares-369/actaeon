@@ -466,6 +466,12 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_u.add_argument("--role", default="operator", choices=["viewer", "operator", "admin"])
     p_u.add_argument("--full-name", default="")
     p_u.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
+    p_r = sub.add_parser("report", help="write a report: report hunt ID | case ID | summary [--days N]")
+    p_r.add_argument("kind", choices=["hunt", "case", "summary"])
+    p_r.add_argument("id", nargs="?")
+    p_r.add_argument("--format", default="pdf", choices=["pdf", "docx", "md"])
+    p_r.add_argument("--days", type=int, default=7)
+    p_r.add_argument("-o", "--output", default="")
     p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
     p_sw.add_argument("--full", action="store_true", help="sweep every indicator, not only changed ones")
     p_note = sub.add_parser("note", help="add an analyst note to hunt memory")
@@ -545,6 +551,27 @@ def cli_main(argv: list[str] | None = None) -> None:
                   "steps": []}
         for r in dispatch(cfg, sample, only=a.name):
             print(("OK   " if r["ok"] else "FAIL ") + f"{r['name']}: {r['detail']}")
+        return
+    if a.cmd == "report":
+        from .config import get_config
+        from .hunt import service as hs
+        from .reporting import case_doc, hunt_doc, render, summary_doc
+        cfg = get_config()
+        if a.kind == "summary":
+            doc, name = summary_doc(cfg, a.days), f"actaeon-summary-{a.days}d"
+        elif a.kind == "hunt":
+            h = hs.store_for(cfg).get(str(a.id))
+            if not h:
+                sys.exit("no such hunt")
+            doc, name = hunt_doc(h, case=hs.cases_for(cfg).by_hunt(h["id"])), f"hunt-{h['id']}"
+        else:
+            c = hs.cases_for(cfg).get(int(a.id or 0))
+            if not c:
+                sys.exit("no such case")
+            doc, name = case_doc(c, hs.store_for(cfg).get(c["hunt_id"])), f"case-{c['id']}"
+        out = Path(a.output or f"{name}.{a.format}")
+        out.write_bytes(render(doc, a.format))
+        print(f"wrote {out}")
         return
     if a.cmd == "users":
         from .config import get_config, set_user

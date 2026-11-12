@@ -79,3 +79,4 @@
 - Named accounts for basic/local login (`actaeon users add`), the signed-in user on every request, login page.
 - Ask assistant: questions and hunt requests in plain language; it searches records, starts stored hunts
   (origin ask:<user>), follows up on hunts, and saves the conversation with links.
+- Reports in PDF, Word and Markdown: per hunt, per case, and a period summary (`actaeon report`, UI, API).
