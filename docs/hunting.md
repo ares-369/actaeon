@@ -50,6 +50,12 @@ A basic sanity check before each call, not a guarantee:
 - query text is refused if it looks like it deletes, writes, changes an index
   or schema, or runs code, or if it has control characters or is over 4000 characters.
 
+Field guard: if a connector has a `get_fields` tool, the engine calls it once
+(recorded as a step) before the first query on that connector. Queries that use
+`field:value` with a field the source does not have are refused, with the
+closest real names suggested. If the field list was truncated, no fields are
+refused.
+
 Connector policy (read-only tools) and the source's own permissions are the
 other layers.
 

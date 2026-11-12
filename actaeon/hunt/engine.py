@@ -67,6 +67,27 @@ def resolve_tool(index: dict, action: dict) -> tuple[str, str]:
     return connector, tool
 
 
+_FIELD_REF = re.compile(r"(?<![\w\\\"])(@?[A-Za-z_][\w.@-]*):(?!//)")
+
+
+def query_fields(query: str) -> list[str]:
+    """Field names used as ``field:value`` in a query_string-style query (quoted text ignored)."""
+    q = re.sub(r'"[^"]*"', " ", query or "")
+    return list(dict.fromkeys(_FIELD_REF.findall(q)))
+
+
+def _fields_from(content: str) -> set[str]:
+    from .signals import payload
+    try:
+        data = json.loads(payload(content))
+    except ValueError:
+        return set()
+    if not isinstance(data, dict) or data.get("truncated"):
+        return set()          # partial list: do not refuse fields we were not shown
+    f = data.get("fields")
+    return set(f) if isinstance(f, (dict, list)) else set()
+
+
 class Stopped(Exception):
     pass
 
@@ -203,6 +224,7 @@ class HuntEngine:
                 {"role": "user", "content": analyst_user(hypothesis, plan, tools, context, self.limits.max_steps)}]
         transcript: list[dict] = []
         done_calls: dict[str, str] = {}
+        known_fields: dict[str, set[str]] = {}   # connector -> field names it reported
         calls = parse_fail = 0
         while True:
             self._gate()
@@ -251,6 +273,20 @@ class HuntEngine:
                                     note=f"validator: {exc}")
                 transcript.append({"role": "user", "content": f"Call refused by the validator: {exc}"})
                 continue
+            if isinstance(args.get("query"), str) and (connector, "get_fields") in index and tool != "get_fields":
+                if connector not in known_fields:
+                    known_fields[connector] = self._learn_fields(hid, connector, args, actor, transcript)
+                fields = known_fields[connector]
+                unknown = [f for f in query_fields(args["query"]) if fields and f not in fields]
+                if unknown:
+                    import difflib
+                    tips = {u: difflib.get_close_matches(u, list(fields), n=3, cutoff=0.4) for u in unknown}
+                    msg = "; ".join(f"{u} (try {', '.join(t) or 'get_fields'})" for u, t in tips.items())
+                    self.store.add_step(hid, self._next(), "blocked", connector=connector, tool=tool,
+                                        role=meta["role"], arguments=args, note=f"unknown field(s): {msg}")
+                    transcript.append({"role": "user", "content": f"Refused: the query uses field names this source "
+                                       f"does not have: {msg}. Use the field names from get_fields."})
+                    continue
             key = json.dumps([connector, tool, args], sort_keys=True, default=str)
             if key in done_calls:
                 transcript.append({"role": "user", "content": f"You already made that call; see {done_calls[key]}."})
@@ -276,6 +312,25 @@ class HuntEngine:
             self._emit({"type": "step", "hunt_id": hid, "n": n, "tool": f"{connector}.{tool}", "ok": ok})
             head = f"{eid} result of {connector}.{tool}" + (f" ({'; '.join(notes)})" if notes else "") + ":\n"
             transcript.append({"role": "user", "content": head + content, "_result": True})
+
+    def _learn_fields(self, hid, connector, args, actor, transcript) -> set[str]:
+        """Fetch a connector's field names once, so queries can be checked against real fields."""
+        fa = {"index": args["index"]} if args.get("index") else {}
+        n = self._next()
+        try:
+            out = self.hub.call(connector, "get_fields", fa, actor=actor, hunt_id=hid)
+            ok, content = not out.get("is_error"), out["content"]
+        except ToolCallError as exc:
+            ok, content = False, f"call failed: {exc}"
+        fields = _fields_from(content) if ok else set()
+        self.evidence[f"E{n}"] = {"ok": ok, "connector": connector, "tool": "get_fields", "role": "", "args": fa}
+        self.store.add_step(hid, n, "call", connector=connector, tool="get_fields", arguments=fa,
+                            why="automatic: learn field names before the first query", ok=ok, result=content,
+                            note=f"{len(fields)} fields")
+        if ok:
+            transcript.append({"role": "user", "content": f"E{n} result of {connector}.get_fields (fetched "
+                               f"automatically):\n{content}", "_result": True})
+        return fields
 
     def _finalize(self, v: dict, tools: Any) -> dict:
         notes: list[str] = []

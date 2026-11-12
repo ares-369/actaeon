@@ -296,3 +296,31 @@ def test_star_in_argument_names(tmp_path):
                            "arguments": {"index*": "e", "time_from*": "now-1d"}},
                           {"action": "verdict", "outcome": "no_results", "summary": "x"}], hub=hub)
     assert hub.calls and hub.calls[0][2]["index"] == "e"
+
+
+GET_FIELDS = {"connector": "logs", "name": "get_fields", "description": "fields",
+              "inputSchema": {"type": "object", "properties": {"index": {"type": "string"}}, "required": ["index"]}}
+
+
+def test_unknown_fields_refused_after_automatic_get_fields(tmp_path):
+    hub = Hub(tools={"log_search": [SEARCH, GET_FIELDS]},
+              results={"get_fields": '{"fields": {"process.name": "keyword", "process.parent.name": "keyword"}}'})
+    h, llm = run(tmp_path, [
+        call(index="e", time_from="now-7d", query="app_name:Office AND process_name:powershell.exe"),
+        call(index="e", time_from="now-7d", query="process.parent.name:winword.exe AND process.name:powershell.exe"),
+        {"action": "verdict", "outcome": "no_results", "summary": "x"},
+    ], hub=hub)
+    tools_called = [c[1] for c in hub.calls]
+    assert tools_called == ["get_fields", "search"]          # fields fetched once, bad query never sent
+    blocked = [s for s in h["steps"] if s["kind"] == "blocked"]
+    assert "app_name" in blocked[0]["note"] and "process.name" in blocked[0]["note"]
+    msgs = [m["content"] for m in llm.roles["analyst"].seen[-1] if m["role"] == "user"]
+    assert any("fetched automatically" in m for m in msgs)
+
+
+def test_truncated_field_list_does_not_block(tmp_path):
+    hub = Hub(tools={"log_search": [SEARCH, GET_FIELDS]},
+              results={"get_fields": '{"fields": {"a": "keyword"}, "truncated": true}'})
+    run(tmp_path, [call(index="e", time_from="now-7d", query="zzz:1"),
+                   {"action": "verdict", "outcome": "no_results", "summary": "x"}], hub=hub)
+    assert [c[1] for c in hub.calls] == ["get_fields", "search"]

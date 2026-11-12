@@ -40,3 +40,6 @@
 - Engine fixes found with a real 7B model: refused and unknown calls now use the step budget
   (no loops), tool resolution tolerates "connector.tool" and role names, `*` copied into
   argument names is stripped, and the tool list format is clearer.
+- Field guard: before the first query on a connector that offers get_fields, the engine fetches
+  the field names itself and refuses queries that use fields the source does not have
+  (with close-match suggestions). Found with a 7B model that guessed field names.
