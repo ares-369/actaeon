@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .base import LLMProvider, LLMResult, Message
+from .base import ACTION_TOOLS, LLMProvider, LLMResult, Message, action_json, is_tool_loop_system
 
 
 def _split_system(messages: list[Message]) -> tuple[str, list[Message]]:
@@ -30,13 +30,20 @@ class AnthropicProvider(LLMProvider):
             return LLMResult(text="", model=use_model, error="ANTHROPIC_API_KEY not set")
         try:
             system, convo = _split_system(messages)
-            resp = self._client().messages.create(
-                model=use_model,
-                system=system or None,
-                messages=[{"role": m["role"], "content": m["content"]} for m in convo],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            kw: dict[str, Any] = {
+                "model": use_model,
+                "system": system or None,
+                "messages": [{"role": m["role"], "content": m["content"]} for m in convo],
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            if is_tool_loop_system(system):
+                kw["tools"] = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]}
+                               for t in ACTION_TOOLS]
+            resp = self._client().messages.create(**kw)
+            for b in resp.content:
+                if getattr(b, "type", "") == "tool_use":
+                    return LLMResult(text=action_json(b.name, dict(getattr(b, "input", None) or {})), model=use_model)
             text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
             return LLMResult(text=text.strip(), model=use_model)
         except Exception as exc:

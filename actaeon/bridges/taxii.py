@@ -7,7 +7,10 @@ Calls only ``GET`` on ``collections/``, ``collections/<id>/objects/`` and
 from __future__ import annotations
 
 import argparse
+import json
 import re
+import sqlite3
+import time
 from typing import Any
 
 from .common import cap, check_status, parse_time, session_from_env
@@ -36,12 +39,24 @@ def _slim(o: dict) -> dict:
 
 class TaxiiBridge:
     def __init__(self, api_root: str, collections: list[str] | None = None, max_pages: int = 20,
-                 verify_tls: bool = True, ca_bundle: str = "", timeout: float = 30, session=None):
+                 verify_tls: bool = True, ca_bundle: str = "", timeout: float = 30, session=None,
+                 cache_ttl_sec: float = 300.0):
         self.root = api_root.rstrip("/") + "/"
         self.allowed = collections or []
         self.max_pages, self.timeout = max_pages, timeout
+        self.cache_ttl_sec = cache_ttl_sec
         self.http = session or session_from_env("BRIDGE", verify_tls, ca_bundle)
         self.http.headers["Accept"] = ACCEPT
+        self._db = sqlite3.connect(":memory:", check_same_thread=False)
+        self._db.execute(
+            "CREATE TABLE IF NOT EXISTS taxii_indicators "
+            "(collection TEXT, id TEXT, name TEXT, pattern TEXT, slim_json TEXT)"
+        )
+        self._db.execute(
+            "CREATE TABLE IF NOT EXISTS taxii_meta "
+            "(collection TEXT PRIMARY KEY, fetched_at REAL, scanned INT, truncated INT)"
+        )
+        self._db.execute("CREATE INDEX IF NOT EXISTS idx_taxii_col ON taxii_indicators(collection)")
 
     def _get(self, path: str, params: dict | None = None) -> dict:
         r = self.http.get(self.root + path, params=params or {}, timeout=self.timeout)
@@ -96,26 +111,49 @@ class TaxiiBridge:
         objs = self._get(f"collections/{col}/objects/{oid}/").get("objects") or []
         return {"objects": [_slim(o) for o in objs]}
 
+    def _ensure_indexed(self, col: str) -> tuple[int, bool]:
+        row = self._db.execute("SELECT fetched_at, scanned, truncated FROM taxii_meta WHERE collection=?", (col,)).fetchone()
+        now = time.monotonic()
+        if row and (now - row[0]) < self.cache_ttl_sec:
+            return int(row[1]), bool(row[2])
+        params: dict[str, Any] = {"match[type]": "indicator", "limit": 1000}
+        rows: list[tuple[str, str, str, str, str]] = []
+        scanned, truncated = 0, False
+        for page in range(self.max_pages):
+            objs, nxt = self._page(col, params)
+            scanned += len(objs)
+            for o in objs:
+                slim = _slim(o)
+                rows.append((col, str(o.get("id", "")), str(o.get("name", "")).lower(),
+                             str(o.get("pattern", "")).lower(), json.dumps({"collection": col, **slim})))
+            if not nxt:
+                break
+            params["next"] = nxt
+            if page == self.max_pages - 1:
+                truncated = True
+        with self._db:
+            self._db.execute("DELETE FROM taxii_indicators WHERE collection=?", (col,))
+            self._db.executemany("INSERT INTO taxii_indicators VALUES (?,?,?,?,?)", rows)
+            self._db.execute("INSERT OR REPLACE INTO taxii_meta VALUES (?,?,?,?)",
+                             (col, now, scanned, int(truncated)))
+        return scanned, truncated
+
     def find_indicator(self, args: dict) -> dict:
         value = str(args.get("value", "")).strip()
         if len(value) < 3:
             raise ToolInputError("value must be at least 3 characters (an IP, domain, URL or hash)")
         cols = [self._collection(args["collection"])] if args.get("collection") else [c["id"] for c in self._collections()]
-        needle = value.lower()
+        needle = f"%{value.lower()}%"
         found, scanned, truncated = [], 0, False
         for col in cols:
-            params: dict[str, Any] = {"match[type]": "indicator", "limit": 1000}
-            for page in range(self.max_pages):
-                objs, nxt = self._page(col, params)
-                scanned += len(objs)
-                for o in objs:
-                    if needle in str(o.get("pattern", "")).lower() or needle in str(o.get("name", "")).lower():
-                        found.append({"collection": col, **_slim(o)})
-                if not nxt:
-                    break
-                params["next"] = nxt
-                if page == self.max_pages - 1:
-                    truncated = True
+            c_scanned, c_trunc = self._ensure_indexed(col)
+            scanned += c_scanned
+            truncated = truncated or c_trunc
+            for (raw,) in self._db.execute(
+                "SELECT slim_json FROM taxii_indicators WHERE collection=? AND (pattern LIKE ? OR name LIKE ?) LIMIT 200",
+                (col, needle, needle),
+            ):
+                found.append(json.loads(raw))
         return {"value": value, "matches": found[:200], "scanned": scanned, "truncated": truncated,
                 "note": "matched by substring in STIX pattern or name"}
 

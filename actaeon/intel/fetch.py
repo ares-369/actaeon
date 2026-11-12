@@ -2,8 +2,8 @@
 
 URL safety: only http(s); every redirect hop is checked; hosts that resolve to
 private, loopback, link-local or reserved addresses are refused unless
-``intel.allow_private_urls`` is true. The check happens before connecting, so a
-host that changes its DNS answer between check and connect is not covered.
+``intel.allow_private_urls`` is true, and the validated IP is pinned for the
+request to prevent DNS rebinding.
 PDF text extraction needs the optional ``pdf`` extra (pypdf).
 """
 
@@ -13,6 +13,8 @@ import io
 import ipaddress
 import re
 import socket
+from contextlib import contextmanager
+from contextvars import ContextVar
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -83,27 +85,58 @@ def pdf_to_text(data: bytes) -> str:
     return text
 
 
-def _check_host(url: str, allow_private: bool) -> None:
+_PINNED_DNS: ContextVar[tuple[str, str] | None] = ContextVar("_PINNED_DNS", default=None)
+_ORIG_GETADDRINFO = socket.getaddrinfo
+
+
+def _pinned_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    pin = _PINNED_DNS.get()
+    if pin and host == pin[0]:
+        return _ORIG_GETADDRINFO(pin[1], port, family, type, proto, flags)
+    return _ORIG_GETADDRINFO(host, port, family, type, proto, flags)
+
+
+socket.getaddrinfo = _pinned_getaddrinfo
+
+
+@contextmanager
+def _pin_host(hostname: str | None, pinned_ip: str | None):
+    if not hostname or not pinned_ip:
+        yield
+        return
+    tok = _PINNED_DNS.set((hostname, pinned_ip))
+    try:
+        yield
+    finally:
+        _PINNED_DNS.reset(tok)
+
+
+def _check_host(url: str, allow_private: bool) -> str | None:
     u = urlparse(url)
     if u.scheme not in ("http", "https") or not u.hostname:
         raise FetchError("only http(s) URLs are allowed")
     if allow_private:
-        return
+        return None
     try:
-        infos = socket.getaddrinfo(u.hostname, u.port or (443 if u.scheme == "https" else 80))
+        infos = _ORIG_GETADDRINFO(u.hostname, u.port or (443 if u.scheme == "https" else 80))
     except socket.gaierror as exc:
         raise FetchError(f"cannot resolve {u.hostname}") from exc
+    first_ip: str | None = None
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
         if not ip.is_global:
             raise FetchError(f"{u.hostname} resolves to a non-public address; set intel.allow_private_urls to allow it")
+        if first_ip is None:
+            first_ip = str(ip)
+    return first_ip
 
 
 def fetch_url(url: str, *, allow_private: bool = False, session=None, timeout: float = 30) -> dict:
     s = session or requests.Session()
     for _ in range(6):
-        _check_host(url, allow_private)
-        r = s.get(url, timeout=timeout, allow_redirects=False, stream=True, headers={"User-Agent": "actaeon"})
+        pinned_ip = _check_host(url, allow_private)
+        with _pin_host(urlparse(url).hostname, pinned_ip):
+            r = s.get(url, timeout=timeout, allow_redirects=False, stream=True, headers={"User-Agent": "actaeon"})
         if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("Location"):
             url = urljoin(url, r.headers["Location"])
             r.close()

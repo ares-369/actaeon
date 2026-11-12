@@ -12,9 +12,10 @@ The OpenAI Python SDK is imported lazily.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from .base import LLMProvider, LLMResult, Message
+from .base import ACTION_TOOLS, LLMProvider, LLMResult, Message, action_json, is_tool_loop_system
 
 
 class OpenAICompatProvider(LLMProvider):
@@ -46,13 +47,23 @@ class OpenAICompatProvider(LLMProvider):
     def chat(self, messages: list[Message], *, model=None, temperature=0.2, max_tokens=900) -> LLMResult:
         use_model = model or self.default_model
         try:
-            resp = self._client().chat.completions.create(
-                model=use_model,
-                messages=[{"role": m["role"], "content": m["content"]} for m in messages],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return LLMResult(text=(resp.choices[0].message.content or "").strip(), model=use_model)
+            system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+            kw: dict[str, Any] = {
+                "model": use_model,
+                "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            if is_tool_loop_system(system) and self.cfg.get("native_tools", True):
+                kw["tools"] = [{"type": "function", "function": t} for t in ACTION_TOOLS]
+            resp = self._client().chat.completions.create(**kw)
+            msg = resp.choices[0].message
+            tcs = getattr(msg, "tool_calls", None) or []
+            if tcs:
+                fn = tcs[0].function
+                args = json.loads(fn.arguments) if isinstance(fn.arguments, str) else (fn.arguments or {})
+                return LLMResult(text=action_json(fn.name, args), model=use_model)
+            return LLMResult(text=(msg.content or "").strip(), model=use_model)
         except Exception as exc:
             return LLMResult(text="", model=use_model, error=f"{self.name} error: {exc}")
 

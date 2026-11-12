@@ -19,11 +19,10 @@ The SDK (``google-genai``) is only imported when this provider is used.
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Any
 
-from .base import LLMProvider, LLMResult, Message
+from .base import ACTION_TOOLS, LLMProvider, LLMResult, Message, action_json, is_tool_loop_system
 
 AUTH_MODES = ("auto", "api_key", "vertex", "vertex_api_key")
 
@@ -102,37 +101,19 @@ class GeminiProvider(LLMProvider):
                     for c in ("HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_DANGEROUS_CONTENT",
                               "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_SEXUALLY_EXPLICIT")
                 ]
-            if '"action": "call"' in system and '"action": "verdict"' in system:
+            if is_tool_loop_system(system):
                 cfg_kw["tools"] = [types.Tool(function_declarations=[
-                    types.FunctionDeclaration(
-                        name="call_tool",
-                        description="Call one read-only connector tool.",
-                        parameters={"type": "object", "properties": {
-                            "thought": {"type": "string"}, "connector": {"type": "string"},
-                            "tool": {"type": "string"}, "arguments": {"type": "object"},
-                        }, "required": ["connector", "tool", "arguments"]},
-                    ),
-                    types.FunctionDeclaration(
-                        name="submit_verdict",
-                        description="Submit the final hunt verdict.",
-                        parameters={"type": "object", "properties": {
-                            "outcome": {"type": "string"}, "confidence": {"type": "integer"},
-                            "summary": {"type": "string"},
-                            "findings": {"type": "array", "items": {"type": "object"}},
-                            "attack": {"type": "array", "items": {"type": "string"}},
-                            "gaps": {"type": "array", "items": {"type": "string"}},
-                            "next_steps": {"type": "array", "items": {"type": "string"}},
-                        }, "required": ["outcome", "confidence", "summary"]},
-                    ),
+                    types.FunctionDeclaration(**t) for t in ACTION_TOOLS
                 ])]
             resp = self._client.models.generate_content(
                 model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
             fcs = getattr(resp, "function_calls", None) or []
             if fcs:
                 fc = fcs[0]
-                args = dict(getattr(fc, "args", None) or {})
-                action = "call" if getattr(fc, "name", "") == "call_tool" else "verdict"
-                return LLMResult(text=json.dumps({"action": action, **args}), model=use_model)
+                return LLMResult(
+                    text=action_json(getattr(fc, "name", ""), dict(getattr(fc, "args", None) or {})),
+                    model=use_model,
+                )
             text = (resp.text or "").strip()
             if not text:
                 fb = getattr(getattr(resp, "prompt_feedback", None), "block_reason", None)
