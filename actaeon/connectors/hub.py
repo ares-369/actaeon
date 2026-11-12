@@ -22,6 +22,16 @@ RETRIES = 2            # extra attempts after the first
 BACKOFF_SEC = 1.0      # 1s, then 2s
 
 
+LOCAL_INTEL = "local-intel"
+
+
+def local_intel_connector(data_dir) -> dict:
+    """The built-in connector for Actaeon's own intel store (read-only bridge)."""
+    return {"name": LOCAL_INTEL, "roles": ["intel"], "transport": "stdio", "command": "actaeon",
+            "args": ["bridge", "local-intel", "--db", str(data_dir / "intel.sqlite")],
+            "description": "Indicators and advisories added in Actaeon", "rate_per_min": 600, "timeout_sec": 15}
+
+
 class ToolCallError(RuntimeError):
     pass
 
@@ -56,7 +66,10 @@ class ConnectorHub:
 
     @classmethod
     def from_config(cls, cfg) -> ConnectorHub:
-        return cls(parse_connectors(cfg.connectors), AuditLog(cfg.data_dir / "audit.sqlite"),
+        items = list(cfg.connectors)
+        if (getattr(cfg, "intel", {}) or {}).get("local", True):
+            items.append(local_intel_connector(cfg.data_dir))
+        return cls(parse_connectors(items), AuditLog(cfg.data_dir / "audit.sqlite"),
                    max_result_bytes=cfg.hunt.max_result_bytes)
 
     # ---- discovery ----

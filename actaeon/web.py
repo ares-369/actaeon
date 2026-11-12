@@ -86,6 +86,82 @@ def create_app(cfg=None) -> Flask:
         return jsonify(hub().audit.recent(limit=min(500, int(request.args.get("limit", 100))),
                                           hunt_id=request.args.get("hunt_id") or None))
 
+    def intel_store():
+        from .intel import IntelStore
+        return IntelStore(get_config().data_dir / "intel.sqlite")
+
+    def _intel_kw(b):
+        try:
+            conf = int(b.get("confidence", 50))
+        except (TypeError, ValueError):
+            conf = 50
+        tags = b.get("tags") or []
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",")]
+        return {"confidence": conf, "tags": [str(t) for t in tags][:20]}
+
+    @app.route("/api/intel/stats")
+    def intel_stats():
+        return jsonify(intel_store().stats())
+
+    @app.route("/api/intel/indicators", methods=["GET", "POST"])
+    def intel_indicators():
+        st = intel_store()
+        if request.method == "GET":
+            return jsonify(st.list(kind=request.args.get("type") or None, tag=request.args.get("tag") or None,
+                                   search=request.args.get("q", ""), limit=min(1000, int(request.args.get("limit", 100)))))
+        b = request.get_json(silent=True) or {}
+        kw = _intel_kw(b)
+        if b.get("text"):
+            if b.get("preview"):
+                from .intel import extract
+                return jsonify({"found": extract(str(b["text"])[:200_000])})
+            r = st.add_text(str(b["text"])[:200_000], source=str(b.get("source") or "paste")[:60], **kw)
+            return jsonify({k: r[k] for k in ("found", "new", "updated")})
+        out, errors = [], []
+        for v in (b.get("values") or [])[:5000]:
+            try:
+                out.append(st.add(str(v), b.get("type") or None, source=str(b.get("source") or "manual")[:60], **kw))
+            except ValueError as exc:
+                errors.append(str(exc))
+        return jsonify({"added": out, "errors": errors})
+
+    @app.route("/api/intel/indicators/<int:iid>/deactivate", methods=["POST"])
+    def intel_deactivate(iid):
+        return jsonify({"ok": intel_store().deactivate(iid)})
+
+    @app.route("/api/intel/lookup")
+    def intel_lookup():
+        return jsonify(intel_store().lookup(request.args.get("value", "")))
+
+    @app.route("/api/intel/advisories", methods=["GET", "POST"])
+    def intel_advisories():
+        st = intel_store()
+        if request.method == "GET":
+            return jsonify(st.advisories())
+        b = request.get_json(silent=True) or {}
+        if not str(b.get("text", "")).strip():
+            return jsonify({"error": "text is required"}), 400
+        return jsonify(st.add_advisory(str(b.get("title", ""))[:300], str(b["text"])[:200_000],
+                                       source=str(b.get("source") or "advisory")[:60], url=str(b.get("url", ""))[:500],
+                                       **_intel_kw(b)))
+
+    @app.route("/api/intel/advisories/<int:aid>")
+    def intel_advisory(aid):
+        d = intel_store().advisory(aid)
+        return (jsonify(d), 200) if d else (jsonify({"error": "not found"}), 404)
+
+    @app.route("/api/intel/feeds/<name>/pull", methods=["POST"])
+    def intel_pull(name):
+        from .intel.feeds import pull_feed
+        f = next((f for f in get_config().intel.get("feeds") or [] if f.get("name") == name), None)
+        if not f:
+            return jsonify({"error": "not found"}), 404
+        try:
+            return jsonify(pull_feed(intel_store(), f))
+        except Exception as exc:
+            return jsonify({"error": str(exc)[:300]}), 502
+
     @app.route("/api/jobs")
     def list_jobs():
         return jsonify(jobs.list(limit=50))

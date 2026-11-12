@@ -23,6 +23,18 @@ button{background:var(--accent);color:#081020;border:0;border-radius:6px;padding
 <section><h2><span class="mdi mdi-information-outline"></span>Status</h2><div id="status" class="muted">Loading...</div></section>
 <section><h2><span class="mdi mdi-connection"></span>Connectors</h2>
 <div id="conns" class="muted">Loading...</div></section>
+<section><h2><span class="mdi mdi-shield-search"></span>Intel</h2>
+<div id="istats" class="muted"></div>
+<p class="muted">Paste indicators or a whole advisory. Defanged values (hxxp, [.]) are handled. Review the preview before saving.</p>
+<input id="ititle" placeholder="Advisory title (optional; saves the text as an advisory)" style="width:100%;margin-bottom:.4rem">
+<textarea id="itext" rows="6" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:.5rem"></textarea>
+<div class="row" style="grid-template-columns:1fr 1fr 1fr">
+<input id="iconf" type="number" min="0" max="100" value="50" title="confidence 0-100">
+<input id="itags" placeholder="tags, comma separated">
+<span><button id="iprev"><span class="mdi mdi-eye"></span> Preview</button> <button id="isave"><span class="mdi mdi-plus"></span> Add</button></span></div>
+<pre id="iout"></pre>
+<div class="row" style="grid-template-columns:1fr auto"><input id="iq" placeholder="Look up a value"><button id="ilook"><span class="mdi mdi-magnify"></span></button></div>
+<pre id="ilist"></pre></section>
 <section><h2><span class="mdi mdi-brain"></span>Models</h2>
 <p class="muted">Pick a provider and model for each role. Keys stay in .env.</p>
 <div id="roles"></div>
@@ -60,6 +72,22 @@ async function conns(){
     const r=await (await fetch(`/api/connectors/${n}/test`,{method:'POST'})).json();
     document.getElementById('t-'+n).textContent=r.ok?`${r.allowed}/${r.tools} tools allowed`:(r.error||'failed')});
 }
-load();conns();
+const J=(u,b)=>fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{}).then(r=>r.json());
+async function intel(){
+  const s=await J('/api/intel/stats');
+  $('#istats').textContent=`${s.indicators} indicators, ${s.advisories} advisories `+JSON.stringify(s.by_type);
+  const rows=await J('/api/intel/indicators?limit=15');
+  $('#ilist').textContent=rows.map(r=>`${r.type.padEnd(9)} ${r.value}  conf ${r.confidence}  seen ${r.seen_count}  ${r.source}`).join('\n');
+}
+const ibody=()=>({text:$('#itext').value,confidence:+$('#iconf').value,tags:$('#itags').value});
+$('#iprev').onclick=async()=>{const r=await J('/api/intel/indicators',{...ibody(),preview:true});$('#iout').textContent=JSON.stringify(r.found,null,1)};
+$('#isave').onclick=async()=>{if(!$('#itext').value.trim())return;
+  const t=$('#ititle').value.trim();
+  const r=t?await J('/api/intel/advisories',{...ibody(),title:t}):await J('/api/intel/indicators',ibody());
+  $('#iout').textContent=r.error||`Added: ${r.new} new, ${r.updated} updated`+(r.advisory_id?` (advisory ${r.advisory_id})`:'');
+  $('#itext').value='';intel()};
+$('#ilook').onclick=async()=>{const r=await J('/api/intel/lookup?value='+encodeURIComponent($('#iq').value));
+  $('#iout').textContent=r.found?JSON.stringify(r.matches,null,1):'Not in the intel store.'+(r.related.length?' Related: '+r.related.map(x=>x.value).join(', '):'')};
+load();conns();intel();
 </script>
 </body></html>

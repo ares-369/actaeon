@@ -10,3 +10,6 @@
 - Bridges (`actaeon bridge ...`): built-in stdio MCP servers for search indices (`_search` API,
   time-bounded, capped, index allowlist, no scripts), STIX/TAXII 2.1 (read-only) and
   REST/OpenAPI (GET only, POST only when named).
+- Local intel store: add indicators and advisories (paste with defang-aware extraction,
+  files, URL feeds); ledger with first/last seen and count; served to hunts as the built-in
+  read-only `local-intel` connector; UI panel, API and `actaeon intel` CLI.

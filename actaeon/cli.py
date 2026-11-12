@@ -75,6 +75,58 @@ def cmd_connectors(action: str, name: str | None) -> int:
     return rc
 
 
+def cmd_intel(a) -> int:
+    import json as _json
+
+    from .config import get_config
+    from .intel import IntelStore
+    from .intel.feeds import import_file, pull_feed
+    cfg = get_config()
+    store = IntelStore(cfg.data_dir / "intel.sqlite")
+    kw = {}
+    if hasattr(a, "confidence"):
+        kw = {"confidence": a.confidence, "tags": a.tag}
+    if a.action == "add":
+        res = []
+        for v in a.values:
+            try:
+                res.append(store.add(v, a.type, source=a.source or "manual", ttl_days=a.ttl_days, **kw))
+            except ValueError as exc:
+                print(f"skip: {exc}")
+        out = res
+    elif a.action == "paste":
+        text = Path(a.file).read_text() if a.file else sys.stdin.read()
+        r = store.add_text(text, source=a.source or "paste", ttl_days=a.ttl_days, **kw)
+        out = {k: r[k] for k in ("found", "new", "updated")}
+    elif a.action == "advisory":
+        text = Path(a.file).read_text() if a.file else sys.stdin.read()
+        out = store.add_advisory(a.title, text, source=a.source or "advisory", url=a.url, **kw)
+    elif a.action == "import":
+        out = import_file(store, a.file, a.format, kind=a.type, value_field=a.value_field, list_key=a.list_key,
+                          extract=a.extract, ttl_days=a.ttl_days, **({"source": a.source} if a.source else {}), **kw)
+    elif a.action == "pull":
+        feeds = [f for f in cfg.intel.get("feeds") or [] if not a.name or f.get("name") == a.name]
+        if not feeds:
+            print("no matching feeds under intel.feeds in config.yaml")
+            return 1
+        out = []
+        for f in feeds:
+            try:
+                out.append(pull_feed(store, f))
+            except Exception as exc:
+                out.append({"source": f.get("name"), "error": str(exc)[:200]})
+    elif a.action == "lookup":
+        out = store.lookup(a.value)
+    elif a.action == "list":
+        for r in store.list(kind=a.type, limit=a.limit):
+            print(f"{r['type']:9} {r['value']:60} conf={r['confidence']:<3} seen={r['seen_count']} {r['source']}")
+        return 0
+    else:
+        out = store.stats()
+    print(_json.dumps(out, indent=2))
+    return 0
+
+
 def cli_main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="actaeon", description="Open-source AI threat hunter (MCP connectors).")
     sub = ap.add_subparsers(dest="cmd")
@@ -89,10 +141,41 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_con.add_argument("name", nargs="?")
     p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
     br = p_br.add_subparsers(dest="kind", required=True)
-    from .bridges import openapi, search_index, taxii
-    bridges = {"search-index": search_index, "taxii": taxii, "openapi": openapi}
+    from .bridges import local_intel, openapi, search_index, taxii
+    bridges = {"search-index": search_index, "taxii": taxii, "openapi": openapi, "local-intel": local_intel}
     for kind, mod in bridges.items():
         mod.add_args(br.add_parser(kind))
+    p_in = sub.add_parser("intel", help="add, import, pull and look up intel in the local store")
+    isub = p_in.add_subparsers(dest="action", required=True)
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--source", default="")
+    common.add_argument("--confidence", type=int, default=50)
+    common.add_argument("--tag", action="append", default=[])
+    common.add_argument("--ttl-days", type=int, default=None)
+    x = isub.add_parser("add", parents=[common], help="add indicator values")
+    x.add_argument("values", nargs="+")
+    x.add_argument("--type", default=None)
+    x = isub.add_parser("paste", parents=[common], help="extract indicators from text on stdin or a file")
+    x.add_argument("file", nargs="?")
+    x = isub.add_parser("advisory", parents=[common], help="add an advisory (text file or stdin)")
+    x.add_argument("file", nargs="?")
+    x.add_argument("--title", required=True)
+    x.add_argument("--url", default="")
+    x = isub.add_parser("import", parents=[common], help="import a file (text/csv/stix/json)")
+    x.add_argument("file")
+    x.add_argument("--format", default="text")
+    x.add_argument("--type", default=None)
+    x.add_argument("--value-field", default="")
+    x.add_argument("--list-key", default="")
+    x.add_argument("--extract", action="store_true")
+    x = isub.add_parser("pull", help="pull configured feeds (intel.feeds)")
+    x.add_argument("name", nargs="?")
+    x = isub.add_parser("lookup")
+    x.add_argument("value")
+    x = isub.add_parser("list")
+    x.add_argument("--type", default=None)
+    x.add_argument("--limit", type=int, default=50)
+    isub.add_parser("stats")
     a = ap.parse_args(argv)
 
     if a.cmd == "version":
@@ -105,6 +188,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     if a.cmd == "bridge":
         bridges[a.kind].run(a)
         return
+    if a.cmd == "intel":
+        sys.exit(cmd_intel(a))
     if a.cmd == "connectors":
         sys.exit(cmd_connectors(a.action, a.name))
     if a.cmd == "hash-password":

@@ -84,6 +84,7 @@ class Config:
     auth: AuthConfig
     llm: dict[str, Any]
     connectors: list[dict[str, Any]]
+    intel: dict[str, Any]
     hunt: HuntLimits
     data_dir: Path
     path: Path
@@ -146,6 +147,11 @@ def load_config() -> Config:
 
     from .connectors.spec import parse_connectors
     parse_connectors(list(data.get("connectors", []) or []))  # fail fast on a bad connector
+    intel = data.get("intel", {}) or {}
+    intel.setdefault("local", True)
+    from .intel.feeds import validate_feed
+    for f in intel.get("feeds") or []:
+        validate_feed(f)
 
     data_dir = Path(str(srv.get("data_dir", "") or (home_dir() / "data"))).expanduser()
     return Config(
@@ -157,6 +163,7 @@ def load_config() -> Config:
         auth=auth,
         llm=data.get("llm", {}) or {},
         connectors=list(data.get("connectors", []) or []),
+        intel=intel,
         hunt=hunt,
         data_dir=data_dir,
         path=path,

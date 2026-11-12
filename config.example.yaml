@@ -52,6 +52,21 @@ hunt:
   max_runtime_sec: 900
   max_result_bytes: 200000
 
+# Local intel store: add indicators and advisories yourself (UI, API, CLI)
+# and pull feeds. Served to hunts as the built-in read-only "local-intel"
+# connector (role: intel). See docs/intel.md.
+intel:
+  local: true
+  feeds: []
+#  - name: exploited-cves
+#    url: "https://example.org/known_exploited.json"
+#    format: json            # text | csv | stix | json
+#    list_key: vulnerabilities
+#    value_field: cveID
+#    type: cve
+#    confidence: 90
+#    tags: [exploited]
+
 # MCP connectors. Each one is an MCP server tagged with roles:
 #   log_search, endpoint, identity, email, asset, network, cloud, intel
 # Tools are read-only unless allow_write is true AND the tool is named in

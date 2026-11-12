@@ -6,12 +6,14 @@ a verdict that cites its evidence and maps to MITRE ATT&CK.
 
 It talks to every data source through the Model Context Protocol (MCP). You add each source
 as a connector and tag it with a role: log search, endpoint, identity, email, asset, network,
-cloud or intel. The hunt engine asks for a role, never a specific product. Tools are
+cloud or intel. You can also add intel yourself (paste IOCs or an advisory, import
+files, pull feeds) into a built-in store that hunts read like any other intel source.
+The hunt engine asks for a role, never a specific product. Tools are
 read-only by default, and every tool call is written to an audit log.
 
 > Status: pre-alpha. Built so far: foundation (config, model providers, auth, job engine,
-> web server), the connector hub and generic bridges. The hunt engine is not built yet.
-> See [docs/connectors.md](docs/connectors.md) and [docs/bridges.md](docs/bridges.md).
+> web server), the connector hub, generic bridges and a local intel store. The hunt engine is not built yet.
+> See [docs/connectors.md](docs/connectors.md) and [docs/bridges.md](docs/bridges.md) and [docs/intel.md](docs/intel.md).
 
 ## Quick start
 
