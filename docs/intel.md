@@ -22,6 +22,12 @@ connector with the `intel` role.
 - **Import a file:** `text`, `csv`, `stix` (2.x bundle) or `json`.
 - **Feeds:** URLs under `intel.feeds` in `config.yaml`, pulled on demand.
 
+Advisories pulled from the web or imported from a URL or file keep domains, URLs
+and emails only if the text defanged them (`hxxp`, `[.]`), because plain links in
+advisories are usually references. The publisher's own domain is never kept.
+IPs, hashes, CVEs and techniques are kept as usual. Links that were left out are
+listed in `skipped_links`. Pasted text is kept as you give it.
+
 Each indicator has a confidence (0-100), tags, a source, an optional expiry and
 a ledger: `first_seen`, `last_seen` and `seen_count`. Adding a value again
 updates it (higher confidence wins, tags and sources merge) instead of making a

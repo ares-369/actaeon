@@ -324,3 +324,12 @@ def test_truncated_field_list_does_not_block(tmp_path):
     run(tmp_path, [call(index="e", time_from="now-7d", query="zzz:1"),
                    {"action": "verdict", "outcome": "no_results", "summary": "x"}], hub=hub)
     assert [c[1] for c in hub.calls] == ["get_fields", "search"]
+
+
+def test_model_get_fields_is_reused(tmp_path):
+    hub = Hub(tools={"log_search": [SEARCH, GET_FIELDS]},
+              results={"get_fields": '{"fields": {"process.name": "keyword"}}'})
+    run(tmp_path, [{"action": "call", "connector": "logs", "tool": "get_fields", "arguments": {"index": "e"}},
+                   call(index="e", time_from="now-7d", query="process.name:x"),
+                   {"action": "verdict", "outcome": "no_results", "summary": "x"}], hub=hub)
+    assert [c[1] for c in hub.calls] == ["get_fields", "search"]

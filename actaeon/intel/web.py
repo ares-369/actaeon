@@ -98,7 +98,7 @@ class WebIntel:
     def _add(self, src: dict, title: str, text: str, url: str, key: str, out: dict) -> None:
         r = self.store.add_advisory(title or url, text, source=f"web:{src['name']}", url=url,
                                     confidence=int(src.get("confidence", 50)),
-                                    tags=["web", *list(src.get("tags") or [])])
+                                    tags=["web", *list(src.get("tags") or [])], strict_links=True)
         self._mark(key, src["name"], r["advisory_id"])
         out["new_advisories"].append({"id": r["advisory_id"], "title": title, "url": url, "new": r["new"]})
 

@@ -377,7 +377,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             conf = int(form.get("confidence", 50))
         except (TypeError, ValueError):
             conf = 50
-        r = intel_store().add_advisory(title, doc["text"], source="import", url=doc.get("url", ""), confidence=conf)
+        r = intel_store().add_advisory(title, doc["text"], source="import", url=doc.get("url", ""), confidence=conf,
+                                       strict_links=True)
         return jsonify({**r, "title": title, "chars": len(doc["text"])})
 
     @app.route("/api/hunts/<hid>/narrative", methods=["POST"])

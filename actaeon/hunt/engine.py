@@ -304,6 +304,10 @@ class HuntEngine:
                 ok, content = False, f"call failed: {exc}"
             ms = int((time.monotonic() - t0) * 1000)
             self.data_ok += ok and is_data
+            if ok and tool == "get_fields" and connector not in known_fields:
+                learned = _fields_from(content)
+                if learned:
+                    known_fields[connector] = learned   # reuse the model's own call; no second fetch
             done_calls[key] = eid
             self.evidence[eid] = {"ok": ok, "connector": connector, "tool": tool, "role": meta["role"], "args": args}
             self.store.add_step(hid, n, "call", connector=connector, tool=tool, role=meta["role"], arguments=args,

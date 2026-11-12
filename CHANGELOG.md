@@ -47,3 +47,6 @@
   proposes checked hypotheses from new advisories, coverage gaps and follow-ups and hunts them
   within caps; web lookups during hunts with a leak guard.
 - `cli` model provider for signed-in model CLIs; per-role fallback models with quota cooldown.
+- Web and imported advisories keep domains, URLs and emails only when the text defanged them,
+  and never the publisher's own domain (a live pull showed reference links being stored as IOCs).
+- The field guard reuses the model's own get_fields result instead of fetching it twice.

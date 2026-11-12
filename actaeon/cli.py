@@ -108,7 +108,7 @@ def cmd_intel(a) -> int:
             doc = {"title": "", "text": sys.stdin.read()}
         title = a.title or doc.get("title") or "Untitled advisory"
         out = store.add_advisory(title, doc["text"], source=a.source or "advisory", url=a.url or doc.get("url", ""),
-                                 **kw)
+                                 strict_links=bool(a.url or a.file), **kw)
     elif a.action == "import":
         out = import_file(store, a.file, a.format, kind=a.type, value_field=a.value_field, list_key=a.list_key,
                           extract=a.extract, ttl_days=a.ttl_days, **({"source": a.source} if a.source else {}), **kw)

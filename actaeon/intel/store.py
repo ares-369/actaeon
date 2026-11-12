@@ -94,19 +94,45 @@ class IntelStore:
                 "updated": sum(r["status"] == "updated" for r in results), "items": results}
 
     def add_advisory(self, title: str, text: str, *, source: str = "manual", url: str = "",
-                     confidence: int = 50, tags: list[str] | None = None) -> dict:
+                     confidence: int = 50, tags: list[str] | None = None, strict_links: bool = False) -> dict:
+        """Store an advisory and its indicators.
+
+        ``strict_links`` (used for web pulls and imports): domains, URLs and emails are kept only if the
+        text defanged them (hxxp, [.]), which is how advisories mark real indicators; plain links are
+        usually references. The publisher's own domain is never kept. IPs and hashes are unaffected.
+        """
         found = extract(text)
+        dropped: list[str] = []
+        if strict_links:
+            from urllib.parse import urlparse
+            own = (urlparse(url).hostname or "").lower().removeprefix("www.")
+            low = text.lower()
+
+            def keep(kind: str, v: str) -> bool:
+                host = (urlparse(v).hostname or "") if kind == "url" else v.split("@")[-1]
+                host = host.lower().removeprefix("www.")
+                if own and (host == own or host.endswith("." + own)):
+                    return False
+                return v.lower() not in low          # only present after refanging = it was defanged
+            for kind in ("domain", "url", "email"):
+                if kind in found:
+                    kept = [v for v in found[kind] if keep(kind, v)]
+                    dropped += [v for v in found[kind] if v not in kept]
+                    found[kind] = kept
+            found = {k: v for k, v in found.items() if v}
         with self._lock, self._conn() as c:
             cur = c.execute("INSERT INTO advisories (title, text, source, url, added, techniques, cves) "
                             "VALUES (?,?,?,?,?,?,?)",
                             (title[:300] or "Untitled advisory", text[:200_000], source, url, _now(),
                              json.dumps(found.get("technique", [])), json.dumps(found.get("cve", []))))
             aid = cur.lastrowid
-        res = self.add_text(text, source=source, confidence=confidence,
-                            tags=[*(tags or []), f"advisory:{aid}"], advisory_id=aid)
+        items = [self.add(v, k, source=source, confidence=confidence, tags=[*(tags or []), f"advisory:{aid}"],
+                          advisory_id=aid) for k, vals in found.items() for v in vals]
         with self._lock, self._conn() as c:
-            c.execute("UPDATE advisories SET indicator_count=? WHERE id=?", (len(res["items"]), aid))
-        return {"advisory_id": aid, **{k: res[k] for k in ("found", "new", "updated")}}
+            c.execute("UPDATE advisories SET indicator_count=? WHERE id=?", (len(items), aid))
+        return {"advisory_id": aid, "found": {k: len(v) for k, v in found.items()},
+                "new": sum(i["status"] == "new" for i in items), "updated": sum(i["status"] == "updated" for i in items),
+                "skipped_links": dropped[:50]}
 
     def deactivate(self, indicator_id: int) -> bool:
         with self._lock, self._conn() as c:

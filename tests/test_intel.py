@@ -179,3 +179,18 @@ def test_bad_feed_fails_config(home):
     write_cfg(home, lambda d: d["intel"].update(feeds=[{"name": "x", "url": "ftp://nope"}]))
     with pytest.raises(ValueError):
         config.load_config()
+
+
+def test_strict_links_keep_only_defanged(tmp_path):
+    s = IntelStore(tmp_path / "i.sqlite")
+    text = ("See https://publisher.example/advisories and https://reference.example/doc for details. "
+            "C2: hxxps://evil-c2[.]example/gate and bad-drop[.]example, mail lure[@]phish.example, "
+            "IP 198.51.100.99, hash " + "c" * 64 + ". T1105")
+    r = s.add_advisory("Adv", text, url="https://www.publisher.example/adv/1", strict_links=True)
+    vals = {i["value"] for i in s.advisory(r["advisory_id"])["indicators"]}
+    assert {"https://evil-c2.example/gate", "evil-c2.example", "bad-drop.example", "lure@phish.example",
+            "198.51.100.99", "c" * 64, "T1105"} <= vals
+    assert not any("publisher.example" in v or "reference.example" in v for v in vals)
+    assert "https://reference.example/doc" in r["skipped_links"]
+    r2 = s.add_advisory("Manual", "https://reference.example/doc")   # not strict: analyst text kept as is
+    assert s.advisory(r2["advisory_id"])["indicators"]
