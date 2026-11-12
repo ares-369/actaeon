@@ -19,6 +19,7 @@ The SDK (``google-genai``) is only imported when this provider is used.
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -54,6 +55,8 @@ class GeminiProvider(LLMProvider):
         if self.cfg.get("headers"):
             from ..connectors.spec import expand_env
             opts["headers"] = {str(k): expand_env(str(v)) for k, v in self.cfg["headers"].items()}
+        if self.cfg.get("timeout_sec"):
+            opts["timeout"] = int(float(self.cfg["timeout_sec"]) * 1000)
         if opts:
             kw["http_options"] = types.HttpOptions(**opts)
         mode = self.mode()
@@ -87,15 +90,57 @@ class GeminiProvider(LLMProvider):
             contents = [types.Content(role="model" if m["role"] == "assistant" else "user",
                                       parts=[types.Part(text=m["content"])])
                         for m in messages if m["role"] != "system"]
+            cfg_kw: dict[str, Any] = {
+                "system_instruction": system or None, "temperature": temperature,
+                "max_output_tokens": max(int(max_tokens), int(self.cfg.get("min_output_tokens", 8192))),
+            }
+            if hasattr(types, "SafetySetting"):
+                default_thresh = "OFF" if self.mode() in ("vertex", "vertex_api_key") else "BLOCK_NONE"
+                thresh = str(self.cfg.get("safety_threshold", default_thresh))
+                cfg_kw["safety_settings"] = [
+                    types.SafetySetting(category=c, threshold=thresh)
+                    for c in ("HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_DANGEROUS_CONTENT",
+                              "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_SEXUALLY_EXPLICIT")
+                ]
+            if '"action": "call"' in system and '"action": "verdict"' in system:
+                cfg_kw["tools"] = [types.Tool(function_declarations=[
+                    types.FunctionDeclaration(
+                        name="call_tool",
+                        description="Call one read-only connector tool.",
+                        parameters={"type": "object", "properties": {
+                            "thought": {"type": "string"}, "connector": {"type": "string"},
+                            "tool": {"type": "string"}, "arguments": {"type": "object"},
+                        }, "required": ["connector", "tool", "arguments"]},
+                    ),
+                    types.FunctionDeclaration(
+                        name="submit_verdict",
+                        description="Submit the final hunt verdict.",
+                        parameters={"type": "object", "properties": {
+                            "outcome": {"type": "string"}, "confidence": {"type": "integer"},
+                            "summary": {"type": "string"},
+                            "findings": {"type": "array", "items": {"type": "object"}},
+                            "attack": {"type": "array", "items": {"type": "string"}},
+                            "gaps": {"type": "array", "items": {"type": "string"}},
+                            "next_steps": {"type": "array", "items": {"type": "string"}},
+                        }, "required": ["outcome", "confidence", "summary"]},
+                    ),
+                ])]
             resp = self._client.models.generate_content(
-                model=use_model, contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=system or None, temperature=temperature,
-                    max_output_tokens=max(int(max_tokens), int(self.cfg.get("min_output_tokens", 8192)))))
+                model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
+            fcs = getattr(resp, "function_calls", None) or []
+            if fcs:
+                fc = fcs[0]
+                args = dict(getattr(fc, "args", None) or {})
+                action = "call" if getattr(fc, "name", "") == "call_tool" else "verdict"
+                return LLMResult(text=json.dumps({"action": action, **args}), model=use_model)
             text = (resp.text or "").strip()
             if not text:
-                return LLMResult(text="", model=use_model, error="Gemini returned no text (output token limit or "
-                                                                   "safety filter); raise min_output_tokens")
+                fb = getattr(getattr(resp, "prompt_feedback", None), "block_reason", None)
+                cands = getattr(resp, "candidates", None) or []
+                fr = getattr(cands[0], "finish_reason", None) if cands else None
+                why = f"block_reason={fb}" if fb else f"finish_reason={fr}" if fr else "empty response"
+                return LLMResult(text="", model=use_model,
+                                 error=f"Gemini returned no text ({why}); raise min_output_tokens if MAX_TOKENS")
             return LLMResult(text=text, model=use_model)
         except ImportError:
             return LLMResult(text="", model=use_model, error="the gemini extra is not installed: "

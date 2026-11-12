@@ -25,8 +25,31 @@ ACTAEON_HOME=~/.actaeon-demo actaeon serve    # http://127.0.0.1:8611
 ```
 
 See [docs/demo.md](docs/demo.md). Before relying on it, read
-[docs/known-limitations.md](docs/known-limitations.md) and
+[DISCLAIMER.md](DISCLAIMER.md), [docs/known-limitations.md](docs/known-limitations.md), and
 [docs/threat-model.md](docs/threat-model.md).
+
+## Where Actaeon fits
+
+Actaeon is an early-stage, MCP-first threat hunter designed for small teams and
+labs that want one model-agnostic interface across whatever log, endpoint,
+identity, and intel sources they already run.
+
+- **Compared with mature SIEM/SOAR platforms:** those platforms have years of
+  tuned correlation rules, native connectors, high availability, and enterprise
+  RBAC. Actaeon does not replace them; it sits alongside them as a read-only
+  hypothesis-driven investigator over MCP.
+- **What is still missing:** single-process SQLite execution (no HA clustering),
+  text-based JSON tool calls instead of native tool calling on all providers,
+  and no published multi-provider benchmark numbers yet (see
+  [docs/benchmarks.md](docs/benchmarks.md)).
+
+## Run on Linux (systemd)
+
+```bash
+sudo bash scripts/install.sh all
+```
+
+See [deploy/actaeon.service](deploy/actaeon.service) and [docs/deploy.md](docs/deploy.md).
 
 ## Run with Docker
 
@@ -105,6 +128,7 @@ network address with no login.
 ruff check actaeon tests && pytest -q
 ```
 
-## License
+## License & Community
 
-Apache-2.0. See `LICENSE` and `NOTICE`.
+Apache-2.0. See `LICENSE`, `NOTICE`, [`DISCLAIMER.md`](DISCLAIMER.md),
+[`CONTRIBUTING.md`](CONTRIBUTING.md), and [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).

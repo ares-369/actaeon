@@ -1,0 +1,23 @@
+[Unit]
+Description=Actaeon AI Threat Hunter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=actaeon
+Group=actaeon
+WorkingDirectory=/opt/actaeon
+Environment=ACTAEON_HOME=/opt/actaeon
+EnvironmentFile=-/opt/actaeon/.env
+ExecStart=/opt/actaeon/.venv/bin/actaeon serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/actaeon/data
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+# Actaeon gitleaks configuration.
+#
+# Inherits ALL default gitleaks rules and allowlists synthetic test fixtures only.
+# Real secrets never enter the repo: config.yaml, .env and data/ are gitignored.
+
+title = "Actaeon gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic credentials used only in unit test fixtures"
+paths = [
+  '''tests/test_.*\.py''',
+]

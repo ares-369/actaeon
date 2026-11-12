@@ -7,80 +7,47 @@ gets a provider and a model, plus optional fallbacks. After any change, run:
 actaeon models test      # or Settings > Models > Test models in the UI
 ```
 
-It sends one tiny prompt to every role and prints OK, the time taken, or the exact error.
+It sends one tiny prompt to every role and prints `OK`, the time taken, or the
+exact error.
 
-Install the extra for a cloud provider once: `pip install 'actaeon[gemini]'`
-(or `[anthropic]`, `[openai]`, `[all]`).
+Install the extra for a cloud provider once: `pip install 'actaeon[all]'`
+(or `[anthropic]`, `[gemini]`, `[openai]`).
 
-## Gemini
+## Supported providers
 
-Pick the block that matches how you were given access.
-
-**API key (AI Studio):**
-```yaml
-llm:
-  providers:
-    gemini: { auth: api_key, default_model: "<model>" }
-```
-`.env`: `GEMINI_API_KEY=...`
-
-**Vertex AI with a service-account key file:**
-```yaml
-    gemini: { auth: vertex, project: "<gcp-project>", location: "global",
-              credentials_file: "/etc/actaeon/sa.json", default_model: "<model>" }
-```
-
-**Vertex AI with workload identity federation** (no key file; for example, running on
-another cloud): use the credential configuration file your cloud team generates as
-`credentials_file`. It is the same setting.
-
-**Vertex AI from a VM or container that already has a Google identity**, or after
-`gcloud auth application-default login`:
-```yaml
-    gemini: { auth: vertex, project: "<gcp-project>", default_model: "<model>" }
-```
-No file or key is needed.
-
-**Vertex AI express mode (API key):**
-```yaml
-    gemini: { auth: vertex_api_key, default_model: "<model>" }
-```
-`.env`: `GEMINI_API_KEY=...`
-
-**Through an AI gateway or proxy:** add `base_url` and, if the gateway needs them,
-`headers`:
-```yaml
-    gemini: { auth: vertex, project: "<p>", base_url: "https://ai-gateway.internal/",
-              headers: { X-Gateway-Key: "${AI_GATEWAY_KEY}" } }
-```
-
-`auth: auto` (the default) uses Vertex AI when a project is set, and the API key otherwise.
-
-## Other providers
-
-| Provider | Config | Secret in `.env` |
+| Provider | Config (`llm.providers.<name>`) | Secret in `.env` |
 |---|---|---|
+| `ollama` | `base_url` (default `http://localhost:11434`), `default_model` | none |
 | `anthropic` | `default_model` | `ANTHROPIC_API_KEY` |
 | `openai` | `default_model` | `OPENAI_API_KEY` |
 | `azure_openai` | `base_url` (your resource), `api_version`, deployment as model | `AZURE_OPENAI_API_KEY` |
+| `gemini` | `auth` (`auto`, `api_key`, `vertex`, `vertex_api_key`), `default_model` | `GEMINI_API_KEY` (or Vertex ADC) |
 | `openai_compatible` | `base_url` (vLLM, LM Studio, a gateway, ...), `default_model` | `OPENAI_COMPAT_API_KEY` |
-| `ollama` | `base_url`, `default_model` | none |
 | `cli` | `command` with `{model}` and `{prompt}` (a signed-in model CLI) | none |
+
+### Provider notes
+
+- **Local models (`ollama` / `openai_compatible`)**: no data leaves your network.
+  Small 7B models plan and query poorly; use a larger model for `analyst` if
+  running locally.
+- **Vertex AI (`gemini` with `auth: vertex`)**: set `project` and `location`
+  (default `global`), and either `credentials_file`, workload identity, or
+  `gcloud auth application-default login`. Add `base_url` and `headers` if
+  routing through an AI gateway.
 
 ## Roles and fallbacks
 
 ```yaml
 llm:
   roles:
-    planner:  { provider: gemini, model: "<fast model>" }
-    analyst:  { provider: gemini, model: "<strong model>",
-                fallback: [{ provider: gemini, model: "<fast model>" }, { provider: ollama, model: "" }] }
-    reporter: { provider: gemini, model: "<fast model>" }
+    planner:  { provider: openai, model: "<fast model>" }
+    analyst:  { provider: anthropic, model: "<strong model>",
+                fallback: [{ provider: ollama, model: "<local model>" }] }
+    reporter: { provider: openai, model: "<fast model>" }
 ```
 
-The analyst does most of the work; give it the strongest model you can. Small
-local models (7B class) plan and query poorly. When a model fails with a quota or
-rate-limit error, the next fallback is used, and the failing model is skipped for
-an hour.
+The `analyst` role does most of the work; give it the strongest model you have.
+When a model hits a quota or rate-limit error, Actaeon tries the next fallback
+and skips the failing model for an hour.
 
 Prompts to cloud providers are masked by default. See [privacy.md](privacy.md).
