@@ -82,6 +82,21 @@ and field guard as a hunt, and their results are added to the hunt as new
 evidence. Citations to evidence that does not exist are removed. Chat cannot
 change the verdict: use feedback on findings for that.
 
+## Detection drafts
+
+**Draft a detection rule** on a finished hunt (`POST /api/hunts/<id>/detection`)
+gives two things:
+- **native queries**: the queries from this hunt that returned data, exactly as
+  they ran, per connector. They are ready to save in your log platform as a
+  scheduled search or correlation rule;
+- **a Sigma draft** written by the reporter model from the hypothesis, findings,
+  those queries and any benign feedback (which becomes `falsepositives`). It is
+  checked for valid YAML, the required keys and a condition, gets ATT&CK tags
+  from the hunt, and is set to `status: experimental`.
+
+Both are drafts for a detection engineer to review and test. Drafts are kept per
+hunt (`GET /api/hunts/<id>/detection`, `GET /api/detections`).
+
 ## Prompt size
 
 `hunt.prompt_mode: compact` is for cheaper or smaller models. The analyst sees

@@ -144,7 +144,7 @@ function renderHunt(hu) {
       (v.attack || []).length ? h("p", {}, "ATT&CK: ", v.attack.join(", ")) : null,
       list("Gaps", v.gaps), list("Next steps", v.next_steps), list("Checks applied", v.checks));
     out.push(vs);
-    if (!running) out.push(saveBox(hu), narrativeBox(hu));
+    if (!running) out.push(saveBox(hu), narrativeBox(hu), detectionBox(hu));
   }
   if (hu.plan) {
     out.push(section("Plan", "map-outline", h("p", {}, hu.plan.summary || ""),
@@ -179,6 +179,21 @@ function stepView(s) {
     s.why && h("p", { class: "small" }, "Why: ", s.why),
     s.arguments && h("pre", {}, JSON.stringify(s.arguments, null, 1)),
     s.result && h("pre", {}, s.result));
+}
+
+function detectionBox(hu) {
+  const box = h("div");
+  const show = (d) => box.replaceChildren(
+    h("p", { class: "warn small" }, "DRAFT: review and test before deploying. Status is set to experimental."),
+    (d.problems || []).length ? h("ul", {}, d.problems.map((p) => h("li", { class: "warn small" }, p))) : null,
+    d.sigma ? [h("h3", {}, "Sigma draft"), h("pre", {}, d.sigma)] : null,
+    d.notes ? h("p", { class: "small" }, d.notes) : null,
+    (d.native || []).length ? [h("h3", {}, "Queries that found data (exactly as they ran)"),
+      ...d.native.map((q) => h("div", {}, h("div", { class: "muted small" }, `${q.evidence}  ${q.connector}.${q.tool}  hits ${q.hits ?? "?"}`), h("pre", {}, q.query)))] : null);
+  api(`/api/hunts/${hu.id}/detection`).then((ds) => { if (ds.length) show(ds[0]); });
+  return section("Detection draft", "shield-check-outline",
+    h("button", { class: "ghost", onclick: async (e) => { e.target.disabled = true; try { show(await api(`/api/hunts/${hu.id}/detection`)); } finally { e.target.disabled = false; } } },
+      icon("file-code-outline"), "Draft a detection rule"), box);
 }
 
 function chatBox(hu) {

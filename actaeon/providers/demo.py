@@ -37,6 +37,18 @@ class DemoProvider(LLMProvider):
                               {"role": "endpoint", "goal": "Persistence created by the same chain"}],
                     "data_needed": ["log_search", "intel"]}
             return LLMResult(text=json.dumps(plan), model=self.default_model)
+        if "You write Sigma detection rules" in system:
+            sigma = ("title: Office application starting encoded PowerShell (scripted demo)\n"
+                     "description: Draft from a scripted demo hunt on sample data.\n"
+                     "logsource:\n  category: process_creation\n  product: windows\n"
+                     "detection:\n  selection_parent:\n    ParentImage|endswith: ['\\\\winword.exe', '\\\\excel.exe']\n"
+                     "  selection_child:\n    Image|endswith: '\\\\powershell.exe'\n"
+                     "    CommandLine|contains: [' -enc ', ' -EncodedCommand ']\n"
+                     "  condition: selection_parent and selection_child\n"
+                     "falsepositives:\n  - Office add-ins that run scripts (rare)\nlevel: high\n"
+                     "tags:\n  - attack.t1059.001\n")
+            return LLMResult(text=json.dumps({"sigma": sigma, "notes": "[scripted demo] tune the parent list to "
+                                              "your Office installs."}), model=self.default_model)
         if "Write a short, plain hunt summary" in system:
             return LLMResult(text="[scripted demo narrative, not written by a model] On sample host DEMO-WS07 Word "
                                   "started encoded PowerShell that downloads from the sample C2 and adds a scheduled "

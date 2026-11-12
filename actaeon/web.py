@@ -431,6 +431,24 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
                           deduplicate=False)
         return jsonify({"job_id": jid}), 202
 
+    @app.route("/api/hunts/<hid>/detection", methods=["GET", "POST"])
+    def hunt_detection(hid):
+        from .hunt.detection import DetectionStore, draft
+        c = get_config()
+        h = store_for(c).get(hid)
+        if not h:
+            return jsonify({"error": "not found"}), 404
+        ds = DetectionStore(store_for(c).path)
+        if request.method == "GET":
+            return jsonify(ds.list(hid))
+        from .providers import get_llm
+        return jsonify(ds.save(draft(hs.privacy_llm(c, get_llm()), h)))
+
+    @app.route("/api/detections")
+    def detections():
+        from .hunt.detection import DetectionStore
+        return jsonify(DetectionStore(store_for(get_config()).path).list())
+
     @app.route("/api/hunts/<hid>/narrative", methods=["POST"])
     def hunt_narrative(hid):
         from .hunt.report import narrative

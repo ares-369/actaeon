@@ -67,3 +67,4 @@
 - Ask Actaeon: chat on a finished hunt with read-only follow-up calls added as evidence.
 - Threat-actor profiles and campaigns: actor indicators swept with triage, plus a model hunt for its
   techniques and tools; actors feed autopilot.
+- Detection drafts: the hunt's working native queries plus a checked Sigma draft (experimental).
