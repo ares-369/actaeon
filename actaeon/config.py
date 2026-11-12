@@ -1,0 +1,222 @@
+"""Configuration loader for Actaeon.
+
+``config.yaml`` holds the layout (server, auth, LLM roles, connectors) and
+``.env`` holds secrets. Nothing about a particular environment is hardcoded.
+
+Config path resolution:
+  1. ``ACTAEON_CONFIG`` env var, if set
+  2. ``./config.yaml`` in the current working directory
+  3. ``<home>/config.yaml`` (the checkout root, or ``~/.actaeon``)
+"""
+
+from __future__ import annotations
+
+import difflib
+import logging
+import os
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+from dotenv import load_dotenv
+
+from .paths import home_dir
+
+_log = logging.getLogger("actaeon")
+
+# Model roles the hunt engine asks for. Each maps to a provider + model.
+LLM_ROLES = ("planner", "analyst", "reporter")
+PROVIDERS = ("ollama", "anthropic", "gemini", "openai", "azure_openai", "openai_compatible")
+
+
+def _load_env() -> None:
+    for candidate in (Path.cwd() / ".env", home_dir() / ".env"):
+        if candidate.exists():
+            load_dotenv(candidate)
+            return
+
+
+def config_path() -> Path:
+    if os.getenv("ACTAEON_CONFIG"):
+        return Path(os.environ["ACTAEON_CONFIG"]).expanduser()
+    cwd_cfg = Path.cwd() / "config.yaml"
+    if cwd_cfg.exists():
+        return cwd_cfg
+    return home_dir() / "config.yaml"
+
+
+@dataclass
+class AuthConfig:
+    # none | basic | local | oidc | proxy
+    mode: str = "none"
+    username: str = "actaeon"
+    password: str = ""          # from .env ACTAEON_AUTH_PASSWORD
+    password_hash: str = ""     # optional pbkdf2 hash (preferred over password)
+    secret_key: str = ""        # session signing; from .env ACTAEON_SECRET_KEY
+    proxy_header: str = "X-Forwarded-User"
+    proxy_trusted_ips: list = field(default_factory=list)
+    allowed_users: list = field(default_factory=list)
+    oidc: dict = field(default_factory=dict)
+    default_role: str = "admin"               # admin | operator | viewer
+    roles: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != "none"
+
+
+@dataclass
+class HuntLimits:
+    max_steps: int = 25            # tool calls per hunt
+    max_runtime_sec: int = 900
+    max_result_bytes: int = 200_000  # per tool result fed back to the model
+
+
+@dataclass
+class Config:
+    raw: dict[str, Any]
+    instance_name: str
+    external_url: str
+    bind_host: str
+    bind_port: int
+    auth: AuthConfig
+    llm: dict[str, Any]
+    connectors: list[dict[str, Any]]
+    hunt: HuntLimits
+    data_dir: Path
+    path: Path
+    allow_unauthenticated_network: bool = False
+
+    def secret(self, name: str) -> str:
+        return os.getenv(name, "") or ""
+
+    def provider_cfg(self, name: str) -> dict[str, Any]:
+        return (self.llm.get("providers") or {}).get(name, {}) or {}
+
+    def role_cfg(self, role: str) -> dict[str, Any]:
+        return (self.llm.get("roles") or {}).get(role, {}) or {}
+
+
+def _truthy(v: Any) -> bool:
+    return str(v).strip().lower() in ("1", "true", "yes")
+
+
+def load_config() -> Config:
+    _load_env()
+    path = config_path()
+    if not path.exists():
+        raise FileNotFoundError(
+            f"No config.yaml found at {path}. Run `actaeon init` (or copy "
+            "config.example.yaml to config.yaml) and edit it for your environment.")
+    data = yaml.safe_load(path.read_text()) or {}
+    srv = data.get("actaeon", {}) or {}
+
+    auth_raw = data.get("auth", {}) or {}
+    oidc_raw = auth_raw.get("oidc", {}) or {}
+    auth = AuthConfig(
+        mode=str(auth_raw.get("mode", "none")),
+        username=str(auth_raw.get("username", "actaeon")),
+        password=os.getenv("ACTAEON_AUTH_PASSWORD", auth_raw.get("password", "")) or "",
+        password_hash=str(auth_raw.get("password_hash", "")),
+        secret_key=os.getenv("ACTAEON_SECRET_KEY", auth_raw.get("secret_key", "")) or "",
+        proxy_header=str(auth_raw.get("proxy_header", "X-Forwarded-User")),
+        proxy_trusted_ips=list(auth_raw.get("proxy_trusted_ips", []) or []),
+        allowed_users=list(auth_raw.get("allowed_users", []) or []),
+        oidc={
+            "issuer": str(oidc_raw.get("issuer", "")),
+            "client_id": str(oidc_raw.get("client_id", "")),
+            "client_secret": os.getenv("OIDC_CLIENT_SECRET", oidc_raw.get("client_secret", "")) or "",
+            "scopes": str(oidc_raw.get("scopes", "openid email profile")),
+            "username_claim": str(oidc_raw.get("username_claim", "email")),
+        },
+        default_role=str(auth_raw.get("default_role", "admin")).lower(),
+        roles={str(k): str(v).lower() for k, v in (auth_raw.get("roles") or {}).items()},
+    )
+    if auth.mode not in ("none", "basic", "local", "oidc", "proxy"):
+        raise ValueError(f"auth.mode {auth.mode!r} is not one of none/basic/local/oidc/proxy")
+
+    h = data.get("hunt", {}) or {}
+    hunt = HuntLimits(
+        max_steps=max(1, int(h.get("max_steps", 25))),
+        max_runtime_sec=max(10, int(h.get("max_runtime_sec", 900))),
+        max_result_bytes=max(1024, int(h.get("max_result_bytes", 200_000))),
+    )
+
+    data_dir = Path(str(srv.get("data_dir", "") or (home_dir() / "data"))).expanduser()
+    return Config(
+        raw=data,
+        instance_name=str(srv.get("instance_name", "Actaeon")),
+        external_url=str(srv.get("external_url", "")).rstrip("/"),
+        bind_host=str(os.getenv("ACTAEON_BIND_HOST") or srv.get("bind_host", "127.0.0.1")),
+        bind_port=int(os.getenv("ACTAEON_BIND_PORT") or srv.get("bind_port", 8601)),
+        auth=auth,
+        llm=data.get("llm", {}) or {},
+        connectors=list(data.get("connectors", []) or []),
+        hunt=hunt,
+        data_dir=data_dir,
+        path=path,
+        allow_unauthenticated_network=(
+            _truthy(os.getenv("ACTAEON_ALLOW_UNAUTHENTICATED_NETWORK", ""))
+            or bool(srv.get("allow_unauthenticated_network", False))),
+    )
+
+
+_CONFIG: Config | None = None
+
+
+def get_config(reload: bool = False) -> Config:
+    global _CONFIG
+    if _CONFIG is None or reload:
+        _CONFIG = load_config()
+    return _CONFIG
+
+
+# --- Settings: model picker -------------------------------------------------
+
+def _build_llm_update(roles: dict) -> tuple[Path, str, dict]:
+    """Validate a model-picker update ``{role: {provider, model}}`` and return
+    ``(path, old_text, new_data)`` without writing."""
+    path = config_path()
+    old_text = path.read_text()
+    data = yaml.safe_load(old_text) or {}
+    llm = data.setdefault("llm", {}) or {}
+    data["llm"] = llm
+    llm.setdefault("roles", {})
+    for role, rc in (roles or {}).items():
+        if role not in LLM_ROLES:
+            raise ValueError(f"unknown model role {role!r}; expected one of {LLM_ROLES}")
+        if not isinstance(rc, dict):
+            raise ValueError(f"role {role!r} must be an object with provider and model")
+        prov = str(rc.get("provider", "")).strip()
+        if prov not in PROVIDERS:
+            raise ValueError(f"unknown provider {prov!r}; expected one of {PROVIDERS}")
+        model = str(rc.get("model", "")).strip()
+        if model and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@\-\[\]]{0,127}", model):
+            raise ValueError(f"model name {model!r} has unexpected characters")
+        llm["roles"][role] = {"provider": prov, "model": model}
+    return path, old_text, data
+
+
+def _redact(text: str) -> str:
+    return re.sub(r"(?im)^(\s*(?:api_key|secret|password|token|client_secret)\s*:\s*).+$", r"\1***", text)
+
+
+def preview_llm_update(roles: dict) -> dict:
+    _p, old_text, data = _build_llm_update(roles)
+    old = yaml.safe_load(old_text) or {}
+
+    def dump(d):
+        return _redact(yaml.safe_dump(d, sort_keys=False))
+    diff = "".join(difflib.unified_diff(dump(old).splitlines(True), dump(data).splitlines(True),
+                                        "config.yaml (current)", "config.yaml (proposed)"))
+    return {"changed": old != data, "diff": diff}
+
+
+def apply_llm_update(roles: dict) -> Config:
+    """Persist a model-picker change (writes config.yaml.bak first), then reload."""
+    path, old_text, data = _build_llm_update(roles)
+    path.with_name(path.name + ".bak").write_text(old_text)
+    path.write_text(yaml.safe_dump(data, sort_keys=False))
+    return get_config(reload=True)

@@ -1,0 +1,16 @@
+Actaeon
+Copyright 2026 ares-369
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Actaeon reads from security data sources you connect to it. Use it only on
+systems and data you are authorized to access. It is provided "AS IS", without
+warranty of any kind (sections 7 and 8 of the License). Its read-only defaults,
+tool allow/deny lists and audit log are safety aids, not a guarantee.
+
+Bundled third-party assets:
+  * Material Design Icons webfont (actaeon/static/mdi) - see its LICENSE file.

@@ -1,0 +1,57 @@
+# Actaeon configuration. Copy to config.yaml (or run `actaeon init`).
+# Secrets (API keys, passwords) go in .env, never here.
+
+actaeon:
+  instance_name: "Actaeon"
+  bind_host: "127.0.0.1"     # loopback by default; set auth before exposing
+  bind_port: 8601
+  external_url: ""           # public URL behind a reverse proxy (OIDC redirects)
+  data_dir: ""               # default: <home>/data
+  allow_unauthenticated_network: false
+
+auth:
+  mode: "none"               # none | basic | local | oidc | proxy
+  username: "actaeon"        # basic/local; password in .env ACTAEON_AUTH_PASSWORD
+  default_role: "admin"      # admin | operator | viewer
+  roles: {}                  # username: role
+  proxy_header: "X-Forwarded-User"
+  proxy_trusted_ips: []      # required for proxy mode
+  allowed_users: []
+  oidc:
+    issuer: ""
+    client_id: ""            # client secret in .env OIDC_CLIENT_SECRET
+    scopes: "openid email profile"
+    username_claim: "email"
+
+# Model per role. Change from Settings > Models in the UI, or here.
+llm:
+  roles:
+    planner:  { provider: "ollama", model: "" }   # hypothesis -> hunt plan
+    analyst:  { provider: "ollama", model: "" }   # read results, pivot, verdict
+    reporter: { provider: "ollama", model: "" }   # write-up
+  providers:
+    ollama:
+      base_url: "http://localhost:11434"
+      default_model: "qwen2.5:7b"
+    anthropic:
+      default_model: ""        # ANTHROPIC_API_KEY in .env
+    gemini:
+      default_model: ""        # GEMINI_API_KEY in .env
+    openai:
+      default_model: ""        # OPENAI_API_KEY in .env
+    azure_openai:
+      base_url: ""             # AZURE_OPENAI_API_KEY in .env
+      api_version: "2024-10-21"
+    openai_compatible:
+      base_url: ""             # OPENAI_COMPAT_API_KEY in .env
+      default_model: ""
+
+# Hunt safety limits.
+hunt:
+  max_steps: 25
+  max_runtime_sec: 900
+  max_result_bytes: 200000
+
+# MCP connectors (phase 2). Each one carries role tags such as log_search,
+# endpoint, identity, email, asset, network, cloud, intel.
+connectors: []

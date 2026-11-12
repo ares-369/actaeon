@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ name }}</title>
+<link rel="stylesheet" href="/static/mdi/css/materialdesignicons.min.css">
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#d7dbe3;--muted:#8a93a6;--accent:#6aa9ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
+header{display:flex;align-items:center;gap:.6rem;padding:.8rem 1.2rem;border-bottom:1px solid var(--line)}
+header .mdi{font-size:1.4rem;color:var(--accent)}main{max-width:860px;margin:1.5rem auto;padding:0 1rem}
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:1rem 1.2rem;margin-bottom:1rem}
+h2{font-size:1rem;margin:0 0 .8rem;display:flex;gap:.5rem;align-items:center}
+.row{display:grid;grid-template-columns:110px 1fr 1fr;gap:.5rem;margin:.4rem 0;align-items:center}
+select,input{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:.4rem}
+button{background:var(--accent);color:#081020;border:0;border-radius:6px;padding:.45rem .9rem;cursor:pointer}
+.muted{color:var(--muted)}pre{white-space:pre-wrap;color:var(--muted)}
+</style>
+</head>
+<body>
+<header><span class="mdi mdi-bow-arrow"></span><strong>{{ name }}</strong><span class="muted">v{{ version }}</span></header>
+<main>
+<section><h2><span class="mdi mdi-information-outline"></span>Status</h2><div id="status" class="muted">Loading...</div></section>
+<section><h2><span class="mdi mdi-brain"></span>Models</h2>
+<p class="muted">Pick a provider and model for each role. Keys stay in .env.</p>
+<div id="roles"></div>
+<p><button id="save"><span class="mdi mdi-content-save"></span> Save</button> <span id="msg" class="muted"></span></p>
+<pre id="diff"></pre></section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+async function load(){
+  const st=await (await fetch('/api/status')).json();
+  $('#status').textContent=`Auth: ${st.auth_mode} | Connectors: ${st.connectors}`;
+  const s=await (await fetch('/api/settings/llm')).json();
+  $('#roles').innerHTML=Object.entries(s.roles).map(([r,c])=>`<div class="row"><span>${r}</span>
+   <select data-role="${r}">${s.providers.map(p=>`<option ${p===(c.provider||'ollama')?'selected':''}>${p}</option>`).join('')}</select>
+   <input data-model="${r}" placeholder="model (blank = provider default)" value="${c.model||''}"></div>`).join('');
+}
+function collect(){const o={};document.querySelectorAll('[data-role]').forEach(e=>{const r=e.dataset.role;
+  o[r]={provider:e.value,model:document.querySelector(`[data-model="${r}"]`).value}});return o}
+$('#save').onclick=async()=>{
+  const p=await (await fetch('/api/settings/llm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roles:collect(),preview:true})})).json();
+  if(p.error){$('#msg').textContent=p.error;return}
+  if(!p.changed){$('#msg').textContent='No changes.';return}
+  $('#diff').textContent=p.diff;
+  if(!confirm('Apply this change to config.yaml?'))return;
+  const r=await (await fetch('/api/settings/llm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roles:collect()})})).json();
+  $('#msg').textContent=r.error||'Saved.';$('#diff').textContent='';
+};
+load();
+</script>
+</body></html>
