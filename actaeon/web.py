@@ -38,7 +38,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
 
     @app.route("/")
     def index():
-        return render_template("index.html", name=cfg.instance_name, version=__version__)
+        return render_template("index.html", name=cfg.instance_name, version=__version__,
+                               demo=bool((cfg.raw.get("actaeon") or {}).get("demo")))
 
     @app.route("/api/status")
     def status():

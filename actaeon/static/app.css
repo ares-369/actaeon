@@ -46,3 +46,4 @@ details summary{cursor:pointer;color:var(--muted)}
 .warn{color:var(--amber)}
 @media (max-width:640px){nav .lbl{display:none}main{padding:0 .5rem}th:nth-child(n+4),td:nth-child(n+4){display:none}}
 .fb{display:inline-flex;gap:.3rem;margin-left:.4rem;flex-wrap:wrap}.fb button{padding:.15rem .45rem;font-size:.75rem}
+.demo-banner{background:#3a2d0f;color:var(--amber);padding:.45rem 1rem;border-bottom:1px solid var(--amber);display:flex;gap:.4rem;align-items:center}

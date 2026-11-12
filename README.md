@@ -16,6 +16,18 @@ read-only by default, and every tool call is written to an audit log.
 > with replays, intel sweeps and memory, and a web UI with reports and a coverage view.
 > See [docs/connectors.md](docs/connectors.md) and [docs/bridges.md](docs/bridges.md) and [docs/intel.md](docs/intel.md) and [docs/hunting.md](docs/hunting.md) and [docs/library.md](docs/library.md).
 
+## Try it
+
+```bash
+pip install -e .
+actaeon demo --offline --run                  # sample data, scripted run (not AI)
+ACTAEON_HOME=~/.actaeon-demo actaeon serve    # http://127.0.0.1:8611
+```
+
+See [docs/demo.md](docs/demo.md). Before relying on it, read
+[docs/known-limitations.md](docs/known-limitations.md) and
+[docs/threat-model.md](docs/threat-model.md).
+
 ## Quick start
 
 ```bash
@@ -55,7 +67,7 @@ network address with no login.
 5. Hunt library, scheduled replays, intel-driven hunts, memory (done)
 6. UI, reports, coverage view (done)
 7. Actaeon as an MCP server (done): `actaeon mcp` or `POST /mcp`, see [docs/mcp-server.md](docs/mcp-server.md)
-8. Demo mode, known limitations, threat model
+8. Demo mode, known limitations, threat model (done)
 
 ## Development
 

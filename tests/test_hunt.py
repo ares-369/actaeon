@@ -270,3 +270,29 @@ def test_orphans_marked(tmp_path):
     s.update(hid, status="running")
     s.mark_orphans()
     assert s.get(hid)["status"] == "stopped"
+
+
+def test_resolve_tool_slips():
+    from actaeon.hunt.engine import resolve_tool
+    idx = {("logs", "search"): {"role": "log_search"}, ("local-intel", "lookup"): {"role": "intel"},
+           ("other", "search"): {"role": "network"}}
+    assert resolve_tool(idx, {"connector": "log_search", "tool": "logs.search"}) == ("logs", "search")
+    assert resolve_tool(idx, {"connector": "x", "tool": "lookup"}) == ("local-intel", "lookup")
+    assert resolve_tool(idx, {"connector": "log_search", "tool": "search"}) == ("logs", "search")
+    assert resolve_tool(idx, {"connector": "zzz", "tool": "search"}) == ("zzz", "search")
+
+
+def test_blocked_calls_use_budget(tmp_path):
+    hub = Hub()
+    bad = {"action": "call", "connector": "nope", "tool": "nothing", "arguments": {}}
+    h, _ = run(tmp_path, [bad] * 50, hub=hub, limits=HuntLimits(max_steps=4))
+    assert h["status"] == "done" and h["verdict"]["outcome"] == "inconclusive"
+    assert [s["kind"] for s in h["steps"]].count("blocked") == 4
+
+
+def test_star_in_argument_names(tmp_path):
+    hub = Hub()
+    _h, _ = run(tmp_path, [{"action": "call", "connector": "logs", "tool": "search",
+                           "arguments": {"index*": "e", "time_from*": "now-1d"}},
+                          {"action": "verdict", "outcome": "no_results", "summary": "x"}], hub=hub)
+    assert hub.calls and hub.calls[0][2]["index"] == "e"

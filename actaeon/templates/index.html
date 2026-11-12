@@ -18,6 +18,7 @@
     <a href="#settings" data-tab="settings"><span class="mdi mdi-cog"></span><span class="lbl">Settings</span></a>
   </nav>
 </header>
+{% if demo %}<div class="demo-banner"><span class="mdi mdi-flask-outline"></span> Demo: all data here is synthetic sample data, not real events.</div>{% endif %}
 <main id="main"></main>
 <div id="toast" class="toast hidden"></div>
 <script src="/static/app.js"></script>

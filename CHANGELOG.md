@@ -34,3 +34,9 @@
   advisory import from URL, PDF or HTML with private-address and redirect checks.
 - Actaeon as an MCP server: `actaeon mcp` (stdio) and `POST /mcp` (HTTP) with role checks per
   tool, an optional `/mcp`-only bearer token, and opt-in intel writes.
+- Demo mode (`actaeon demo`): synthetic, labelled sample data through a demo bridge, a sample
+  advisory and note, a UI banner, and an optional scripted offline run that is marked as not AI.
+- Docs: known limitations, threat model, contributing, security policy.
+- Engine fixes found with a real 7B model: refused and unknown calls now use the step budget
+  (no loops), tool resolution tolerates "connector.tool" and role names, `*` copied into
+  argument names is stripped, and the tool list format is clearer.

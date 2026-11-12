@@ -44,10 +44,11 @@ def catalogue(tools: list[dict]) -> str:
     for t in tools:
         props = (t.get("inputSchema") or {}).get("properties") or {}
         req = set((t.get("inputSchema") or {}).get("required") or [])
-        params = ", ".join(f"{k}{'*' if k in req else ''}:{(v or {}).get('type', 'any')}" for k, v in list(props.items())[:15])
+        params = ", ".join(f"{k} ({(v or {}).get('type', 'any')}{', required' if k in req else ''})"
+                           for k, v in list(props.items())[:15])
         dialect = f" [query syntax: {t['dialect']}]" if t.get("dialect") else ""
-        lines.append(f"- {t['connector']}.{t['name']} (role {t['role']}){dialect}: {t.get('description', '')[:200]}"
-                     f" | args: {params or 'none'}")
+        lines.append(f"- connector \"{t['connector']}\", tool \"{t['name']}\" (role {t['role']}){dialect}: "
+                     f"{t.get('description', '')[:200]} | args: {params or 'none'}")
     return "\n".join(lines) or "(no tools available)"
 
 
@@ -58,5 +59,5 @@ def planner_user(hypothesis: str, roles: dict[str, list[str]], context: str) -> 
 
 def analyst_user(hypothesis: str, plan: dict | None, tools: list[dict], context: str, max_steps: int) -> str:
     p = json.dumps(plan, indent=1) if plan else "(no plan; decide the steps yourself)"
-    return (f"Hypothesis: {hypothesis}\n\nPlan:\n{p}\n\nTools (* = required argument):\n{catalogue(tools)}\n\n"
+    return (f"Hypothesis: {hypothesis}\n\nPlan:\n{p}\n\nTools:\n{catalogue(tools)}\n\n"
             f"{context}\nYou may make at most {max_steps} tool calls. Start now.").strip()

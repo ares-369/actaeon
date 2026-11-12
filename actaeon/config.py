@@ -28,7 +28,7 @@ _log = logging.getLogger("actaeon")
 
 # Model roles the hunt engine asks for. Each maps to a provider + model.
 LLM_ROLES = ("planner", "analyst", "reporter")
-PROVIDERS = ("ollama", "anthropic", "gemini", "openai", "azure_openai", "openai_compatible")
+PROVIDERS = ("ollama", "anthropic", "gemini", "openai", "azure_openai", "openai_compatible", "demo")
 
 
 def _load_env() -> None:

@@ -22,6 +22,7 @@ _SECRET_ENV = {
     "openai": "OPENAI_API_KEY",
     "azure_openai": "AZURE_OPENAI_API_KEY",
     "openai_compatible": "OPENAI_COMPAT_API_KEY",
+    "demo": "",
 }
 
 
@@ -41,6 +42,9 @@ def _build(name: str, cfg: dict[str, Any], secret: str) -> LLMProvider:
     if name == "azure_openai":
         from .openai_compat import OpenAICompatProvider
         return OpenAICompatProvider(cfg, secret, name="azure_openai", azure=True)
+    if name == "demo":
+        from .demo import DemoProvider
+        return DemoProvider(cfg, secret)
     raise ValueError(f"Unknown LLM provider: {name!r}")
 
 

@@ -43,6 +43,30 @@ class HuntLimits:
     max_parse_failures: int = 3
 
 
+def resolve_tool(index: dict, action: dict) -> tuple[str, str]:
+    """Work out (connector, tool) from what the model wrote, tolerating common slips:
+    "connector.tool" in the tool field, a role name in the connector field."""
+    connector, tool = str(action.get("connector", "")).strip(), str(action.get("tool", "")).strip()
+    if (connector, tool) in index:
+        return connector, tool
+    if "." in tool:
+        c2, t2 = tool.split(".", 1)
+        if (c2, t2) in index:
+            return c2, t2
+    if "." in connector and not tool:
+        c2, t2 = connector.split(".", 1)
+        if (c2, t2) in index:
+            return c2, t2
+    owners = [c for (c, t) in index if t == tool]
+    if len(owners) == 1:
+        return owners[0], tool
+    if connector in ROLES:
+        in_role = [c for (c, t) in index if t == tool and connector in index[(c, t)]["role"].split(",")]
+        if len(in_role) == 1:
+            return in_role[0], tool
+    return connector, tool
+
+
 class Stopped(Exception):
     pass
 
@@ -205,15 +229,19 @@ class HuntEngine:
                 return self._finalize(action, tools)
 
             transcript.append({"role": "assistant", "content": json.dumps(action)[:3000]})
-            connector, tool = str(action.get("connector", "")), str(action.get("tool", ""))
-            if "." in tool and not connector:
-                connector, tool = tool.split(".", 1)
+            calls += 1   # every attempt uses budget, so a confused model cannot loop
+            connector, tool = resolve_tool(index, action)
             meta = index.get((connector, tool))
+            if isinstance(action.get("arguments"), dict):
+                # small models sometimes copy the "*" required-marker into the key
+                action["arguments"] = {str(k).rstrip("*").strip(): v for k, v in action["arguments"].items()}
             if not meta:
                 self.store.add_step(hid, self._next(), "blocked", connector=connector, tool=tool,
                                     arguments=action.get("arguments"), note="unknown or not allowed tool")
-                transcript.append({"role": "user", "content": f"{connector}.{tool} is not an available tool. "
-                                                              "Use one from the list."})
+                near = [f"{c}.{t}" for (c, t) in index if t == tool or c == connector][:6]
+                hint = f" Did you mean: {', '.join(near)}?" if near else ""
+                transcript.append({"role": "user", "content": f"{connector}.{tool} is not an available tool. Put the "
+                                   f"connector name in \"connector\" and the tool name in \"tool\".{hint}"})
                 continue
             try:
                 args, notes = validate_call(meta, action.get("arguments"), max_results=self.limits.max_results)
@@ -226,9 +254,7 @@ class HuntEngine:
             key = json.dumps([connector, tool, args], sort_keys=True, default=str)
             if key in done_calls:
                 transcript.append({"role": "user", "content": f"You already made that call; see {done_calls[key]}."})
-                calls += 1   # repeats still use budget so a stuck model ends
                 continue
-            calls += 1
             n = self._next()
             eid = f"E{n}"
             is_data = any(r in DATA_ROLES for r in meta["role"].split(","))

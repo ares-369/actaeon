@@ -49,6 +49,10 @@ def auto_targets(specs: dict) -> list[dict]:
             out.append({"connector": s.name, "tool": "search",
                         "arguments": {"index": ",".join(idx), "query": "{values}", "time_from": "{lookback}",
                                       "size": 20}})
+        elif s.enabled and s.command == "actaeon" and s.args[:2] == ["bridge", "demo"]:
+            out.append({"connector": s.name, "tool": "search",
+                        "arguments": {"index": "demo-events", "query": "{values}", "time_from": "{lookback}",
+                                      "size": 20}})
     return out
 
 

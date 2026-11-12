@@ -252,6 +252,40 @@ def cmd_phase5(a) -> int:
     return 0
 
 
+def cmd_demo(a) -> int:
+    import os
+
+    from .demo.setup import DEMO_HYPOTHESIS, init_demo
+    home = Path(a.dir or Path.home() / ".actaeon-demo").expanduser()
+    info = init_demo(home, offline=a.offline, port=a.port)
+    print(f"Demo home: {info['home']}  (all data in it is synthetic and labelled SAMPLE)")
+    if not a.offline:
+        print("Models: the demo uses the model settings from config.example.yaml (Ollama on localhost).")
+        print("        Edit the llm section of the demo config.yaml, or rerun with --offline for a scripted run.")
+    else:
+        print("Models: --offline uses a scripted demo run. It is NOT an AI model.")
+    if a.run:
+        os.environ["ACTAEON_HOME"] = str(home)
+        os.environ.pop("ACTAEON_CONFIG", None)
+        os.chdir(home)
+        from . import config as _c
+        from .connectors import hub as _hub
+        _c._CONFIG, _hub._HUB = None, None
+        from .providers import get_llm
+        get_llm(reload=True)
+        cfg = _c.get_config(reload=True)
+        from .hunt.service import run_hunt, run_sweep
+        h = run_hunt(cfg, DEMO_HYPOTHESIS, origin="demo",
+                     on_event=lambda e: print(f"  E{e['n']} {'ok ' if e['ok'] else 'ERR'} {e['tool']}")
+                     if e["type"] == "step" else None)
+        _print_verdict(h["verdict"])
+        s = run_sweep(cfg, full=True, actor="demo")
+        print(f"\nIntel sweep: {s['verdict']['summary']}")
+        _hub.get_hub().close()
+    print(f"\nOpen the UI:  ACTAEON_HOME={home} actaeon serve   ->  http://127.0.0.1:{a.port}")
+    return 0
+
+
 def cli_main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="actaeon", description="Open-source AI threat hunter (MCP connectors).")
     sub = ap.add_subparsers(dest="cmd")
@@ -266,9 +300,10 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_con.add_argument("name", nargs="?")
     p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
     br = p_br.add_subparsers(dest="kind", required=True)
+    from .bridges import demo as demo_bridge
     from .bridges import local_intel, local_tools, openapi, search_index, taxii
     bridges = {"search-index": search_index, "taxii": taxii, "openapi": openapi, "local-intel": local_intel,
-               "local-tools": local_tools}
+               "local-tools": local_tools, "demo": demo_bridge}
     for kind, mod in bridges.items():
         mod.add_args(br.add_parser(kind))
     p_in = sub.add_parser("intel", help="add, import, pull and look up intel in the local store")
@@ -316,6 +351,11 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_lib.add_argument("--every", type=int, default=0, help="replay interval in minutes (0 = manual)")
     p_lib.add_argument("--escalate", action="store_true", help="start a full hunt when a replay finds matches")
     sub.add_parser("mcp", help="serve Actaeon itself as an MCP server on stdio")
+    p_demo = sub.add_parser("demo", help="set up a demo with labelled sample data (and optionally run a hunt)")
+    p_demo.add_argument("--dir", default="", help="demo home (default ~/.actaeon-demo)")
+    p_demo.add_argument("--offline", action="store_true", help="use a scripted run instead of a model (not AI)")
+    p_demo.add_argument("--run", action="store_true", help="run the demo hunt and a sweep now")
+    p_demo.add_argument("--port", type=int, default=8611)
     p_dec = sub.add_parser("decode", help="decode an obfuscated command line (argument or stdin); runs nothing")
     p_dec.add_argument("text", nargs="?")
     p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
@@ -340,6 +380,8 @@ def cli_main(argv: list[str] | None = None) -> None:
         sys.exit(cmd_hunt(a))
     if a.cmd == "intel":
         sys.exit(cmd_intel(a))
+    if a.cmd == "demo":
+        sys.exit(cmd_demo(a))
     if a.cmd == "mcp":
         from .mcp_server import run as run_mcp
         run_mcp()
