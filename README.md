@@ -55,6 +55,11 @@ up public indicators on the web during a hunt. It can also use model command-lin
 clients you are signed in to, with fallbacks when a model hits its quota. See
 [docs/autonomy.md](docs/autonomy.md).
 
+## Outputs
+
+Results can go to email, an Excel workbook, a webhook, or a tool you allow (for
+example opening a case). See [docs/outputs.md](docs/outputs.md).
+
 ## Also included
 
 - Personal data masking before prompts reach cloud models ([docs/privacy.md](docs/privacy.md)).

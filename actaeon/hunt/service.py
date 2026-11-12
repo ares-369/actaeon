@@ -84,7 +84,23 @@ def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = 
                             + ", ".join(f"{n} {k.lower()}" for k, n in sorted(counts.items())))
         res = store.get(res["id"]) or res
     mem.remember(res)
-    return res
+    return send_outputs(cfg, res, hub=hub)
+
+
+def send_outputs(cfg, h: dict, *, hub=None) -> dict:
+    """Run the configured outputs for a finished hunt and record each one as a step."""
+    if not h or not (cfg.raw or {}).get("outputs") or h.get("status") not in ("done", "stopped"):
+        return h
+    from ..outputs import dispatch
+    results = dispatch(cfg, h, hub=hub)
+    if not results:
+        return h
+    store = store_for(cfg)
+    n = max([s["n"] for s in h.get("steps") or []] + [0])
+    for i, r in enumerate(results, 1):
+        store.add_step(h["id"], n + i, "output", connector="outputs", tool=str(r["name"]), ok=r["ok"],
+                       note=r["detail"])
+    return store.get(h["id"]) or h
 
 
 FEEDBACK_KINDS = ("benign", "false_positive", "confirmed")
@@ -154,6 +170,7 @@ def run_replay(cfg, sid: int, *, hub=None, llm=None, jobs=None, actor: str = "sc
     if not saved:
         raise ValueError("no saved hunt with that id")
     res = replay(saved, _hub(cfg, hub), store_for(cfg), lib, max_results=cfg.hunt.max_results, actor=actor)
+    res = send_outputs(cfg, res, hub=hub)
     if saved["escalate"] and (res.get("verdict") or {}).get("needs_review") and jobs is not None:
         start_hunt(jobs, cfg, saved["hypothesis"], actor=actor, origin=f"escalated:{res['id']}",
                    context=replay_context(res), llm=llm, hub=hub)
@@ -167,7 +184,7 @@ def run_sweep(cfg, *, full: bool = False, hub=None, actor: str = "scheduler", ll
         llm = privacy_llm(cfg, get_llm())
     sweep = Sweep(_hub(cfg, hub), intel_for(cfg), store_for(cfg), settings,
                   max_results=cfg.hunt.max_results, llm=llm)
-    return sweep.run(full=full, actor=actor)
+    return send_outputs(cfg, sweep.run(full=full, actor=actor), hub=hub)
 
 
 def start_job(jobs, kind: str, meta: dict, fn) -> str:

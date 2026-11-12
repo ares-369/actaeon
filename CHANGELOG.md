@@ -59,3 +59,5 @@
   look); only executed matches make a threat.
 - Gemini provider: API key, Vertex AI (service account, workload identity, VM identity, gcloud login),
   Vertex express key, AI gateway base URL and headers; `actaeon models test` and a UI Test button.
+- Outputs: email (SMTP, extra recipients for critical), Excel workbook rows, webhook and an allowed MCP tool
+  (e.g. create a case); `actaeon outputs test`.

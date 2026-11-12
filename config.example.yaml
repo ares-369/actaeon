@@ -126,6 +126,24 @@ intel:
 #    min_confidence: 50
 #    targets: []        # empty = every search-index bridge connector
 
+# Outputs: send results when hunts finish (email, excel, webhook, mcp_tool).
+# See docs/outputs.md. `actaeon outputs test NAME` sends a sample.
+outputs: []
+#  - name: soc-mail
+#    type: email
+#    when: [threat]
+#    smtp_host: "mail.example.org"
+#    smtp_port: 587
+#    username_env: SMTP_USER
+#    password_env: SMTP_PASSWORD
+#    from: "actaeon@example.org"
+#    to: ["soc@example.org"]
+#    to_critical: ["soc-leads@example.org"]
+#  - name: audit-sheet
+#    type: excel
+#    when: [all]
+#    path: "data/hunt-audit.xlsx"
+
 # MCP connectors. Each one is an MCP server tagged with roles:
 #   log_search, endpoint, identity, email, asset, network, cloud, intel
 # Tools are read-only unless allow_write is true AND the tool is named in

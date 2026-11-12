@@ -412,6 +412,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_b.add_argument("--cases", default="", help="YAML file of cases (default: built-in demo cases)")
     p_b.add_argument("--only", action="append", default=[], help="case id to run (repeatable)")
     p_b.add_argument("--max-steps", type=int, default=None)
+    p_out = sub.add_parser("outputs", help="list outputs, or send a sample result to one: outputs test NAME")
+    p_out.add_argument("action", nargs="?", choices=["list", "test"], default="list")
+    p_out.add_argument("name", nargs="?")
     p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
     p_sw.add_argument("--full", action="store_true", help="sweep every indicator, not only changed ones")
     p_note = sub.add_parser("note", help="add an analyst note to hunt memory")
@@ -471,6 +474,26 @@ def cli_main(argv: list[str] | None = None) -> None:
         out = run_bench(get_config(), cases, max_steps=a.max_steps, on_case=show)
         print(out["score"])
         print(f"saved {out['file']}")
+        return
+    if a.cmd == "outputs":
+        from .config import get_config
+        from .outputs import dispatch
+        cfg = get_config()
+        outs = (cfg.raw or {}).get("outputs") or []
+        if a.action == "list" or not a.name:
+            for o in outs:
+                print(f"{o['name']:20} {o['type']:9} when {','.join(o.get('when') or ['threat'])}")
+            if not outs:
+                print("no outputs configured (outputs: in config.yaml)")
+            return
+        sample = {"id": "sample000000", "hypothesis": "SAMPLE: test message from actaeon outputs test",
+                  "origin": "test", "status": "done", "outcome": "threat",
+                  "verdict": {"outcome": "threat", "confidence": 50, "needs_review": True,
+                              "summary": "This is a test of the output. It is not a real finding.",
+                              "findings": [{"claim": "SAMPLE finding", "evidence": ["E1"]}], "attack": []},
+                  "steps": []}
+        for r in dispatch(cfg, sample, only=a.name):
+            print(("OK   " if r["ok"] else "FAIL ") + f"{r['name']}: {r['detail']}")
         return
     if a.cmd == "mcp":
         from .mcp_server import run as run_mcp

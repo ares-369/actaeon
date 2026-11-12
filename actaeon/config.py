@@ -159,6 +159,8 @@ def load_config() -> Config:
         validate_feed(f)
     from .privacy import validate as validate_privacy
     validate_privacy(data.get("privacy") or {})
+    from .outputs import validate as validate_outputs
+    validate_outputs(list(data.get("outputs") or []))
     env = data.get("environment") or {}
     if not isinstance(env, dict):
         raise ValueError("environment: must be a mapping (summary, platforms, crown_jewels, not_present, notes)")
