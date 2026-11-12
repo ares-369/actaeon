@@ -8,6 +8,8 @@ so an Ollama-only deployment never imports a cloud SDK.
 
 from __future__ import annotations
 
+import re as _re
+import time as _time
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,6 +25,7 @@ _SECRET_ENV = {
     "azure_openai": "AZURE_OPENAI_API_KEY",
     "openai_compatible": "OPENAI_COMPAT_API_KEY",
     "demo": "",
+    "cli": "",
 }
 
 
@@ -42,19 +45,45 @@ def _build(name: str, cfg: dict[str, Any], secret: str) -> LLMProvider:
     if name == "azure_openai":
         from .openai_compat import OpenAICompatProvider
         return OpenAICompatProvider(cfg, secret, name="azure_openai", azure=True)
+    if name == "cli":
+        from .cli import CliProvider
+        return CliProvider(cfg, secret)
     if name == "demo":
         from .demo import DemoProvider
         return DemoProvider(cfg, secret)
     raise ValueError(f"Unknown LLM provider: {name!r}")
 
 
+_QUOTA = _re.compile(r"(?i)quota|rate.?limit|resource_exhausted|\b429\b|too many requests|resets in|overloaded|\b529\b")
+_COOLDOWN: dict[tuple[str, str], float] = {}   # (provider, model) -> skip until (monotonic)
+COOLDOWN_SEC = 3600
+
+
 @dataclass
 class BoundModel:
     provider: LLMProvider
     model: str
+    fallbacks: list = None   # list[BoundModel] tried in order when this one fails
 
     def chat(self, messages: list[Message], **kw) -> LLMResult:
-        return self.provider.chat(messages, model=self.model, **kw)
+        chain = [self, *(self.fallbacks or [])]
+        errors = []
+        for b in chain:
+            key = (b.provider.name, b.model)
+            if _COOLDOWN.get(key, 0) > _time.monotonic():
+                errors.append(f"{b.provider.name}/{b.model}: skipped (quota cooldown)")
+                continue
+            res = b.provider.chat(messages, model=b.model, **kw)
+            if not res.error:
+                if b is not self:
+                    res.model = f"{b.model} (fallback)"
+                return res
+            errors.append(f"{b.provider.name}/{b.model}: {res.error[:300]}")
+            if _QUOTA.search(res.error):
+                _COOLDOWN[key] = _time.monotonic() + COOLDOWN_SEC
+            elif len(chain) == 1:
+                return res
+        return LLMResult(text="", model=self.model, error=" | ".join(errors) or "no model available")
 
 
 class LLM:
@@ -69,12 +98,16 @@ class LLM:
             self._cache[name] = _build(name, self.cfg.provider_cfg(name), secret)
         return self._cache[name]
 
+    def _bind(self, rc: dict) -> BoundModel:
+        prov = self.provider(rc.get("provider", "ollama"))
+        return BoundModel(provider=prov, model=rc.get("model") or prov.default_model)
+
     def for_role(self, role: str) -> BoundModel:
+        """The role's model, with its optional ``fallback`` list (provider/model pairs) tried on errors."""
         rc = self.cfg.role_cfg(role)
-        pname = rc.get("provider", "ollama")
-        prov = self.provider(pname)
-        model = rc.get("model") or prov.default_model
-        return BoundModel(provider=prov, model=model)
+        bound = self._bind(rc)
+        bound.fallbacks = [self._bind(f) for f in rc.get("fallback") or [] if isinstance(f, dict)]
+        return bound
 
     def configured_providers(self) -> list[str]:
         provs = (self.cfg.llm.get("providers") or {}).keys()

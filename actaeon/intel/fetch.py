@@ -119,6 +119,9 @@ def fetch_url(url: str, *, allow_private: bool = False, session=None, timeout: f
         if len(data) > MAX_BYTES:
             raise FetchError("document is larger than 15 MB")
     ctype = r.headers.get("Content-Type", "").lower()
+    raw = data.decode(r.encoding or "utf-8", "replace") if "pdf" not in ctype and data[:5] != b"%PDF-" else ""
+    if raw.lstrip()[:200].lower().startswith(("<?xml", "<rss", "<feed")):
+        return {"url": url, "title": "", "text": raw[:MAX_TEXT], "raw": raw[:MAX_BYTES]}
     if "pdf" in ctype or data[:5] == b"%PDF-":
         title, text = Path(urlparse(url).path).name, pdf_to_text(data)
     elif "html" in ctype or b"<html" in data[:2000].lower():

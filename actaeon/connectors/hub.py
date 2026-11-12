@@ -41,6 +41,26 @@ def local_tools_connector() -> dict:
             "rate_per_min": 600, "timeout_sec": 15}
 
 
+WEB = "web"
+
+
+def web_connector(cfg) -> dict | None:
+    """Built-in public-web lookups when ``intel.web.tools: true``. Internal terms come from privacy.terms."""
+    web = ((getattr(cfg, "intel", {}) or {}).get("web") or {})
+    if not web.get("tools"):
+        return None
+    args = ["bridge", "web"]
+    if web.get("search_url"):
+        args += ["--search-url", str(web["search_url"])]
+    priv = (cfg.raw or {}).get("privacy") or {}
+    for t in priv.get("terms") or []:
+        args += ["--block-term", str(t)]
+    for p in priv.get("patterns") or []:
+        args += ["--block-pattern", str(p)]
+    return {"name": WEB, "roles": ["intel"], "transport": "stdio", "command": "actaeon", "args": args,
+            "description": "Public web lookups (pages and optional search)", "rate_per_min": 30, "timeout_sec": 45}
+
+
 class ToolCallError(RuntimeError):
     pass
 
@@ -79,6 +99,9 @@ class ConnectorHub:
         if (getattr(cfg, "intel", {}) or {}).get("local", True):
             items.append(local_intel_connector(cfg.data_dir))
         items.append(local_tools_connector())
+        w = web_connector(cfg)
+        if w:
+            items.append(w)
         return cls(parse_connectors(items), AuditLog(cfg.data_dir / "audit.sqlite"),
                    max_result_bytes=cfg.hunt.max_result_bytes)
 

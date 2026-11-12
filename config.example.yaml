@@ -45,6 +45,10 @@ llm:
     openai_compatible:
       base_url: ""             # OPENAI_COMPAT_API_KEY in .env
       default_model: ""
+    cli:                       # a model CLI you are signed in to on this machine
+      command: []              # e.g. ["/path/to/cli", "--model", "{model}", "-p={prompt}"]
+      default_model: ""
+      timeout_sec: 180
 
 # Describe your environment so hunts fit it (all optional).
 environment: {}
@@ -57,7 +61,7 @@ environment: {}
 # Mask personal data before prompts go to cloud models (restored in replies).
 # Local models (ollama) are not masked unless listed. See docs/privacy.md.
 privacy:
-  mask_for: [anthropic, gemini, openai, azure_openai, openai_compatible]
+  mask_for: [anthropic, gemini, openai, azure_openai, openai_compatible, cli]
   types: [email, ipv4, ipv6, user]
   terms: []          # e.g. your company and domain names
   patterns: []       # extra regexes, e.g. '\bWS-\d{4,}\b' for hostnames
@@ -69,6 +73,13 @@ mcp:
   token_role: operator       # role for that token: viewer | operator | admin
   allow_intel_writes: false  # let MCP clients add indicators
   expose: []                 # empty = all tools; or list tool names
+
+# Autopilot: propose hypotheses from new intel, coverage gaps and follow-ups, then hunt them.
+autopilot:
+  interval_minutes: 0        # 0 = only by hand (actaeon autopilot / UI)
+  max_hunts_per_run: 3
+  max_hunts_per_day: 12
+  avoid_repeat_days: 7
 
 # Hunt safety limits.
 hunt:
@@ -86,6 +97,12 @@ intel:
   feeds: []
   sweep:
     interval_minutes: 0
+  web:                        # web intel (see docs/autonomy.md)
+    interval_minutes: 0       # > 0: pull sources on a schedule
+    auto_hunt: false          # start an advisory hunt for each new advisory
+    tools: false              # give hunts public-web lookups (fetch_page, search_web)
+    search_url: ""            # JSON search endpoint for search_web (optional)
+    sources: []               # [{name, url, kind: feed|page, keywords: [], max_items: 10}]
 #  - name: exploited-cves
 #    url: "https://example.org/known_exploited.json"
 #    format: json            # text | csv | stix | json

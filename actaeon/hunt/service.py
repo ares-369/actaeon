@@ -168,3 +168,26 @@ def run_sweep(cfg, *, full: bool = False, hub=None, actor: str = "scheduler") ->
 
 def start_job(jobs, kind: str, meta: dict, fn) -> str:
     return jobs.submit(kind, meta, lambda ctl: {"hunt_id": fn().get("id")}, deduplicate=True)
+
+
+def run_web_intel(cfg, *, jobs=None, llm=None, hub=None, only: str | None = None) -> dict:
+    """Pull web intel; with intel.web.auto_hunt, queue an advisory hunt for each new advisory worth hunting."""
+    from ..intel.web import WebIntel
+    web = (cfg.intel or {}).get("web") or {}
+    res = WebIntel(intel_for(cfg), web, allow_private=bool((cfg.intel or {}).get("allow_private_urls"))).pull(only)
+    res["hunts"] = []
+    if web.get("auto_hunt") and jobs is not None:
+        for a in res["new_advisories"]:
+            adv = intel_for(cfg).advisory(a["id"]) or {}
+            if not (adv.get("indicators") or adv.get("techniques")):
+                continue
+            hyp, ctx = advisory_hunt(cfg, a["id"])
+            res["hunts"].append(start_hunt(jobs, cfg, hyp, actor="web-intel", origin=f"advisory:{a['id']}",
+                                           context=ctx, llm=llm, hub=hub))
+    return {"id": None, **res}
+
+
+def run_autopilot(cfg, jobs, *, llm=None, hub=None, dry_run: bool = False) -> dict:
+    from ..providers import get_llm
+    from .autopilot import run
+    return {"id": None, **run(cfg, jobs, llm or get_llm(), hub=hub, dry_run=dry_run)}

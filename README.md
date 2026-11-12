@@ -44,6 +44,14 @@ a different provider: local Ollama, Anthropic, Gemini, OpenAI, Azure OpenAI or a
 OpenAI-compatible endpoint. Change them under **Models** in the UI or in `config.yaml`.
 Keys go in `.env`. Cloud SDKs are optional extras (`pip install 'actaeon[all]'`).
 
+## Autonomy
+
+Actaeon can pull advisories from web sources and hunt them, propose its own
+hypotheses from intel, coverage gaps and earlier findings (autopilot), and look
+up public indicators on the web during a hunt. It can also use model command-line
+clients you are signed in to, with fallbacks when a model hits its quota. See
+[docs/autonomy.md](docs/autonomy.md).
+
 ## Also included
 
 - Personal data masking before prompts reach cloud models ([docs/privacy.md](docs/privacy.md)).

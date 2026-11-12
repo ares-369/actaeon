@@ -27,7 +27,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-CLOUD = ("anthropic", "gemini", "openai", "azure_openai", "openai_compatible")
+CLOUD = ("anthropic", "gemini", "openai", "azure_openai", "openai_compatible", "cli")
 DEFAULT_TYPES = ("email", "ipv4", "ipv6", "user")
 
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}\b")

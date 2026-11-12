@@ -255,6 +255,26 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             return jsonify({"job_id": jid}), 202
         return jsonify({"error": "unknown action"}), 400
 
+    @app.route("/api/intel/web/pull", methods=["POST"])
+    def intel_web_pull():
+        c = get_config()
+        jid = hs.start_job(jobs, "web-intel", {"web": True},
+                           lambda: hs.run_web_intel(c, jobs=jobs))
+        return jsonify({"job_id": jid}), 202
+
+    @app.route("/api/autopilot", methods=["POST"])
+    def autopilot():
+        c = get_config()
+        b = request.get_json(silent=True) or {}
+        if b.get("dry_run", True):
+            try:
+                r = hs.run_autopilot(c, jobs, dry_run=True)
+            except RuntimeError as exc:
+                return jsonify({"error": str(exc)[:300]}), 502
+            return jsonify(r)
+        jid = hs.start_job(jobs, "autopilot", {"autopilot": True}, lambda: hs.run_autopilot(c, jobs))
+        return jsonify({"job_id": jid}), 202
+
     @app.route("/api/intel/sweep", methods=["POST"])
     def intel_sweep():
         c = get_config()

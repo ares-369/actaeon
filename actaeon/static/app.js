@@ -67,6 +67,25 @@ async function hunts() {
   };
   main.append(section("New hunt", "target", hyp,
     h("div", { class: "row" }, pick, steps, h("button", { onclick: start }, icon("play"), "Start hunt"))));
+  const sug = h("div");
+  main.append(section("Autopilot", "robot-outline",
+    h("p", { class: "muted small" }, "Proposes hypotheses from new advisories, coverage gaps and follow-ups. Nothing starts until you choose."),
+    h("div", { class: "row" },
+      h("button", { class: "ghost", onclick: async (e) => {
+        e.target.disabled = true; sug.replaceChildren(h("p", { class: "muted" }, "Asking the planner..."));
+        try {
+          const r = await api("/api/autopilot", { dry_run: true });
+          sug.replaceChildren(
+            r.note ? h("p", { class: "warn" }, r.note) : null,
+            ...r.hypotheses.map((x) => h("div", { class: "row" }, h("span", { class: "grow" }, x.hypothesis,
+              h("div", { class: "muted small" }, `${x.source}  ${x.attack.join(", ")}  ${x.why}`)),
+              h("button", { onclick: async () => { const s = await api("/api/hunts", { hypothesis: x.hypothesis, context: "Proposed by autopilot: " + x.why }); location.hash = "#hunt/" + s.hunt_id; } }, icon("play"), "Hunt"))),
+            ...(r.rejected || []).map((x) => h("p", { class: "muted small" }, `skipped: ${x.hypothesis} (${x.rejected})`)));
+        } finally { e.target.disabled = false; }
+      } }, icon("lightbulb-on-outline"), "Suggest hypotheses"),
+      h("button", { class: "ghost", onclick: async () => { const r = await api("/api/autopilot", { dry_run: false }); toast("Autopilot queued (job " + r.job_id + "); its hunts appear below."); } }, icon("play-circle-outline"), "Run autopilot now"),
+      h("button", { class: "ghost", onclick: async () => { const r = await api("/api/intel/web/pull"); toast("Web intel pull queued (job " + r.job_id + ")."); } }, icon("web"), "Pull web intel")),
+    sug));
   const list = h("tbody");
   main.append(section("Recent hunts", "history",
     h("table", {}, h("thead", {}, h("tr", {}, h("th", {}, "Started"), h("th", {}, "Status"), h("th", {}, "Outcome"),

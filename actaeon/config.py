@@ -28,7 +28,7 @@ _log = logging.getLogger("actaeon")
 
 # Model roles the hunt engine asks for. Each maps to a provider + model.
 LLM_ROLES = ("planner", "analyst", "reporter")
-PROVIDERS = ("ollama", "anthropic", "gemini", "openai", "azure_openai", "openai_compatible", "demo")
+PROVIDERS = ("ollama", "anthropic", "gemini", "openai", "azure_openai", "openai_compatible", "cli", "demo")
 
 
 def _load_env() -> None:
@@ -215,7 +215,18 @@ def _build_llm_update(roles: dict) -> tuple[Path, str, dict]:
         model = str(rc.get("model", "")).strip()
         if model and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@\-\[\]]{0,127}", model):
             raise ValueError(f"model name {model!r} has unexpected characters")
-        llm["roles"][role] = {"provider": prov, "model": model}
+        entry = {"provider": prov, "model": model}
+        fb = []
+        for f in rc.get("fallback") or []:
+            if not isinstance(f, dict) or str(f.get("provider", "")) not in PROVIDERS:
+                raise ValueError(f"role {role!r}: each fallback needs a known provider")
+            fm = str(f.get("model", "")).strip()
+            if fm and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@\-\[\]]{0,127}", fm):
+                raise ValueError(f"fallback model name {fm!r} has unexpected characters")
+            fb.append({"provider": str(f["provider"]), "model": fm})
+        if fb:
+            entry["fallback"] = fb[:5]
+        llm["roles"][role] = entry
     return path, old_text, data
 
 

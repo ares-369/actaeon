@@ -43,3 +43,7 @@
 - Field guard: before the first query on a connector that offers get_fields, the engine fetches
   the field names itself and refuses queries that use fields the source does not have
   (with close-match suggestions). Found with a 7B model that guessed field names.
+- Autonomy: web intel sources (RSS/Atom/pages) with optional auto advisory hunts; autopilot that
+  proposes checked hypotheses from new advisories, coverage gaps and follow-ups and hunts them
+  within caps; web lookups during hunts with a leak guard.
+- `cli` model provider for signed-in model CLIs; per-role fallback models with quota cooldown.

@@ -123,6 +123,17 @@ def cmd_intel(a) -> int:
                 out.append(pull_feed(store, f))
             except Exception as exc:
                 out.append({"source": f.get("name"), "error": str(exc)[:200]})
+    elif a.action == "web":
+        from .hunt.service import run_web_intel
+        jobs = None
+        if a.hunt:
+            from .jobs import JobManager
+            jobs = JobManager(cfg.data_dir / "actaeon.sqlite")
+        out = run_web_intel(cfg, jobs=jobs, only=a.name)
+        out.pop("id", None)
+        if jobs and out["hunts"]:
+            print(f"started {len(out['hunts'])} hunt(s); waiting for them to finish...")
+            jobs.pool.shutdown(wait=True)
     elif a.action == "lookup":
         out = store.lookup(a.value)
     elif a.action == "list":
@@ -302,8 +313,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     br = p_br.add_subparsers(dest="kind", required=True)
     from .bridges import demo as demo_bridge
     from .bridges import local_intel, local_tools, openapi, search_index, taxii
+    from .bridges import web as web_bridge
     bridges = {"search-index": search_index, "taxii": taxii, "openapi": openapi, "local-intel": local_intel,
-               "local-tools": local_tools, "demo": demo_bridge}
+               "local-tools": local_tools, "demo": demo_bridge, "web": web_bridge}
     for kind, mod in bridges.items():
         mod.add_args(br.add_parser(kind))
     p_in = sub.add_parser("intel", help="add, import, pull and look up intel in the local store")
@@ -331,6 +343,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     x.add_argument("--extract", action="store_true")
     x = isub.add_parser("pull", help="pull configured feeds (intel.feeds)")
     x.add_argument("name", nargs="?")
+    x = isub.add_parser("web", help="pull web intel sources now (intel.web.sources)")
+    x.add_argument("name", nargs="?")
+    x.add_argument("--hunt", action="store_true", help="also start advisory hunts for new advisories")
     x = isub.add_parser("lookup")
     x.add_argument("value")
     x = isub.add_parser("list")
@@ -358,6 +373,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_demo.add_argument("--port", type=int, default=8611)
     p_dec = sub.add_parser("decode", help="decode an obfuscated command line (argument or stdin); runs nothing")
     p_dec.add_argument("text", nargs="?")
+    p_ap = sub.add_parser("autopilot", help="propose hypotheses from intel, coverage and follow-ups, and hunt them")
+    p_ap.add_argument("--dry-run", action="store_true", help="only propose; start nothing")
     p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
     p_sw.add_argument("--full", action="store_true", help="sweep every indicator, not only changed ones")
     p_note = sub.add_parser("note", help="add an analyst note to hunt memory")
@@ -382,6 +399,28 @@ def cli_main(argv: list[str] | None = None) -> None:
         sys.exit(cmd_intel(a))
     if a.cmd == "demo":
         sys.exit(cmd_demo(a))
+    if a.cmd == "autopilot":
+        import json as _json
+
+        from .config import get_config
+        from .hunt.service import run_autopilot
+        from .jobs import JobManager
+        cfg = get_config()
+        jobs = JobManager(cfg.data_dir / "actaeon.sqlite")
+        r = run_autopilot(cfg, jobs, dry_run=a.dry_run)
+        for h in r["hypotheses"]:
+            print(f"- [{h['source']}] {h['hypothesis']}\n    why: {h['why']}  ATT&CK {', '.join(h['attack']) or '-'}")
+        for h in r["rejected"]:
+            print(f"  skipped: {h['hypothesis'][:100]} ({h['rejected']})")
+        if r["started"]:
+            print(f"started {len(r['started'])} hunt(s); waiting for them to finish...")
+            jobs.pool.shutdown(wait=True)
+            from .hunt.service import store_for
+            for s in r["started"]:
+                h = store_for(cfg).get(s["hunt_id"], with_steps=False)
+                print(f"  {h['id']} {h['status']} {h['outcome']}: {h['hypothesis'][:90]}")
+        print(_json.dumps({"room_today": r["room_today"], "dry_run": r["dry_run"]}))
+        return
     if a.cmd == "mcp":
         from .mcp_server import run as run_mcp
         run_mcp()
