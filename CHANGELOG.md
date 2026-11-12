@@ -61,3 +61,5 @@
   Vertex express key, AI gateway base URL and headers; `actaeon models test` and a UI Test button.
 - Outputs: email (SMTP, extra recipients for critical), Excel workbook rows, webhook and an allowed MCP tool
   (e.g. create a case); `actaeon outputs test`.
+- Query guides per connector (notes, file, examples, plus queries that found data before) and a compact
+  prompt mode for cheaper models.

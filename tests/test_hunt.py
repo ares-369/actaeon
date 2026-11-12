@@ -356,3 +356,35 @@ def test_threat_cap_one_kind_of_query(tmp_path):
                           {"action": "verdict", "outcome": "threat", "confidence": 99, "summary": "x",
                            "findings": [{"claim": "c", "evidence": ["E2", "E3"]}]}])
     assert h["verdict"]["confidence"] == 75
+
+
+def test_query_guides_reach_the_analyst(tmp_path):
+    from actaeon.connectors import parse_connectors
+
+    class GuideHub(Hub):
+        specs = {s.name: s for s in parse_connectors([{
+            "name": "logs", "roles": ["log_search"], "transport": "stdio", "command": "x", "dialect": "MyQL",
+            "query_notes": "Always filter on #event_simpleName first.",
+            "query_examples": [{"goal": "process starts", "query": "#event_simpleName=ProcessRollup2"}]}])}
+    store = HuntStore(tmp_path / "h.sqlite")
+    from actaeon.hunt import HuntEngine
+    # an earlier hunt found data with this query
+    hid = store.create("old")
+    store.add_step(hid, 2, "call", connector="logs", tool="search", arguments={"query": "past:query"}, ok=True,
+                   result='<<UNTRUSTED-DATA a>>\n{"total": 3}\n<<END-UNTRUSTED-DATA a>>')
+    llm = LLM(PLAN, [{"action": "verdict", "outcome": "inconclusive", "summary": "x"}])
+    HuntEngine(llm, GuideHub(), store, HuntLimits(max_steps=3)).run("x")
+    first = llm.roles["analyst"].seen[0][1]["content"]
+    assert "Query language: MyQL" in first and "#event_simpleName first" in first
+    assert "ProcessRollup2" in first and "past:query" in first
+
+
+def test_compact_mode_narrows_tools(tmp_path):
+    tools = {"log_search": [SEARCH], "intel": [LOOKUP],
+             "email": [{"connector": "mail", "name": "trace", "description": "x" * 300, "inputSchema": {}}]}
+    llm = LLM(PLAN, [{"action": "verdict", "outcome": "inconclusive", "summary": "x"}])
+    from actaeon.hunt import HuntEngine
+    HuntEngine(llm, Hub(tools=tools), HuntStore(tmp_path / "h.sqlite"), HuntLimits(compact=True)).run("x")
+    first = llm.roles["analyst"].seen[0][1]["content"]
+    assert 'connector "mail"' not in first          # plan does not use the email role
+    assert 'connector "logs"' in first and 'connector "local-intel"' in first

@@ -55,6 +55,8 @@ class ConnectorSpec:
     auth: dict[str, Any] = field(default_factory=dict)
     dialect: str = ""
     description: str = ""
+    query_notes: str = ""                     # how to write queries for this source (from config or a file)
+    query_examples: list[dict] = field(default_factory=list)   # [{goal, query}]
     allow: list[str] = field(default_factory=list)
     deny: list[str] = field(default_factory=list)
     allow_write: bool = False
@@ -71,7 +73,20 @@ class ConnectorSpec:
             "description": self.description, "auth_type": self.auth.get("type", "none"),
             "allow": self.allow, "deny": self.deny, "allow_write": self.allow_write,
             "rate_per_min": self.rate_per_min, "enabled": self.enabled,
+            "query_notes": bool(self.query_notes), "query_examples": len(self.query_examples),
         }
+
+
+def _notes(name: str, raw: dict[str, Any]) -> str:
+    text = str(raw.get("query_notes", "") or "")
+    path = raw.get("query_notes_file")
+    if path:
+        from pathlib import Path
+        p = Path(str(path)).expanduser()
+        if not p.is_file():
+            raise ValueError(f"connector {name}: query_notes_file {p} does not exist")
+        text = (text + "\n" + p.read_text(errors="replace")).strip()
+    return text[:6000]
 
 
 def _spec(raw: dict[str, Any]) -> ConnectorSpec:
@@ -106,6 +121,9 @@ def _spec(raw: dict[str, Any]) -> ConnectorSpec:
         env={str(k): str(v) for k, v in (raw.get("env") or {}).items()},
         headers={str(k): str(v) for k, v in (raw.get("headers") or {}).items()},
         auth=auth, dialect=str(raw.get("dialect", "")), description=str(raw.get("description", "")),
+        query_notes=_notes(name, raw),
+        query_examples=[{"goal": str(e.get("goal", ""))[:200], "query": str(e.get("query", ""))[:1000]}
+                        for e in (raw.get("query_examples") or []) if isinstance(e, dict) and e.get("query")][:20],
         allow=[str(t) for t in tools.get("allow") or []],
         deny=[str(t) for t in tools.get("deny") or []],
         allow_write=bool(raw.get("allow_write", False)),

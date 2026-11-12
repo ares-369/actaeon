@@ -30,7 +30,8 @@ def intel_for(cfg):
 def limits_for(cfg, max_steps: int | None = None) -> HuntLimits:
     h = cfg.hunt
     steps = h.max_steps if max_steps is None else max(1, min(int(max_steps), h.max_steps))
-    return HuntLimits(max_steps=steps, max_runtime_sec=h.max_runtime_sec, max_results=h.max_results)
+    compact = str(((cfg.raw or {}).get("hunt") or {}).get("prompt_mode", "full")) == "compact"
+    return HuntLimits(max_steps=steps, max_runtime_sec=h.max_runtime_sec, max_results=h.max_results, compact=compact)
 
 
 def _hub(cfg, hub=None):

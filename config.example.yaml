@@ -92,6 +92,7 @@ hunt:
   max_runtime_sec: 900
   max_result_bytes: 200000   # per tool result shown to the model
   max_results: 200           # cap on size/limit arguments of any tool
+  prompt_mode: full          # full | compact (shorter prompts for cheaper models)
 
 # Local intel store: add indicators and advisories yourself (UI, API, CLI)
 # and pull feeds. Served to hunts as the built-in read-only "local-intel"
@@ -155,6 +156,9 @@ connectors: []
 #    url: "https://mcp.example.internal/mcp"
 #    auth: { type: bearer, token_env: LOGS_MCP_TOKEN }
 #    dialect: "lucene"               # query language hint for the planner
+#    query_notes_file: "notes/logs.md"   # how to query this source: fields, syntax, pitfalls
+#    query_examples:
+#      - {goal: "process starts by parent", query: "process.parent.name:winword.exe AND process.name:powershell.exe"}
 #    tools: { allow: [], deny: [] }  # glob patterns
 #    rate_per_min: 60
 #    timeout_sec: 30

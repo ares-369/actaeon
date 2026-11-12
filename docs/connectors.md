@@ -39,6 +39,24 @@ Secrets never go in `config.yaml`. Use `*_env` keys or `${VAR}` references to
 values in `.env`; a plain-text secret is rejected at startup. Interactive OAuth
 (authorization-code sign-in) is not supported yet.
 
+## Query guides
+
+Each connector can tell the analyst how to search it:
+
+```yaml
+- name: logs
+  dialect: "the platform's query language"
+  query_notes_file: "/etc/actaeon/notes/logs.md"   # or query_notes: "inline text"
+  query_examples:
+    - {goal: "process starts by parent", query: "..."}
+```
+
+Start from [templates/query-notes.md](templates/query-notes.md). Queries that
+returned data in earlier hunts on the same connector are added automatically as
+"queries that returned data here before", so every model learns what works on
+your data. This is the biggest help for models writing a language they know
+little about.
+
 ## Read-only by default
 
 For each tool, in order:

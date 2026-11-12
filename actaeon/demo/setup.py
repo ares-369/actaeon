@@ -26,7 +26,16 @@ def init_demo(home: Path, *, offline: bool = False, port: int = 8611) -> dict:
     cfg["connectors"] = [{
         "name": "demo-logs", "roles": ["log_search", "endpoint", "network"], "transport": "stdio",
         "command": "actaeon", "args": ["bridge", "demo"], "dialect": "query_string subset (field:value, AND/OR/NOT)",
-        "description": "SAMPLE DATA - synthetic events for the demo", "rate_per_min": 600}]
+        "description": "SAMPLE DATA - synthetic events for the demo", "rate_per_min": 600,
+        "query_notes": ("Index: demo-events. Time field @timestamp. Fields: process.name, process.parent.name, "
+                        "process.command_line, host.name, user.name, destination.ip, destination.domain, "
+                        "destination.port, source.ip, event.category (process|network|authentication), "
+                        "event.action, event.outcome (success|failure). Use field:value; * is a wildcard; "
+                        "combine with AND / OR / NOT and parentheses. Use top_values to stack a field."),
+        "query_examples": [
+            {"goal": "PowerShell started by Word", "query": "process.parent.name:winword.exe AND process.name:powershell.exe"},
+            {"goal": "connections to one destination", "query": "event.category:network AND destination.ip:198.51.100.10"},
+            {"goal": "failed sign-ins", "query": "event.category:authentication AND event.outcome:failure"}]}]
     cfg["environment"] = {"summary": "SAMPLE environment: Windows endpoints named DEMO-WS01..12, one admin "
                                      "host DEMO-ADM01.", "platforms": ["windows"], "not_present": ["macOS", "Linux"]}
     if offline:

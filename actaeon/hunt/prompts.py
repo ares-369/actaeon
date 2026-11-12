@@ -40,18 +40,43 @@ Rules:
 {SYSTEM_RULE}"""
 
 
-def catalogue(tools: list[dict]) -> str:
-    """Compact tool list for the prompt."""
+def catalogue(tools: list[dict], compact: bool = False) -> str:
+    """Tool list for the prompt. Compact mode keeps descriptions short and lists required args first."""
     lines = []
     for t in tools:
         props = (t.get("inputSchema") or {}).get("properties") or {}
         req = set((t.get("inputSchema") or {}).get("required") or [])
+        items = list(props.items())
+        if compact:
+            items = [kv for kv in items if kv[0] in req] + [kv for kv in items if kv[0] not in req][:4]
         params = ", ".join(f"{k} ({(v or {}).get('type', 'any')}{', required' if k in req else ''})"
-                           for k, v in list(props.items())[:15])
-        dialect = f" [query syntax: {t['dialect']}]" if t.get("dialect") else ""
+                           for k, v in items[:15])
+        dialect = f" [query syntax: {t['dialect']}]" if t.get("dialect") and not compact else ""
+        desc = t.get("description", "")[: 80 if compact else 200]
         lines.append(f"- connector \"{t['connector']}\", tool \"{t['name']}\" (role {t['role']}){dialect}: "
-                     f"{t.get('description', '')[:200]} | args: {params or 'none'}")
+                     f"{desc} | args: {params or 'none'}")
     return "\n".join(lines) or "(no tools available)"
+
+
+def guides(entries: dict[str, dict], compact: bool = False) -> str:
+    """Per-connector query guidance: dialect, notes, examples from config, and queries that found data before."""
+    out = []
+    cap = 1200 if compact else 4000
+    for conn, g in entries.items():
+        parts = []
+        if g.get("dialect"):
+            parts.append(f"Query language: {g['dialect']}")
+        if g.get("notes"):
+            parts.append(g["notes"][:cap])
+        ex = [e for e in g.get("examples") or []][: 3 if compact else 8]
+        if ex:
+            parts.append("Examples:\n" + "\n".join(f"- {e.get('goal') or 'example'}: {e['query']}" for e in ex))
+        learned = [q for q in g.get("learned") or []][: 2 if compact else 5]
+        if learned:
+            parts.append("Queries that returned data here before:\n" + "\n".join(f"- {q}" for q in learned))
+        if parts:
+            out.append(f"### {conn}\n" + "\n".join(parts))
+    return ("Query guides (how to search each connector):\n" + "\n\n".join(out)) if out else ""
 
 
 def planner_user(hypothesis: str, roles: dict[str, list[str]], context: str) -> str:
@@ -59,7 +84,9 @@ def planner_user(hypothesis: str, roles: dict[str, list[str]], context: str) -> 
     return f"Hypothesis: {hypothesis}\nAvailable data roles (connectors): {avail}\n{context}".strip()
 
 
-def analyst_user(hypothesis: str, plan: dict | None, tools: list[dict], context: str, max_steps: int) -> str:
-    p = json.dumps(plan, indent=1) if plan else "(no plan; decide the steps yourself)"
-    return (f"Hypothesis: {hypothesis}\n\nPlan:\n{p}\n\nTools:\n{catalogue(tools)}\n\n"
+def analyst_user(hypothesis: str, plan: dict | None, tools: list[dict], context: str, max_steps: int,
+                 guide_text: str = "", compact: bool = False) -> str:
+    p = json.dumps(plan, indent=None if compact else 1) if plan else "(no plan; decide the steps yourself)"
+    g = f"{guide_text}\n\n" if guide_text else ""
+    return (f"Hypothesis: {hypothesis}\n\nPlan:\n{p}\n\nTools:\n{catalogue(tools, compact)}\n\n{g}"
             f"{context}\nYou may make at most {max_steps} tool calls. Start now.").strip()

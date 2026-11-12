@@ -41,6 +41,7 @@ class HuntLimits:
     max_runtime_sec: int = 900
     max_results: int = 200
     max_parse_failures: int = 3
+    compact: bool = False          # shorter prompts for cheaper or smaller models
 
 
 def resolve_tool(index: dict, action: dict) -> tuple[str, str]:
@@ -209,19 +210,42 @@ class HuntEngine:
 
     def _messages(self, base: list[dict], transcript: list[dict]) -> list[dict]:
         msgs = list(base)
+        keep, trim = (2, 600) if self.limits.compact else (KEEP_FULL, TRIM_TO)
         results = [i for i, m in enumerate(transcript) if m.get("_result")]
-        old = set(results[:-KEEP_FULL])
+        old = set(results[:-keep])
         for i, m in enumerate(transcript):
             content = m["content"]
-            if i in old and len(content) > TRIM_TO:
-                content = content[:TRIM_TO] + "\n[older result trimmed; re-read the evidence id if needed]"
+            if self.limits.compact and m.get("_result") and i not in old and len(content) > 6000:
+                content = content[:6000] + "\n[result shortened (compact mode)]"
+            if i in old and len(content) > trim:
+                content = content[:trim] + "\n[older result trimmed; re-read the evidence id if needed]"
             msgs.append({"role": m["role"], "content": content})
         return msgs
 
+    def _guides(self, tools: list[dict]) -> str:
+        from .prompts import guides
+        specs = getattr(self.hub, "specs", {}) or {}
+        entries: dict[str, dict] = {}
+        for c in dict.fromkeys(t["connector"] for t in tools):
+            sp = specs.get(c)
+            learned = []
+            try:
+                learned = self.store.good_queries(c)
+            except Exception:
+                pass
+            entries[c] = {"dialect": getattr(sp, "dialect", ""), "notes": getattr(sp, "query_notes", ""),
+                          "examples": getattr(sp, "query_examples", []), "learned": learned}
+        return guides(entries, self.limits.compact)
+
     def _investigate(self, hid, hypothesis, plan, tools, context, actor) -> dict:
+        if self.limits.compact and plan and plan.get("steps"):
+            wanted = {s["role"] for s in plan["steps"]} | {"intel", "analysis"}
+            narrowed = [t for t in tools if set(t["role"].split(",")) & wanted]
+            tools = narrowed or tools
         index = {(t["connector"], t["name"]): t for t in tools}
         base = [{"role": "system", "content": ANALYST_SYSTEM},
-                {"role": "user", "content": analyst_user(hypothesis, plan, tools, context, self.limits.max_steps)}]
+                {"role": "user", "content": analyst_user(hypothesis, plan, tools, context, self.limits.max_steps,
+                                                         self._guides(tools), self.limits.compact)}]
         transcript: list[dict] = []
         done_calls: dict[str, str] = {}
         known_fields: dict[str, set[str]] = {}   # connector -> field names it reported

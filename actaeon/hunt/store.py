@@ -109,3 +109,24 @@ class HuntStore:
         with self._lock, self._conn() as c:
             c.execute("UPDATE hunts SET status='stopped', error='interrupted by a restart', finished=? "
                       "WHERE status IN ('queued','running')", (_now(),))
+
+    def good_queries(self, connector: str, limit: int = 5) -> list[str]:
+        """Recent queries on a connector that returned data (used as examples for later hunts)."""
+        from .signals import hits
+        out: list[str] = []
+        with self._conn() as c:
+            rows = c.execute("SELECT arguments, result FROM steps WHERE connector=? AND kind='call' AND ok=1 "
+                             "AND tool NOT IN ('get_fields','list_indices') ORDER BY id DESC LIMIT 300", (connector,))
+            for r in rows:
+                try:
+                    args = json.loads(r["arguments"] or "{}")
+                except ValueError:
+                    continue
+                q = args.get("query") if isinstance(args, dict) else None
+                if not isinstance(q, str) or not q.strip() or q in out:
+                    continue
+                if (hits(r["result"] or "") or 0) > 0:
+                    out.append(q[:500])
+                if len(out) >= limit:
+                    break
+        return out

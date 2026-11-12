@@ -71,6 +71,13 @@ other layers.
 `hunt.max_result_bytes` in `config.yaml`. After 3 replies that are not valid
 actions the hunt ends as `inconclusive`.
 
+## Prompt size
+
+`hunt.prompt_mode: compact` is for cheaper or smaller models. The analyst sees
+only the tools for the roles in the plan (plus intel and analysis), short tool
+descriptions, the two newest results in full (others trimmed to 600
+characters), and shorter query guides. `full` is the default.
+
 ## Known limitations
 
 - Small local models plan weaker hunts and can pick the wrong ATT&CK IDs.
