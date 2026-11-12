@@ -375,6 +375,10 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_dec.add_argument("text", nargs="?")
     p_ap = sub.add_parser("autopilot", help="propose hypotheses from intel, coverage and follow-ups, and hunt them")
     p_ap.add_argument("--dry-run", action="store_true", help="only propose; start nothing")
+    p_b = sub.add_parser("bench", help="run the scored hunting benchmark (demo cases or your own YAML)")
+    p_b.add_argument("--cases", default="", help="YAML file of cases (default: built-in demo cases)")
+    p_b.add_argument("--only", action="append", default=[], help="case id to run (repeatable)")
+    p_b.add_argument("--max-steps", type=int, default=None)
     p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
     p_sw.add_argument("--full", action="store_true", help="sweep every indicator, not only changed ones")
     p_note = sub.add_parser("note", help="add an analyst note to hunt memory")
@@ -420,6 +424,20 @@ def cli_main(argv: list[str] | None = None) -> None:
                 h = store_for(cfg).get(s["hunt_id"], with_steps=False)
                 print(f"  {h['id']} {h['status']} {h['outcome']}: {h['hypothesis'][:90]}")
         print(_json.dumps({"room_today": r["room_today"], "dry_run": r["dry_run"]}))
+        return
+    if a.cmd == "bench":
+        from .bench import load_cases
+        from .bench import run as run_bench
+        from .config import get_config
+        cases = [c for c in load_cases(a.cases or None) if not a.only or c["id"] in a.only]
+
+        def show(r):
+            mark = "PASS" if r["correct"] else "FAIL"
+            print(f"{mark} {r['id']:18} got {r['outcome']!s:22} want {'/'.join(r['expect']):30} "
+                  f"conf {r['confidence']} calls {r['calls']} blocked {r['blocked']} {r['seconds']}s", flush=True)
+        out = run_bench(get_config(), cases, max_steps=a.max_steps, on_case=show)
+        print(out["score"])
+        print(f"saved {out['file']}")
         return
     if a.cmd == "mcp":
         from .mcp_server import run as run_mcp
