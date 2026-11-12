@@ -55,8 +55,13 @@ def _build(name: str, cfg: dict[str, Any], secret: str) -> LLMProvider:
 
 
 _QUOTA = _re.compile(r"(?i)quota|rate.?limit|resource_exhausted|\b429\b|too many requests|resets in|overloaded|\b529\b")
+# Used-up quota (daily/monthly limits, "resets in Xh"): skip the model for an hour.
+_HARD_QUOTA = _re.compile(r"(?i)resets in|quota (exceeded|exhausted)|exceeded your (current )?quota|per.?day|daily|billing")
 _COOLDOWN: dict[tuple[str, str], float] = {}   # (provider, model) -> skip until (monotonic)
 COOLDOWN_SEC = 3600
+SHORT_COOLDOWN_SEC = 60
+# Short rate limits (shared-capacity 429s, overload) usually clear in seconds: retry with backoff first.
+RETRY_DELAYS = (3.0, 8.0, 20.0)
 
 
 @dataclass
@@ -74,13 +79,19 @@ class BoundModel:
                 errors.append(f"{b.provider.name}/{b.model}: skipped (quota cooldown)")
                 continue
             res = b.provider.chat(messages, model=b.model, **kw)
+            for delay in RETRY_DELAYS:
+                if not res.error or not _QUOTA.search(res.error) or _HARD_QUOTA.search(res.error):
+                    break
+                _time.sleep(delay)
+                res = b.provider.chat(messages, model=b.model, **kw)
             if not res.error:
                 if b is not self:
                     res.model = f"{b.model} (fallback)"
                 return res
             errors.append(f"{b.provider.name}/{b.model}: {res.error[:300]}")
             if _QUOTA.search(res.error):
-                _COOLDOWN[key] = _time.monotonic() + COOLDOWN_SEC
+                hard = _HARD_QUOTA.search(res.error)
+                _COOLDOWN[key] = _time.monotonic() + (COOLDOWN_SEC if hard else SHORT_COOLDOWN_SEC)
             elif len(chain) == 1:
                 return res
         return LLMResult(text="", model=self.model, error=" | ".join(errors) or "no model available")

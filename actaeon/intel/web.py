@@ -37,9 +37,11 @@ def _now() -> str:
 
 def parse_feed(xml_text: str) -> list[dict]:
     """Items from an RSS 2.0 or Atom document: [{title, link, summary}]."""
-    if "<!ENTITY" in xml_text[:5000].upper():
-        raise FetchError("feed declares XML entities; refused")
-    root = ET.fromstring(xml_text.encode() if isinstance(xml_text, str) else xml_text)
+    head = xml_text if isinstance(xml_text, str) else xml_text.decode("utf-8", "replace")
+    if "<!ENTITY" in head.upper() or "<!DOCTYPE" in head.upper():
+        raise FetchError("feed declares a DOCTYPE or XML entities; refused")
+    # Safe: DOCTYPE/entities refused above, and ElementTree never fetches external resources.
+    root = ET.fromstring(xml_text.encode() if isinstance(xml_text, str) else xml_text)  # nosec B314
     items = []
     for it in root.iter("item"):
         items.append({"title": (it.findtext("title") or "").strip(), "link": (it.findtext("link") or "").strip(),

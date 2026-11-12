@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- Response and destructive actions (isolate, quarantine, kill, delete, disable, revoke, block, ...)
+  are always blocked, even with `allow_write`.
+- Short rate limits (429 "try again later", overload) are retried with backoff before a model is
+  skipped; only a used-up quota skips it for an hour.
+- CI security job: bandit (medium/high fail) and pip-audit over all extras.
+- Native tool calling falls back to the JSON protocol when a model rejects tools.
 - Foundation: YAML + .env config, model providers with per-role models and a Settings
   model picker, auth modes (none/basic/local/oidc/proxy) with RBAC, SQLite job engine
   with stop/pause, waitress server with a startup security check, CLI, tests and CI.

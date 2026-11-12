@@ -280,6 +280,12 @@ class HuntEngine:
                     continue
             if action["action"] == "verdict" or last:
                 if action["action"] != "verdict":
+                    # One more chance: models often make one more call on the last turn.
+                    transcript.append({"role": "assistant", "content": json.dumps(action)[:3000]})
+                    transcript.append({"role": "user", "content": "No more tool calls are possible. Reply with the "
+                                       "verdict JSON object only, based on the evidence you already have."})
+                    action = first_object(self._ask("analyst", self._messages(base, transcript))) or {}
+                if action.get("action") != "verdict":
                     return self._finalize({"outcome": "inconclusive",
                                            "summary": "Step limit reached without a verdict."}, tools)
                 return self._finalize(action, tools)

@@ -24,6 +24,8 @@ What Actaeon protects, from whom, and how. Pre-alpha: treat this as a working dr
 **T1. A model (wrong or steered by injected text) tries to change or delete data.**
 Tools are read-only by default: deny/allow lists, write-like names and server
 hints are blocked, and write tools need `allow_write` plus an exact allow entry.
+Response and destructive actions (isolate, quarantine, kill, delete, disable,
+revoke, block, ...) are blocked whatever the configuration says.
 The query validator refuses write, delete, index-change and code-execution
 patterns. Bridges expose only read endpoints. Every call is audited.
 *Residual:* the heuristics can miss a write path on a source with unusual tool

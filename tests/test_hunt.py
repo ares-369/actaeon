@@ -188,6 +188,14 @@ def test_step_limit(tmp_path):
     assert "limit" in h["verdict"]["summary"].lower()
 
 
+def test_last_turn_gets_one_more_chance_for_a_verdict(tmp_path):
+    hub = Hub()
+    acts = [call(index="e", time_from=f"now-{i}h") for i in range(1, 5)]
+    acts.append({"action": "verdict", "outcome": "no_results", "summary": "nothing found"})
+    h, _ = run(tmp_path, acts, hub=hub, limits=HuntLimits(max_steps=3))
+    assert len(hub.calls) == 3 and "limit" not in h["verdict"]["summary"].lower()
+
+
 def test_parse_failures_end_hunt(tmp_path):
     h, _ = run(tmp_path, ["hello", "still not json", "nope"])
     assert h["verdict"]["outcome"] == "inconclusive" and "valid actions" in h["verdict"]["summary"]

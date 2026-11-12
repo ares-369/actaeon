@@ -100,7 +100,8 @@ class Library:
         if allowed:
             cols = ", ".join(f"{k}=?" for k in allowed)
             with self._lock, self._conn() as c:
-                c.execute(f"UPDATE saved SET {cols} WHERE id=?", (*allowed.values(), int(sid)))
+                # Column names and placeholders are fixed in code; values are always bound.
+                c.execute(f"UPDATE saved SET {cols} WHERE id=?", (*allowed.values(), int(sid)))  # nosec B608
         return self.get(sid)
 
     def delete(self, sid: int) -> bool:

@@ -59,3 +59,24 @@ def test_openai_native_off_and_bad_arguments():
     fn = NS(name="call_tool", arguments="{not json")
     comp = _Completions(False, NS(content=None, tool_calls=[NS(function=fn)]))
     assert json.loads(_provider(comp).chat(_msgs()).text)["action"] == "call"
+
+
+def test_gemini_retries_without_tools_on_malformed_call(monkeypatch):
+    pytest = __import__("pytest")
+    types = pytest.importorskip("google.genai").types
+    from actaeon.providers.gemini import GeminiProvider
+    calls = []
+
+    class Models:
+        def generate_content(self, model, contents, config):
+            calls.append(config)
+            if config.tools:
+                return NS(function_calls=None, text=None, prompt_feedback=None,
+                          candidates=[NS(finish_reason="FinishReason.MALFORMED_FUNCTION_CALL")])
+            return NS(function_calls=None, text='{"action": "verdict"}', prompt_feedback=None, candidates=[])
+    p = GeminiProvider({"default_model": "m", "auth": "api_key"}, "k")
+    p._client = NS(models=Models())
+    r = p.chat(_msgs())
+    assert r.error is None and r.text == '{"action": "verdict"}'
+    assert len(calls) == 2 and calls[0].tools and not calls[1].tools
+    assert isinstance(calls[1], types.GenerateContentConfig)

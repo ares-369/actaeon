@@ -63,8 +63,15 @@ For each tool, in order:
 
 1. A match in `tools.deny` (glob) blocks it.
 2. If `tools.allow` is set, anything not matching it is blocked.
-3. A tool that looks like it changes state is blocked unless the connector has
-   `allow_write: true` **and** the tool is named exactly in `tools.allow`.
+3. A response or destructive action is always blocked. This covers names with
+   words such as isolate, contain, quarantine, kill, terminate, delete, remove,
+   purge, wipe, disable, revoke, ban, block, uninstall, shutdown, reboot, lock,
+   reset or remediate, and any tool the server marks `destructiveHint`. No
+   setting enables these, not even `allow_write`: Actaeon hunts, it does not
+   respond.
+4. A tool that looks like it changes state is blocked unless the connector has
+   `allow_write: true` **and** the tool is named exactly in `tools.allow`. This
+   is how an output can create a case or ticket.
 
 "Looks like it changes state" means the server marks it `destructiveHint` or
 `readOnlyHint: false`, or its name contains a word such as delete, update,

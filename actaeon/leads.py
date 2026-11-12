@@ -130,7 +130,8 @@ class LeadStore:
                 raise LookupError("no such lead")
             fields["updated"] = _now()
             cols = ", ".join(f"{k}=?" for k in fields)
-            c.execute(f"UPDATE leads SET {cols} WHERE id=?", (*fields.values(), int(cid)))
+            # Column names and placeholders are fixed in code; values are always bound.
+            c.execute(f"UPDATE leads SET {cols} WHERE id=?", (*fields.values(), int(cid)))  # nosec B608
             self._event(c, int(cid), user, action, detail)
         return self.get(cid) or {}
 

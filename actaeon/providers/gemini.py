@@ -115,6 +115,11 @@ class GeminiProvider(LLMProvider):
                 cfg_kw.pop("tools", None)  # model without function calling: fall back to the JSON protocol
                 resp = self._client.models.generate_content(
                     model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
+            if native and "MALFORMED_FUNCTION_CALL" in str(_finish_reason(resp)):
+                # The model produced a broken tool call: ask again without tools (JSON action protocol).
+                cfg_kw.pop("tools", None)
+                resp = self._client.models.generate_content(
+                    model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
             fcs = getattr(resp, "function_calls", None) or []
             if fcs:
                 fc = fcs[0]
@@ -139,3 +144,8 @@ class GeminiProvider(LLMProvider):
 
     def health(self) -> bool:
         return bool(self.secret) or bool(self.project)
+
+
+def _finish_reason(resp) -> object:
+    cands = getattr(resp, "candidates", None) or []
+    return getattr(cands[0], "finish_reason", None) if cands else None

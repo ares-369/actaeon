@@ -119,7 +119,8 @@ class JobManager:
     def _set(self, job_id: str, **fields):
         cols = ", ".join(f"{k}=?" for k in fields)
         with self._conn() as conn:
-            conn.execute(f"UPDATE jobs SET {cols} WHERE id=?", (*fields.values(), job_id))
+            # Column names and placeholders are fixed in code; values are always bound.
+            conn.execute(f"UPDATE jobs SET {cols} WHERE id=?", (*fields.values(), job_id))  # nosec B608
             conn.commit()
 
     def submit(

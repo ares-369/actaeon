@@ -59,7 +59,8 @@ class HuntStore:
                 fields[k] = json.dumps(fields[k])
         cols = ", ".join(f"{k}=?" for k in fields)
         with self._lock, self._conn() as c:
-            c.execute(f"UPDATE hunts SET {cols} WHERE id=?", (*fields.values(), hid))
+            # Column names and placeholders are fixed in code; values are always bound.
+            c.execute(f"UPDATE hunts SET {cols} WHERE id=?", (*fields.values(), hid))  # nosec B608
 
     def add_step(self, hid: str, n: int, kind: str, *, connector: str = "", tool: str = "", role: str = "",
                  arguments: Any = None, why: str = "", ok: bool | None = None, ms: int = 0, result: str = "",

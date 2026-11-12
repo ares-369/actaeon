@@ -48,7 +48,7 @@ def startup_security_check(cfg) -> tuple[list[str], list[str]]:
             "auth.mode=proxy needs auth.proxy_trusted_ips (the IP of your reverse proxy). "
             "Without it, any client could send the identity header and log in as anyone.")
 
-    if mode in ("basic", "local") and not (cfg.auth.password or cfg.auth.password_hash):
+    if mode in ("basic", "local") and not (cfg.auth.password or cfg.auth.password_hash or cfg.auth.users):
         warnings.append(
             f"auth.mode={mode} but no password/password_hash is set; login will reject "
             "everyone until you set ACTAEON_AUTH_PASSWORD or auth.password_hash.")

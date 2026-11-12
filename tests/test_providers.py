@@ -37,8 +37,10 @@ def test_provider_cfg_expands_env(home, monkeypatch):
     assert config.load_config().provider_cfg("ollama")["base_url"] == "http://model-host:11434"
 
 
-def test_fallback_on_quota(home):
+def test_fallback_on_quota(home, monkeypatch):
+    import actaeon.providers as prov
     from actaeon.providers import _COOLDOWN, BoundModel
+    monkeypatch.setattr(prov, "RETRY_DELAYS", (0, 0))
     from actaeon.providers.base import LLMProvider, LLMResult
 
     class P(LLMProvider):
@@ -60,6 +62,41 @@ def test_fallback_on_quota(home):
     assert BoundModel(c, "x").chat([]).error == "connection refused"
     both = BoundModel(P("d", "quota"), "1", [BoundModel(P("e", "quota"), "2")]).chat([])
     assert "d/1" in both.error and "e/2" in both.error
+    _COOLDOWN.clear()
+
+
+def test_transient_rate_limit_retried(home, monkeypatch):
+    import actaeon.providers as prov
+    from actaeon.providers import _COOLDOWN, BoundModel
+    from actaeon.providers.base import LLMProvider, LLMResult
+    monkeypatch.setattr(prov, "RETRY_DELAYS", (0, 0, 0))
+
+    class Flaky(LLMProvider):
+        name = "flaky"
+
+        def __init__(self, fails):
+            super().__init__({})
+            self.fails, self.calls = fails, 0
+
+        def chat(self, messages, *, model=None, **kw):
+            self.calls += 1
+            if self.calls <= self.fails:
+                return LLMResult(text="", model=model, error="429 RESOURCE_EXHAUSTED. Resource exhausted. Try again later.")
+            return LLMResult(text="ok", model=model)
+    _COOLDOWN.clear()
+    f = Flaky(2)
+    assert BoundModel(f, "m").chat([]).text == "ok" and f.calls == 3
+    # Still failing after every retry: a short cooldown only, not an hour.
+    g = Flaky(99)
+    assert BoundModel(g, "m").chat([]).error and g.calls == 4
+    assert _COOLDOWN[("flaky", "m")] - prov._time.monotonic() <= prov.SHORT_COOLDOWN_SEC
+    # A used-up quota is not retried.
+    _COOLDOWN.clear()
+    h = Flaky(99)
+    h.chat = lambda messages, model=None, **kw: (setattr(h, "calls", h.calls + 1)
+                                                 or LLMResult(text="", error="429 quota reached. Resets in 54h"))
+    BoundModel(h, "m").chat([])
+    assert h.calls == 1
     _COOLDOWN.clear()
 
 

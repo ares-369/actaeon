@@ -234,7 +234,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     @app.route("/api/users")
     def users():
         c = get_config()
-        names = sorted(set(c.auth.users) | ({c.auth.username} if c.auth.mode in ("basic", "local") else set()))
+        single = c.auth.mode in ("basic", "local") and bool(c.auth.password or c.auth.password_hash)
+        names = sorted(set(c.auth.users) | ({c.auth.username} if single else set()))
         return jsonify([{"user": n, "name": (c.auth.users.get(n) or {}).get("name", ""),
                          "role": (c.auth.users.get(n) or {}).get("role", c.auth.default_role)} for n in names])
 

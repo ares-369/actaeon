@@ -163,7 +163,8 @@ class IntelStore:
                 parents = [".".join(parts[i:]) for i in range(1, len(parts) - 1)]
                 if parents:
                     marks = ",".join("?" * len(parents))  # placeholders only; values are bound
-                    q = f"SELECT * FROM indicators WHERE type='domain' AND value IN ({marks})"
+                    # Column names and placeholders are fixed in code; values are always bound.
+                    q = f"SELECT * FROM indicators WHERE type='domain' AND value IN ({marks})"  # nosec B608
                     related = [self._row(r) for r in c.execute(q, parents)]
             if kind in ("domain", "ipv4"):
                 related += [self._row(r) for r in c.execute(

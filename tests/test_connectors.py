@@ -76,10 +76,25 @@ def test_policy_order():
     s = stdio_spec(tools={"allow": ["search_*"]})
     assert decide(s, {"name": "get_host"})[0] is False
     assert decide(s, {"name": "search_events"})[0] is True
-    s = stdio_spec(allow_write=True, tools={"allow": ["isolate_*", "search_events"]})
-    assert decide(s, {"name": "isolate_host"})[0] is False   # glob is not enough for writes
-    s = stdio_spec(allow_write=True, tools={"allow": ["isolate_host"]})
-    assert decide(s, {"name": "isolate_host"})[0] is True
+    s = stdio_spec(allow_write=True, tools={"allow": ["create_*", "search_events"]})
+    assert decide(s, {"name": "create_case"})[0] is False    # glob is not enough for writes
+    s = stdio_spec(allow_write=True, tools={"allow": ["create_case"]})
+    assert decide(s, {"name": "create_case"})[0] is True
+
+
+def test_never_class_cannot_be_enabled():
+    for name in ("isolate_host", "quarantineFile", "kill-process", "delete_user", "disable_account",
+                 "revoke_sessions", "block_ip", "wipe_device", "reset_password"):
+        s = stdio_spec(allow_write=True, tools={"allow": [name]})
+        ok, why = decide(s, {"name": name})
+        assert ok is False and "never" in why, name
+    # A server-declared destructive tool is never allowed either, even with an innocent name.
+    s = stdio_spec(allow_write=True, tools={"allow": ["create_case"]})
+    assert decide(s, {"name": "create_case", "annotations": {"destructiveHint": True}})[0] is False
+    # Read tools that only mention these words in a noun form stay allowed.
+    s = stdio_spec()
+    for name in ("search_blocked_connections", "list_quarantined_files", "decode_command", "get_deleted_items"):
+        assert decide(s, {"name": name})[0] is True, name
 
 
 def test_pacer_spacing():
