@@ -42,7 +42,7 @@ def test_assistant_runs_and_stores_a_hunt(home):
     def answer(messages):
         last = messages[-1]["content"]
         hid = json.loads(last.split("\n", 2)[2].rsplit("\n", 1)[0])["id"]
-        return {"action": "answer", "text": f"Found activity, see hunt {hid}.", "hunts": [hid, "nope"], "cases": [999]}
+        return {"action": "answer", "text": f"Found activity, see hunt {hid}.", "hunts": [hid, "nope"], "leads": [999]}
     llm = Script([{"action": "search_records", "query": "203.0.113.66"},
                   {"action": "start_hunt", "hypothesis": "A host contacted 203.0.113.66 in the last 7 days."},
                   answer],
@@ -51,10 +51,10 @@ def test_assistant_runs_and_stores_a_hunt(home):
                   {"action": "verdict", "outcome": "threat", "confidence": 70, "summary": "contacted",
                    "findings": [{"claim": "WS07 contacted it", "evidence": ["E2", "E3"]}]}])
     r = ask(cfg, "did anything talk to 203.0.113.66?", user="alice", llm=llm, hub=Hub(results={"search": '{"total": 3}'}))
-    assert len(r["hunts"]) == 1 and r["cases"]                     # made-up ids dropped, real case linked
+    assert len(r["hunts"]) == 1 and r["leads"]                     # made-up ids dropped, real lead linked
     h = service.store_for(cfg).get(r["hunts"][0])
     assert h["origin"] == "ask:alice" and h["actor"] == "alice" and h["status"] == "done"
-    assert service.cases_for(cfg).get(r["cases"][0])["hunt_id"] == h["id"]
+    assert service.leads_for(cfg).get(r["leads"][0])["hunt_id"] == h["id"]
     conv = Conversations(service.store_for(cfg).path).get(r["conversation_id"])
     assert [m["role"] for m in conv["messages"]] == ["user", "assistant"]
     assert conv["messages"][1]["links"]["hunts"] == r["hunts"]

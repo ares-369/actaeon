@@ -4,7 +4,7 @@ import zipfile
 import pytest
 
 from actaeon import config
-from actaeon.reporting import case_doc, hunt_doc, render, summary_doc
+from actaeon.reporting import hunt_doc, lead_doc, render, summary_doc
 from tests.test_timeline import step
 
 HUNT = {"id": "h1", "hypothesis": "Office started <script>alert(1)</script> encoded PowerShell", "created": "2026-11-10",
@@ -22,8 +22,8 @@ CASE = {"id": 7, "title": "threat: x", "severity": "high", "status": "closed", "
 
 
 @pytest.mark.parametrize("fmt", ["pdf", "docx", "md"])
-def test_render_hunt_and_case(fmt):
-    for doc in (hunt_doc(HUNT, case=CASE), case_doc(CASE, HUNT)):
+def test_render_hunt_and_lead(fmt):
+    for doc in (hunt_doc(HUNT, lead=CASE), lead_doc(CASE, HUNT)):
         data = render(doc, fmt)
         assert len(data) > 500
         if fmt == "pdf":
@@ -53,14 +53,14 @@ def test_summary_and_api(home):
                                                               "attack": ["T1059.001"]})
     service.send_outputs(cfg, st.get(hid))
     md = render(summary_doc(cfg, 7), "md").decode()
-    assert "Threat verdicts | 1" in md and "T1059.001" in md and "Cases open now | 1" in md
+    assert "Threat verdicts | 1" in md and "T1059.001" in md and "Leads open now | 1" in md
     c = create_app(cfg).test_client()
     r = c.get("/api/reports/summary.pdf?days=30")
     assert r.status_code == 200 and r.data[:5] == b"%PDF-" and "attachment" in r.headers["Content-Disposition"]
     assert c.get(f"/api/hunts/{hid}/report.docx").status_code == 200
-    cid = service.cases_for(cfg).list()[0]["id"]
-    assert c.get(f"/api/cases/{cid}/report.pdf").data[:5] == b"%PDF-"
-    assert c.get("/api/cases/999/report.pdf").status_code == 404
+    cid = service.leads_for(cfg).list()[0]["id"]
+    assert c.get(f"/api/leads/{cid}/report.pdf").data[:5] == b"%PDF-"
+    assert c.get("/api/leads/999/report.pdf").status_code == 404
     assert c.get(f"/api/hunts/{hid}/report.exe").status_code == 400
 
 

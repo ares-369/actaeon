@@ -4,7 +4,7 @@ import pytest
 
 from actaeon import config
 from actaeon.auth import hash_password
-from actaeon.cases import CaseStore, severity_of
+from actaeon.leads import LeadStore, severity_of
 from actaeon.web import create_app
 from tests.conftest import write_cfg
 
@@ -13,8 +13,8 @@ THREAT = {"id": "h1", "hypothesis": "Office started encoded PowerShell", "outcom
                                         "verification": {"result": "confirmed"}}}
 
 
-def test_case_lifecycle(tmp_path):
-    st = CaseStore(tmp_path / "h.sqlite")
+def test_lead_lifecycle(tmp_path):
+    st = LeadStore(tmp_path / "h.sqlite")
     c = st.open_for(THREAT)
     assert c["status"] == "new" and c["severity"] == "critical"
     assert st.open_for({"id": "h2", "outcome": "no_results", "verdict": {}}) is None
@@ -55,7 +55,7 @@ def hdr(u, p):
     return {"Authorization": "Basic " + base64.b64encode(f"{u}:{p}".encode()).decode()}
 
 
-def test_cases_api_with_named_users(home, monkeypatch):
+def test_leads_api_with_named_users(home, monkeypatch):
     c = auth_home(home, monkeypatch)
     from actaeon.hunt import service
     hstore = service.store_for(config.get_config())
@@ -66,22 +66,22 @@ def test_cases_api_with_named_users(home, monkeypatch):
     a, v = hdr("alice", "alice-password-1"), hdr("victor", "victor-password-1")
     assert c.get("/api/me", headers=a).json == {"user": "alice", "role": "operator", "auth_mode": "basic",
                                                  "name": "Alice A"}
-    cases = c.get("/api/cases", headers=v).json                      # viewers see everything
-    cid = cases[0]["id"]
-    assert c.post(f"/api/cases/{cid}/acknowledge", headers=v).status_code == 403   # but cannot change it
-    r = c.post(f"/api/cases/{cid}/acknowledge", headers=a).json
+    leads = c.get("/api/leads", headers=v).json                      # viewers see everything
+    cid = leads[0]["id"]
+    assert c.post(f"/api/leads/{cid}/acknowledge", headers=v).status_code == 403   # but cannot change it
+    r = c.post(f"/api/leads/{cid}/acknowledge", headers=a).json
     assert r["assignee"] == "alice"
-    assert c.get("/api/cases?assignee=me", headers=a).json[0]["id"] == cid
-    assert c.post(f"/api/cases/{cid}/close", headers=a, json={"resolution": "benign_true_positive"}).status_code == 400
-    r = c.post(f"/api/cases/{cid}/close", headers=a, json={"resolution": "benign_true_positive",
+    assert c.get("/api/leads?assignee=me", headers=a).json[0]["id"] == cid
+    assert c.post(f"/api/leads/{cid}/close", headers=a, json={"resolution": "benign_true_positive"}).status_code == 400
+    r = c.post(f"/api/leads/{cid}/close", headers=a, json={"resolution": "benign_true_positive",
                                                           "comment": "admin testing"}).json
     assert r["status"] == "closed" and r["closed_by"] == "alice"
     notes = service.memory_for(config.get_config()).notes()
-    assert notes and "Known benign (case" in notes[0]["text"] and notes[0]["author"] == "alice"
-    detail = c.get(f"/api/cases/{cid}", headers=v).json
+    assert notes and "Known benign (lead" in notes[0]["text"] and notes[0]["author"] == "alice"
+    detail = c.get(f"/api/leads/{cid}", headers=v).json
     assert detail["hunt"]["id"] == hid and detail["events"][-1]["user"] == "alice"
-    assert c.get("/api/cases/stats", headers=v).json["by_resolution"] == {"benign_true_positive": 1}
-    assert c.post(f"/api/cases/{cid}/explode", headers=a).status_code == 400
+    assert c.get("/api/leads/stats", headers=v).json["by_resolution"] == {"benign_true_positive": 1}
+    assert c.post(f"/api/leads/{cid}/explode", headers=a).status_code == 400
     assert {u["user"] for u in c.get("/api/users", headers=v).json} >= {"alice", "victor"}
 
 

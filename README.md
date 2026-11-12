@@ -28,9 +28,9 @@ actaeon demo --offline --run                  # sample data, scripted run (not A
 ACTAEON_HOME=~/.actaeon-demo actaeon serve    # http://127.0.0.1:8611
 ```
 
-| Cases | Hunt Verdict & Evidence |
+| Leads | Hunt Verdict & Evidence |
 |---|---|
-| ![Cases](docs/screenshots/cases.png) | ![Hunt](docs/screenshots/hunt.png) |
+| ![Leads](docs/screenshots/leads.png) | ![Hunt](docs/screenshots/hunt.png) |
 | **ATT&CK Coverage** | **Reports** |
 | ![Coverage](docs/screenshots/coverage.png) | ![Reports](docs/screenshots/reports.png) |
 

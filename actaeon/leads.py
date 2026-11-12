@@ -39,21 +39,21 @@ def severity_of(h: dict) -> str:
     return "low" if not v.get("needs_review") else "medium"
 
 
-class CaseStore:
+class LeadStore:
     def __init__(self, path):
         self.path = path
         with self._conn() as c:
             c.executescript("""
-            CREATE TABLE IF NOT EXISTS cases (
+            CREATE TABLE IF NOT EXISTS leads (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, hunt_id TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
                 severity TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'new', assignee TEXT NOT NULL DEFAULT '',
                 resolution TEXT NOT NULL DEFAULT '', created TEXT NOT NULL, updated TEXT NOT NULL,
                 acknowledged_at TEXT, closed_at TEXT, closed_by TEXT NOT NULL DEFAULT '', origin TEXT,
                 outcome TEXT, confidence INTEGER);
-            CREATE TABLE IF NOT EXISTS case_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, case_id INTEGER NOT NULL, ts TEXT NOT NULL,
+            CREATE TABLE IF NOT EXISTS lead_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, lead_id INTEGER NOT NULL, ts TEXT NOT NULL,
                 user TEXT NOT NULL, action TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
-            CREATE INDEX IF NOT EXISTS case_status ON cases(status);
+            CREATE INDEX IF NOT EXISTS lead_status ON leads(status);
             """)
 
     def _conn(self):
@@ -62,25 +62,25 @@ class CaseStore:
         return c
 
     def _event(self, c, cid: int, user: str, action: str, detail: str = "") -> None:
-        c.execute("INSERT INTO case_events (case_id, ts, user, action, detail) VALUES (?,?,?,?,?)",
+        c.execute("INSERT INTO lead_events (lead_id, ts, user, action, detail) VALUES (?,?,?,?,?)",
                   (cid, _now(), user or "system", action, detail[:4000]))
 
     def open_for(self, h: dict) -> dict | None:
-        """Open (or refresh) a case for a finished hunt that is a threat or needs review."""
+        """Open (or refresh) a lead for a finished hunt that is a threat or needs review."""
         v = h.get("verdict") or {}
         if not (h.get("outcome") == "threat" or v.get("needs_review")):
             return None
         sev = severity_of(h)
         title = f"{(h.get('outcome') or 'review').replace('_', ' ')}: {h.get('hypothesis', '')[:160]}"
         with _lock, self._conn() as c:
-            row = c.execute("SELECT * FROM cases WHERE hunt_id=?", (h["id"],)).fetchone()
+            row = c.execute("SELECT * FROM leads WHERE hunt_id=?", (h["id"],)).fetchone()
             if row:
-                c.execute("UPDATE cases SET severity=?, outcome=?, confidence=?, updated=? WHERE id=?",
+                c.execute("UPDATE leads SET severity=?, outcome=?, confidence=?, updated=? WHERE id=?",
                           (sev, h.get("outcome"), int(v.get("confidence") or 0), _now(), row["id"]))
                 self._event(c, row["id"], "system", "updated", f"verdict now {h.get('outcome')}")
                 cid = row["id"]
             else:
-                cur = c.execute("INSERT INTO cases (hunt_id, title, severity, created, updated, origin, outcome, "
+                cur = c.execute("INSERT INTO leads (hunt_id, title, severity, created, updated, origin, outcome, "
                                 "confidence) VALUES (?,?,?,?,?,?,?,?)",
                                 (h["id"], title, sev, _now(), _now(), h.get("origin", ""), h.get("outcome"),
                                  int(v.get("confidence") or 0)))
@@ -90,22 +90,22 @@ class CaseStore:
 
     def get(self, cid: int) -> dict | None:
         with self._conn() as c:
-            r = c.execute("SELECT * FROM cases WHERE id=?", (int(cid),)).fetchone()
+            r = c.execute("SELECT * FROM leads WHERE id=?", (int(cid),)).fetchone()
             if not r:
                 return None
             d = dict(r)
-            d["events"] = [dict(e) for e in c.execute("SELECT * FROM case_events WHERE case_id=? ORDER BY id",
+            d["events"] = [dict(e) for e in c.execute("SELECT * FROM lead_events WHERE lead_id=? ORDER BY id",
                                                       (int(cid),))]
         return d
 
     def by_hunt(self, hid: str) -> dict | None:
         with self._conn() as c:
-            r = c.execute("SELECT id FROM cases WHERE hunt_id=?", (hid,)).fetchone()
+            r = c.execute("SELECT id FROM leads WHERE hunt_id=?", (hid,)).fetchone()
         return self.get(r["id"]) if r else None
 
     def list(self, *, status: str | None = None, assignee: str | None = None, severity: str | None = None,
              open_only: bool = False, limit: int = 500) -> list[dict]:
-        q, a = ["SELECT * FROM cases WHERE 1=1"], []
+        q, a = ["SELECT * FROM leads WHERE 1=1"], []
         if status:
             q.append("AND status=?")
             a.append(status)
@@ -126,22 +126,22 @@ class CaseStore:
     # ---- actions ----
     def _change(self, cid: int, user: str, action: str, detail: str, **fields) -> dict:
         with _lock, self._conn() as c:
-            if not c.execute("SELECT 1 FROM cases WHERE id=?", (int(cid),)).fetchone():
-                raise LookupError("no such case")
+            if not c.execute("SELECT 1 FROM leads WHERE id=?", (int(cid),)).fetchone():
+                raise LookupError("no such lead")
             fields["updated"] = _now()
             cols = ", ".join(f"{k}=?" for k in fields)
-            c.execute(f"UPDATE cases SET {cols} WHERE id=?", (*fields.values(), int(cid)))
+            c.execute(f"UPDATE leads SET {cols} WHERE id=?", (*fields.values(), int(cid)))
             self._event(c, int(cid), user, action, detail)
         return self.get(cid) or {}
 
     def acknowledge(self, cid: int, user: str) -> dict:
-        case = self.get(cid)
-        if not case:
-            raise LookupError("no such case")
-        if case["status"] == "closed":
-            raise ValueError("case is closed; reopen it first")
+        lead = self.get(cid)
+        if not lead:
+            raise LookupError("no such lead")
+        if lead["status"] == "closed":
+            raise ValueError("lead is closed; reopen it first")
         return self._change(cid, user, "acknowledged", f"assigned to {user}", status="acknowledged", assignee=user,
-                            acknowledged_at=case["acknowledged_at"] or _now())
+                            acknowledged_at=lead["acknowledged_at"] or _now())
 
     def assign(self, cid: int, user: str, to: str) -> dict:
         if not to:
@@ -158,12 +158,12 @@ class CaseStore:
             raise ValueError(f"resolution must be one of {RESOLUTIONS}")
         if not (comment or "").strip():
             raise ValueError("a closing comment is required")
-        case = self.get(cid)
-        if not case:
-            raise LookupError("no such case")
+        lead = self.get(cid)
+        if not lead:
+            raise LookupError("no such lead")
         return self._change(cid, user, "closed", f"{resolution}: {comment.strip()}", status="closed",
                             resolution=resolution, closed_at=_now(), closed_by=user,
-                            assignee=case["assignee"] or user)
+                            assignee=lead["assignee"] or user)
 
     def reopen(self, cid: int, user: str, comment: str = "") -> dict:
         return self._change(cid, user, "reopened", comment.strip(), status="acknowledged", resolution="",
@@ -177,7 +177,7 @@ class CaseStore:
     def stats(self) -> dict:
         with self._conn() as c:
             rows = [dict(r) for r in c.execute("SELECT status, severity, resolution, created, acknowledged_at, "
-                                                "closed_at FROM cases")]
+                                                "closed_at FROM leads")]
 
         def mins(a, b):
             try:

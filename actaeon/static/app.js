@@ -56,10 +56,10 @@ const when = (s) => (s || "").replace("T", " ").slice(0, 16);
 let poll = null;
 function route() {
   clearInterval(poll); poll = null;
-  const [tab, arg] = (location.hash.slice(1) || "cases").split("/");
-  const navTab = { hunt: "hunts", case: "cases" }[tab] || tab;
+  const [tab, arg] = (location.hash.slice(1) || "leads").split("/");
+  const navTab = { hunt: "hunts", case: "leads" }[tab] || tab;
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === navTab));
-  const pages = { cases, case: () => caseDetail(arg), hunts, hunt: () => huntDetail(arg), ask, library, intel,
+  const pages = { leads, case: () => leadDetail(arg), hunts, hunt: () => huntDetail(arg), ask, library, intel,
     coverage, reports, connectors, settings };
   const token = ++navToken;
   const view = h("div");
@@ -81,13 +81,13 @@ const ago = (t) => { if (!t) return "-"; const m = (Date.now() - new Date(t).get
   return m < 60 ? `${Math.max(1, Math.round(m))} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
 const mins = (m) => (m === null || m === undefined ? "-" : m < 120 ? `${m} min` : `${(m / 60).toFixed(1)} h`);
 
-// ---------------- Cases ----------------
-async function cases() {
-  const st = await api("/api/cases/stats");
-  const kpi = (n, l, cls, hash) => h("a", { class: "kpi-card " + (cls || ""), href: hash || "#cases" }, h("b", {}, n), h("span", {}, l));
-  const mine = await api("/api/cases?assignee=me&open=1");
+// ---------------- Leads ----------------
+async function leads() {
+  const st = await api("/api/leads/stats");
+  const kpi = (n, l, cls, hash) => h("a", { class: "kpi-card " + (cls || ""), href: hash || "#leads" }, h("b", {}, n), h("span", {}, l));
+  const mine = await api("/api/leads?assignee=me&open=1");
   main.append(h("div", { class: "kpi-row" },
-    kpi(st.open, "open cases"), kpi(st.new, "new, not acknowledged", st.new ? "warn-card" : ""),
+    kpi(st.open, "open leads"), kpi(st.new, "new, not acknowledged", st.new ? "warn-card" : ""),
     kpi(mine.length, "assigned to me"), kpi((st.by_severity_open.critical || 0) + (st.by_severity_open.high || 0), "critical + high open", "bad-card"),
     kpi(mins(st.mean_minutes_to_acknowledge), "avg time to acknowledge"), kpi(mins(st.mean_minutes_to_close), "avg time to close")));
   const filt = { view: "open", severity: "" };
@@ -105,35 +105,35 @@ async function cases() {
     if (filt.view === "closed") q.set("status", "closed");
     if (filt.view === "mine") { q.set("assignee", "me"); q.set("open", "1"); }
     if (filt.severity) q.set("severity", filt.severity);
-    const rows = await api("/api/cases?" + q.toString());
-    fill(body, rows.length ? rows.map((c) => h("tr", { class: "click", onclick: () => (location.hash = "#case/" + c.id) },
+    const rows = await api("/api/leads?" + q.toString());
+    fill(body, rows.length ? rows.map((c) => h("tr", { class: "click", onclick: () => (location.hash = "#lead/" + c.id) },
       h("td", {}, `#${c.id}`), h("td", {}, SEV(c.severity)), h("td", {}, STATUS(c.status)),
       h("td", {}, c.title, h("div", { class: "muted small" }, c.origin || "")),
       h("td", {}, c.assignee || h("span", { class: "muted" }, "unassigned")),
       h("td", { class: "small" }, c.status === "closed" ? (RES[c.resolution] || c.resolution) : ago(c.created)))) :
-      h("tr", {}, h("td", { colspan: 6, class: "muted" }, "No cases here.")));
+      h("tr", {}, h("td", { colspan: 6, class: "muted" }, "No leads here.")));
   };
-  main.append(section("Cases", "briefcase-outline",
-    h("p", { class: "muted small" }, "A case opens for every threat or result that needs review. Everyone can see every case."),
+  main.append(section("Leads", "briefcase-outline",
+    h("p", { class: "muted small" }, "A lead opens for every threat or result that needs review. Everyone can see every lead."),
     bar, h("table", {}, h("thead", {}, h("tr", {}, ["Case", "Severity", "Status", "Title", "Assignee", "Opened / resolution"].map((x) => h("th", {}, x)))), body)));
   await load();
   poll = setInterval(load, 15000);
 }
 
-async function caseDetail(id) {
-  const c = await api("/api/cases/" + encodeURIComponent(id));
+async function leadDetail(id) {
+  const c = await api("/api/leads/" + encodeURIComponent(id));
   const hu = c.hunt || {};
   const v = hu.verdict || {};
   const can = ME.role !== "viewer";
-  const act = async (action, body) => { await post(`/api/cases/${c.id}/${action}`, body); toast("Saved."); route(); };
+  const act = async (action, body) => { await post(`/api/leads/${c.id}/${action}`, body); toast("Saved."); route(); };
   const comment = h("textarea", { placeholder: "Add a comment (visible to everyone)" });
   const resSel = h("select", {}, Object.entries(RES).map(([k, l]) => h("option", { value: k }, l)));
   const closeNote = h("input", { class: "grow", placeholder: "Why? (required)" });
   const assignSel = h("select", {}, h("option", { value: "" }, "Assign to..."));
   const open = c.status !== "closed";
   if (can && open) api("/api/users").then((us) => us.forEach((u) => assignSel.append(h("option", { value: u.user }, u.name ? `${u.name} (${u.user})` : u.user)))).catch(() => {});
-  main.append(section(`Case #${c.id}`, "briefcase-outline",
-    h("h3", { class: "case-title" }, c.title),
+  main.append(section(`Lead #${c.id}`, "briefcase-outline",
+    h("h3", { class: "lead-title" }, c.title),
     h("div", { class: "row" }, SEV(c.severity), STATUS(c.status),
       h("span", { class: "small" }, "Assignee: ", h("b", {}, c.assignee || "unassigned")),
       c.resolution ? h("span", { class: "badge st-closed" }, RES[c.resolution] || c.resolution) : null,
@@ -146,10 +146,10 @@ async function caseDetail(id) {
       h("p", { class: "muted small" }, "Read-only: your role is viewer."),
     can && open ? h("div", { class: "row close-row" }, h("span", { class: "small" }, "Close as"), resSel, closeNote,
       h("button", { class: "danger", onclick: () => closeNote.value.trim() ? act("close", { resolution: resSel.value, comment: closeNote.value }) : toast("Write why you are closing it.") },
-        icon("check-decagram-outline"), "Close case")) : null,
+        icon("check-decagram-outline"), "Close lead")) : null,
     h("div", { class: "row" },
-      h("a", { href: `/api/cases/${c.id}/report.pdf` }, h("button", { class: "ghost" }, icon("file-pdf-box"), "PDF")),
-      h("a", { href: `/api/cases/${c.id}/report.docx` }, h("button", { class: "ghost" }, icon("file-word-box"), "Word")),
+      h("a", { href: `/api/leads/${c.id}/report.pdf` }, h("button", { class: "ghost" }, icon("file-pdf-box"), "PDF")),
+      h("a", { href: `/api/leads/${c.id}/report.docx` }, h("button", { class: "ghost" }, icon("file-word-box"), "Word")),
       h("a", { href: "#hunt/" + hu.id }, h("button", { class: "ghost" }, icon("target"), "Open the hunt")))));
   main.append(section("What was found", "magnify-scan",
     h("p", {}, hu.hypothesis || ""), h("div", { class: "row" }, badge(hu.outcome), h("span", {}, `confidence ${v.confidence ?? "-"}`),
@@ -170,7 +170,7 @@ async function ask() {
   let current = null;
   const list = h("div", { class: "conv-list" });
   const log = h("div", { class: "conv-log" });
-  const input = h("textarea", { placeholder: "Ask anything: \"has anything talked to 203.0.113.66 this week?\", \"hunt for password spraying in the last 3 days\", \"what are my open cases?\"" });
+  const input = h("textarea", { placeholder: "Ask anything: \"has anything talked to 203.0.113.66 this week?\", \"hunt for password spraying in the last 3 days\", \"what are my open leads?\"" });
   const drawList = (cs) => fill(list, h("button", { class: "ghost", onclick: () => { current = null; fill(log, h("p", { class: "muted" }, "New conversation.")); } }, icon("plus"), "New"),
     cs.map((c) => h("a", { href: "#", class: "conv" + (current === c.id ? " on" : ""), onclick: (e) => { e.preventDefault(); show(c.id); } },
       h("div", {}, c.title.slice(0, 60)), h("div", { class: "muted small" }, `${c.user}  ${ago(c.updated)}`))));
@@ -182,7 +182,7 @@ async function ask() {
       h("div", { class: "pre" }, m.content),
       (m.links.hunts || []).length || (m.links.cases || []).length ? h("div", { class: "row small" },
         (m.links.hunts || []).map((x) => h("a", { href: "#hunt/" + x }, h("span", { class: "badge" }, icon("target"), " hunt " + x))),
-        (m.links.cases || []).map((x) => h("a", { href: "#case/" + x }, h("span", { class: "badge" }, icon("briefcase-outline"), " case #" + x)))) : null)));
+        (m.links.cases || []).map((x) => h("a", { href: "#lead/" + x }, h("span", { class: "badge" }, icon("briefcase-outline"), " lead #" + x)))) : null)));
     drawList(await api("/api/assistant"));
     return d.messages.length;
   };
@@ -210,16 +210,16 @@ async function reports() {
   const days = h("select", {}, [7, 30, 90, 365].map((d) => h("option", { value: d }, `Last ${d} days`)));
   const dl = (fmt) => () => { location.href = `/api/reports/summary.${fmt}?days=${days.value}`; };
   main.append(section("Summary report", "file-chart-outline",
-    h("p", { class: "muted small" }, "Hunts by outcome and origin, cases opened and closed, resolutions, time to acknowledge and close, open cases, threats found and top ATT&CK techniques."),
+    h("p", { class: "muted small" }, "Hunts by outcome and origin, cases opened and closed, resolutions, time to acknowledge and close, open leads, threats found and top ATT&CK techniques."),
     h("div", { class: "row" }, days,
       h("button", { onclick: dl("pdf") }, icon("file-pdf-box"), "PDF"),
       h("button", { class: "ghost", onclick: dl("docx") }, icon("file-word-box"), "Word"),
       h("button", { class: "ghost", onclick: dl("md") }, icon("language-markdown-outline"), "Markdown"))));
-  const cs = await api("/api/cases");
+  const cs = await api("/api/leads");
   main.append(section("Case reports", "briefcase-outline",
     h("table", {}, h("tbody", {}, cs.slice(0, 50).map((c) => h("tr", {},
-      h("td", {}, h("a", { href: "#case/" + c.id }, `#${c.id}`)), h("td", {}, SEV(c.severity)), h("td", {}, STATUS(c.status)), h("td", {}, c.title),
-      h("td", {}, h("a", { href: `/api/cases/${c.id}/report.pdf` }, "PDF"), " ", h("a", { href: `/api/cases/${c.id}/report.docx` }, "Word"))))))));
+      h("td", {}, h("a", { href: "#lead/" + c.id }, `#${c.id}`)), h("td", {}, SEV(c.severity)), h("td", {}, STATUS(c.status)), h("td", {}, c.title),
+      h("td", {}, h("a", { href: `/api/leads/${c.id}/report.pdf` }, "PDF"), " ", h("a", { href: `/api/leads/${c.id}/report.docx` }, "Word"))))))));
 }
 
 // ---------------- Hunts ----------------
@@ -292,7 +292,7 @@ function renderHunt(hu) {
   const act = (a) => async () => { await post(`/api/hunts/${hu.id}/${a}`); toast(a + " requested"); };
   const head = section(hu.hypothesis, "target",
     h("div", { class: "row" }, badge(hu.status), badge(hu.outcome),
-      hu.case ? h("a", { href: "#case/" + hu.case.id }, h("span", { class: "badge" }, icon("briefcase-outline"), ` case #${hu.case.id} ${hu.case.status}${hu.case.assignee ? " - " + hu.case.assignee : ""}`)) : null,
+      hu.case ? h("a", { href: "#lead/" + hu.lead.id }, h("span", { class: "badge" }, icon("briefcase-outline"), ` lead #${hu.lead.id} ${hu.lead.status}${hu.lead.assignee ? " - " + hu.lead.assignee : ""}`)) : null,
       h("span", { class: "muted small" },
       `started ${when(hu.created)}  origin ${hu.origin}  ${hu.actor ? "by " + hu.actor : ""}`)),
     h("div", { class: "row" },

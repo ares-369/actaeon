@@ -348,36 +348,36 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     def memory_related():
         return jsonify(hs.memory_for(get_config()).related(request.args.get("q", "")))
 
-    def cases_store():
-        return hs.cases_for(get_config())
+    def leads_store():
+        return hs.leads_for(get_config())
 
-    @app.route("/api/cases")
-    def cases_list():
+    @app.route("/api/leads")
+    def leads_list():
         a = request.args
         assignee = a.get("assignee")
         if assignee == "me":
             assignee = _actor()
-        rows = cases_store().list(status=a.get("status") or None, severity=a.get("severity") or None,
+        rows = leads_store().list(status=a.get("status") or None, severity=a.get("severity") or None,
                                   assignee=assignee if assignee is not None else None,
                                   open_only=a.get("open") == "1")
         return jsonify(rows)
 
-    @app.route("/api/cases/stats")
-    def cases_stats():
-        return jsonify(cases_store().stats())
+    @app.route("/api/leads/stats")
+    def leads_stats():
+        return jsonify(leads_store().stats())
 
-    @app.route("/api/cases/<int:cid>")
-    def case_get(cid):
-        c = cases_store().get(cid)
+    @app.route("/api/leads/<int:cid>")
+    def lead_get(cid):
+        c = leads_store().get(cid)
         if not c:
             return jsonify({"error": "not found"}), 404
         h = store_for(get_config()).get(c["hunt_id"], with_steps=False) or {}
         c["hunt"] = {k: h.get(k) for k in ("id", "hypothesis", "status", "outcome", "origin", "created", "verdict")}
         return jsonify(c)
 
-    @app.route("/api/cases/<int:cid>/<action>", methods=["POST"])
-    def case_action(cid, action):
-        st = cases_store()
+    @app.route("/api/leads/<int:cid>/<action>", methods=["POST"])
+    def lead_action(cid, action):
+        st = leads_store()
         b = request.get_json(silent=True) or {}
         who = _actor() or "unknown"
         try:
@@ -393,8 +393,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
                     h = store_for(get_config()).get(out["hunt_id"], with_steps=False) or {}
                     label = "False positive" if out["resolution"] == "false_positive" else "Known benign"
                     hs.memory_for(get_config()).add_note(
-                        f"{label} (case {cid}): {h.get('hypothesis', '')[:200]}. Analyst: {b.get('comment', '')}"[:2000],
-                        author=who, tags=[out["resolution"], f"case:{cid}"])
+                        f"{label} (lead {cid}): {h.get('hypothesis', '')[:200]}. Analyst: {b.get('comment', '')}"[:2000],
+                        author=who, tags=[out["resolution"], f"lead:{cid}"])
             elif action == "reopen":
                 out = st.reopen(cid, who, str(b.get("comment", ""))[:4000])
             elif action == "comment":
@@ -451,16 +451,16 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         if fmt == "md" and request.args.get("style") != "summary":
             return app.response_class(markdown(h, narrative=h.get("narrative") or ""), mimetype="text/markdown",
                                       headers={"Content-Disposition": f'attachment; filename="hunt-{hid}.md"'})
-        return _send_report(hunt_doc(h, case=cases_store().by_hunt(hid)), fmt, f"hunt-{hid}")
+        return _send_report(hunt_doc(h, lead=leads_store().by_hunt(hid)), fmt, f"hunt-{hid}")
 
-    @app.route("/api/cases/<int:cid>/report.<fmt>")
-    def case_report(cid, fmt):
-        from .reporting import case_doc
-        c = cases_store().get(cid)
+    @app.route("/api/leads/<int:cid>/report.<fmt>")
+    def lead_report(cid, fmt):
+        from .reporting import lead_doc
+        c = leads_store().get(cid)
         h = store_for(get_config()).get(c["hunt_id"]) if c else None
         if not c or not h:
             return jsonify({"error": "not found"}), 404
-        return _send_report(case_doc(c, h), fmt, f"case-{cid}")
+        return _send_report(lead_doc(c, h), fmt, f"lead-{cid}")
 
     @app.route("/api/reports/summary.<fmt>")
     def summary_report(fmt):
@@ -602,8 +602,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         h = store_for(get_config()).get(hid)
         if not h:
             return jsonify({"error": "not found"}), 404
-        case = cases_store().by_hunt(hid)
-        h["case"] = {k: case[k] for k in ("id", "status", "severity", "assignee", "resolution")} if case else None
+        lead = leads_store().by_hunt(hid)
+        h["lead"] = {k: lead[k] for k in ("id", "status", "severity", "assignee", "resolution")} if lead else None
         return jsonify(h)
 
     @app.route("/api/hunts/<hid>/<action>", methods=["POST"])

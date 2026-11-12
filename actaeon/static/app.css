@@ -65,7 +65,7 @@ header{gap:1.2rem}.me{margin-left:auto;display:flex;align-items:center;gap:.35re
 .st-new{color:var(--amber);border-color:var(--amber)}.st-acknowledged{color:var(--accent);border-color:var(--accent)}
 .st-in_progress{color:#c792ea;border-color:#c792ea}.st-closed{color:var(--green);border-color:var(--green)}
 button.seg{border-radius:16px;padding:.3rem .8rem}button.seg.on{border-color:var(--accent);color:var(--accent)}
-.case-title{margin:.2rem 0 .6rem;font-size:1.05rem}.actions{margin-top:.6rem}.close-row{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem}
+.lead-title{margin:.2rem 0 .6rem;font-size:1.05rem}.actions{margin-top:.6rem}.close-row{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem}
 .events{list-style:none;padding:0;margin:0}.events li{border-left:2px solid var(--line);padding:.35rem .7rem;margin:.2rem 0}
 .ask-grid{display:grid;grid-template-columns:240px 1fr;gap:1rem}.conv-list{display:flex;flex-direction:column;gap:.3rem;max-height:70vh;overflow:auto}
 .conv{display:block;padding:.45rem .6rem;border:1px solid var(--line);border-radius:8px;color:var(--fg)}.conv.on,.conv:hover{border-color:var(--accent)}

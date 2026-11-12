@@ -68,7 +68,7 @@ class DemoProvider(LLMProvider):
                 "action": "answer", "hunts": [hid.group(1)] if hid else [],
                 "text": f"[scripted demo] Yes. I ran hunt {hid.group(1) if hid else '?'}: Word on sample host "
                         f"DEMO-WS07 started encoded PowerShell that downloads from {C2_DOMAIN}, and the host kept "
-                        f"contacting {C2_IP}. A case was opened for it."}), model=self.default_model)
+                        f"contacting {C2_IP}. A lead was opened for it."}), model=self.default_model)
         if "second, sceptical analyst" in system:
             new = _EID.findall("\n".join(m["content"] for m in messages[2:] if m["role"] == "user"))
             if not new:

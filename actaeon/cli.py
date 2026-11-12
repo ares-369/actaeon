@@ -471,8 +471,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_u.add_argument("--role", default="operator", choices=["viewer", "operator", "admin"])
     p_u.add_argument("--full-name", default="")
     p_u.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
-    p_r = sub.add_parser("report", help="write a report: report hunt ID | case ID | summary [--days N]")
-    p_r.add_argument("kind", choices=["hunt", "case", "summary"])
+    p_r = sub.add_parser("report", help="write a report: report hunt ID | lead ID | summary [--days N]")
+    p_r.add_argument("kind", choices=["hunt", "lead", "summary"])
     p_r.add_argument("id", nargs="?")
     p_r.add_argument("--format", default="pdf", choices=["pdf", "docx", "md"])
     p_r.add_argument("--days", type=int, default=7)
@@ -575,7 +575,7 @@ def cli_main(argv: list[str] | None = None) -> None:
     if a.cmd == "report":
         from .config import get_config
         from .hunt import service as hs
-        from .reporting import case_doc, hunt_doc, render, summary_doc
+        from .reporting import hunt_doc, lead_doc, render, summary_doc
         cfg = get_config()
         if a.kind == "summary":
             doc, name = summary_doc(cfg, a.days), f"actaeon-summary-{a.days}d"
@@ -583,12 +583,12 @@ def cli_main(argv: list[str] | None = None) -> None:
             h = hs.store_for(cfg).get(str(a.id))
             if not h:
                 sys.exit("no such hunt")
-            doc, name = hunt_doc(h, case=hs.cases_for(cfg).by_hunt(h["id"])), f"hunt-{h['id']}"
+            doc, name = hunt_doc(h, lead=hs.leads_for(cfg).by_hunt(h["id"])), f"hunt-{h['id']}"
         else:
-            c = hs.cases_for(cfg).get(int(a.id or 0))
+            c = hs.leads_for(cfg).get(int(a.id or 0))
             if not c:
-                sys.exit("no such case")
-            doc, name = case_doc(c, hs.store_for(cfg).get(c["hunt_id"])), f"case-{c['id']}"
+                sys.exit("no such lead")
+            doc, name = lead_doc(c, hs.store_for(cfg).get(c["hunt_id"])), f"lead-{c['id']}"
         out = Path(a.output or f"{name}.{a.format}")
         out.write_bytes(render(doc, a.format))
         print(f"wrote {out}")

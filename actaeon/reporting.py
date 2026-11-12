@@ -1,9 +1,9 @@
 """Reports as PDF, Word (docx) or Markdown, from the stored records (no model).
 
   hunt report     verdict, verification, findings, timeline, queries and evidence
-  case report     case status, resolution and history, then the hunt report
-  summary report  a period (default 7 days): hunts by outcome, cases opened/closed, resolutions,
-                  time to acknowledge and close, open cases, threats and top techniques
+  lead report     case status, resolution and history, then the hunt report
+  summary report  a period (default 7 days): hunts by outcome, leads opened/closed, resolutions,
+                  time to acknowledge and close, open leads, threats and top techniques
 
 Evidence comes from data sources and is untrusted: it is always written as plain
 text (escaped for PDF), never interpreted. PDF and Word need the ``reports`` extra.
@@ -65,26 +65,26 @@ def _hunt_blocks(h: dict, *, evidence_chars: int = 1500) -> list[tuple]:
     return b
 
 
-def hunt_doc(h: dict, *, case: dict | None = None) -> dict:
+def hunt_doc(h: dict, *, lead: dict | None = None) -> dict:
     meta = [("Hunt id", h["id"]), ("Hypothesis", h["hypothesis"]), ("Started", h.get("created", "")),
             ("Finished", h.get("finished") or "-"), ("Status", h["status"]), ("Origin", h.get("origin", "")),
             ("Started by", h.get("actor") or "-")]
     if h.get("models"):
         meta.append(("Models", ", ".join(f"{r}: {m['provider']}/{m['model']}" for r, m in h["models"].items())))
-    if case:
-        meta.append(("Case", f"#{case['id']} {case['status']} {case.get('resolution') or ''}".strip()))
+    if lead:
+        meta.append(("Lead", f"#{lead['id']} {lead['status']} {lead.get('resolution') or ''}".strip()))
     return {"title": f"Hunt report: {h['hypothesis'][:120]}", "blocks": [("kv", meta), *_hunt_blocks(h)]}
 
 
-def case_doc(case: dict, h: dict) -> dict:
-    meta = [("Case", f"#{case['id']}"), ("Title", case["title"]), ("Severity", case["severity"]),
-            ("Status", case["status"]), ("Assignee", case["assignee"] or "-"),
-            ("Resolution", (case.get("resolution") or "-").replace("_", " ")), ("Opened", case["created"]),
-            ("Acknowledged", case.get("acknowledged_at") or "-"), ("Closed", case.get("closed_at") or "-"),
-            ("Closed by", case.get("closed_by") or "-")]
+def lead_doc(lead: dict, h: dict) -> dict:
+    meta = [("Lead", f"#{lead['id']}"), ("Title", lead["title"]), ("Severity", lead["severity"]),
+            ("Status", lead["status"]), ("Assignee", lead["assignee"] or "-"),
+            ("Resolution", (lead.get("resolution") or "-").replace("_", " ")), ("Opened", lead["created"]),
+            ("Acknowledged", lead.get("acknowledged_at") or "-"), ("Closed", lead.get("closed_at") or "-"),
+            ("Closed by", lead.get("closed_by") or "-")]
     hist = ("table", ["Time (UTC)", "User", "Action", "Detail"],
-            [[e["ts"][:19].replace("T", " "), e["user"], e["action"], e["detail"][:300]] for e in case["events"]])
-    return {"title": f"Case #{case['id']}: {case['title'][:120]}",
+            [[e["ts"][:19].replace("T", " "), e["user"], e["action"], e["detail"][:300]] for e in lead["events"]])
+    return {"title": f"Lead #{lead['id']}: {lead['title'][:120]}",
             "blocks": [("kv", meta), ("h2", "History"), hist, ("h1", "Hunt"), ("kv", [("Hunt id", h["id"]), ("Hypothesis", h["hypothesis"])]), *_hunt_blocks(h)]}
 
 
@@ -92,7 +92,7 @@ def summary_doc(cfg, days: int = 7) -> dict:
     from .hunt import service as hs
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     hunts = [h for h in hs.store_for(cfg).list(limit=5000) if h["created"] >= since]
-    cs = hs.cases_for(cfg)
+    cs = hs.leads_for(cfg)
     allcases = cs.list(limit=100000)
     opened = [c for c in allcases if c["created"] >= since]
     closed = [c for c in allcases if (c.get("closed_at") or "") >= since]
@@ -101,7 +101,7 @@ def summary_doc(cfg, days: int = 7) -> dict:
     origins = Counter(h["origin"].split(":")[0] for h in hunts)
     techs = Counter(t for h in hunts for t in ((h.get("verdict") or {}).get("attack") or []))
     threats = [h for h in hunts if h.get("outcome") == "threat"]
-    open_cases = [c for c in allcases if c["status"] != "closed"]
+    open_leads = [c for c in allcases if c["status"] != "closed"]
     blocks: list[tuple] = [
         ("kv", [("Period", f"last {days} days (since {since[:10]})"), ("Generated", datetime.now(timezone.utc)
                                                                          .isoformat(timespec="minutes")),
@@ -109,25 +109,25 @@ def summary_doc(cfg, days: int = 7) -> dict:
         ("h2", "At a glance"),
         ("table", ["Measure", "Value"], [
             ["Hunts run", len(hunts)], ["Threat verdicts", outcomes.get("threat", 0)],
-            ["Cases opened", len(opened)], ["Cases closed", len(closed)], ["Cases open now", len(open_cases)],
+            ["Leads opened", len(opened)], ["Leads closed", len(closed)], ["Leads open now", len(open_leads)],
             ["Mean time to acknowledge (min, all time)", st["mean_minutes_to_acknowledge"] or "-"],
             ["Mean time to close (min, all time)", st["mean_minutes_to_close"] or "-"]]),
         ("h2", "Hunts by outcome"),
         ("table", ["Outcome", "Hunts"], [[OUTCOME_TEXT.get(k, k), n] for k, n in outcomes.most_common()]),
         ("h2", "Hunts by origin"), ("table", ["Origin", "Hunts"], [[k, n] for k, n in origins.most_common()]),
-        ("h2", "Cases closed by resolution"),
-        ("table", ["Resolution", "Cases"], [[k.replace("_", " "), n] for k, n in
+        ("h2", "Leads closed by resolution"),
+        ("table", ["Resolution", "Leads"], [[k.replace("_", " "), n] for k, n in
                                             Counter(c["resolution"] for c in closed).most_common()]),
-        ("h2", "Open cases"),
-        ("table", ["Case", "Severity", "Status", "Assignee", "Title"],
-         [[f"#{c['id']}", c["severity"], c["status"], c["assignee"] or "-", c["title"][:120]] for c in open_cases[:50]]),
+        ("h2", "Open leads"),
+        ("table", ["Lead", "Severity", "Status", "Assignee", "Title"],
+         [[f"#{c['id']}", c["severity"], c["status"], c["assignee"] or "-", c["title"][:120]] for c in open_leads[:50]]),
         ("h2", "Threats found"),
         ("table", ["When", "Hunt", "Confidence", "Hypothesis"],
          [[h["created"][:16].replace("T", " "), h["id"], (h.get("verdict") or {}).get("confidence"), h["hypothesis"][:140]]
           for h in threats[:50]]),
         ("h2", "Top ATT&CK techniques in verdicts"),
         ("table", ["Technique", "Name", "Hunts"], [[t, tname(t), n] for t, n in techs.most_common(15)]),
-        ("p", "Figures come from Actaeon's own records. Findings are leads that analysts confirm; see each case."),
+        ("p", "Figures come from Actaeon's own records. Findings are leads that analysts confirm; see each lead."),
     ]
     return {"title": f"Threat hunting summary: last {days} days", "blocks": blocks}
 

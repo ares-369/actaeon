@@ -1,15 +1,15 @@
 """The Ask assistant: questions and hunt requests in plain language.
 
 Actions the model can take (one JSON object per turn):
-  search_records {query}            past hunts, cases and analyst notes that match
+  search_records {query}            past hunts, leads and analyst notes that match
   get_hunt {id}                     one hunt's verdict and findings
-  list_cases {status}               open or recent cases
+  list_leads {status}               open or recent leads
   lookup_intel {value}              is a value in the intel store
   start_hunt {hypothesis, context}  run a full hunt now (stored like any hunt, origin ask:<user>)
   ask_hunt {hunt_id, question}      follow-up on a finished hunt (its chat; new searches become evidence)
-  answer {text, hunts, cases}       final reply
+  answer {text, hunts, leads}       final reply
 Data is only searched inside hunts, so everything the assistant finds is stored
-with its evidence. Conversations are stored with links to the hunts and cases used.
+with its evidence. Conversations are stored with links to the hunts and leads used.
 """
 
 from __future__ import annotations
@@ -31,14 +31,14 @@ SYSTEM = f"""You are Actaeon's assistant for a security team. You answer questio
 Reply with exactly ONE JSON object per turn, one of:
 {{"action": "search_records", "query": "words"}}
 {{"action": "get_hunt", "id": "hunt id"}}
-{{"action": "list_cases", "status": "open|new|closed"}}
+{{"action": "list_leads", "status": "open|new|closed"}}
 {{"action": "lookup_intel", "value": "IP, domain, hash ..."}}
 {{"action": "start_hunt", "hypothesis": "a specific, testable hypothesis with a time window", "context": "why"}}
 {{"action": "ask_hunt", "hunt_id": "id", "question": "follow-up question"}}
-{{"action": "answer", "text": "plain answer", "hunts": ["ids you used"], "cases": [case ids]}}
+{{"action": "answer", "text": "plain answer", "hunts": ["ids you used"], "leads": [lead ids]}}
 Rules: to find out whether something happened in the environment, start a hunt (you cannot search data
 directly). Check records first so you do not repeat a recent hunt. Every factual claim must come from a tool
-result; say plainly when you do not know. Name hunt ids and case ids in the answer. At most {MAX_HUNTS} hunts.
+result; say plainly when you do not know. Name hunt ids and lead ids in the answer. At most {MAX_HUNTS} hunts.
 {SYSTEM_RULE}"""
 
 
@@ -101,10 +101,10 @@ def _records(cfg, query: str) -> dict:
                                                                            or "")[:300]})
         if len(hunts) >= 8:
             break
-    cases = [{"id": c["id"], "status": c["status"], "severity": c["severity"], "title": c["title"][:160]}
-             for c in hs.cases_for(cfg).list(limit=200)
+    leads = [{"id": c["id"], "status": c["status"], "severity": c["severity"], "title": c["title"][:160]}
+             for c in hs.leads_for(cfg).list(limit=200)
              if words and any(w in c["title"].lower() for w in words)][:8]
-    return {"hunts": hunts, "cases": cases, "notes": [n["text"][:300] for n in mem["notes"]],
+    return {"hunts": hunts, "leads": leads, "notes": [n["text"][:300] for n in mem["notes"]],
             "related_past_hunts": [{"id": h["hunt_id"], "outcome": h["outcome"], "hypothesis": h["hypothesis"][:160]}
                                    for h in mem["hunts"]]}
 
@@ -136,7 +136,7 @@ def ask(cfg, message: str, *, user: str, conv_id: int | None = None, llm=None, h
             {"role": "user", "content": f"{hs.environment_context(cfg)}\n\nEarlier in this conversation:\n"
                                         f"{history or '(none)'}\n\nNew message from {user}: {message}"}]
     used_hunts: list[str] = []
-    used_cases: list[int] = []
+    used_leads: list[int] = []
     started = 0
     final = None
     for step in range(MAX_ACTIONS + 1):
@@ -160,9 +160,9 @@ def ask(cfg, message: str, *, user: str, conv_id: int | None = None, llm=None, h
                 out = _hunt_brief(h) if h else {"error": "no such hunt"}
                 if h:
                     used_hunts.append(h["id"])
-            elif kind == "list_cases":
+            elif kind == "list_leads":
                 stt = str(act.get("status", "open"))
-                rows = hs.cases_for(cfg).list(open_only=stt == "open", status=stt if stt in ("new", "closed") else None,
+                rows = hs.leads_for(cfg).list(open_only=stt == "open", status=stt if stt in ("new", "closed") else None,
                                               limit=20)
                 out = [{"id": c["id"], "status": c["status"], "severity": c["severity"], "assignee": c["assignee"],
                         "title": c["title"][:160]} for c in rows]
@@ -178,10 +178,10 @@ def ask(cfg, message: str, *, user: str, conv_id: int | None = None, llm=None, h
                                     context=f"Requested in the Ask assistant by {user}: {message[:500]}\n"
                                             f"{str(act.get('context', ''))[:500]}", llm=llm, hub=hub)
                     used_hunts.append(h["id"])
-                    case = hs.cases_for(cfg).by_hunt(h["id"])
-                    if case:
-                        used_cases.append(case["id"])
-                    out = {**_hunt_brief(h), "case": case["id"] if case else None}
+                    lead = hs.leads_for(cfg).by_hunt(h["id"])
+                    if lead:
+                        used_leads.append(lead["id"])
+                    out = {**_hunt_brief(h), "lead": lead["id"] if lead else None}
             elif kind == "ask_hunt":
                 from .hunt.chat import ask as hunt_ask
                 hid = str(act.get("hunt_id", ""))
@@ -196,7 +196,7 @@ def ask(cfg, message: str, *, user: str, conv_id: int | None = None, llm=None, h
     text = str((final or {}).get("text") or "(no answer)")[:8000]
     hunts = list(dict.fromkeys(used_hunts + [h for h in (final or {}).get("hunts") or [] if isinstance(h, str)
                                              and hs.store_for(cfg).get(h, with_steps=False)]))
-    cases = list(dict.fromkeys(used_cases + [c for c in (final or {}).get("cases") or [] if isinstance(c, int)
-                                             and hs.cases_for(cfg).get(c)]))
-    conv.add(conv_id, "assistant", text, "actaeon", {"hunts": hunts, "cases": cases})
-    return {"conversation_id": conv_id, "answer": text, "hunts": hunts, "cases": cases}
+    leads = list(dict.fromkeys(used_leads + [c for c in (final or {}).get("leads") or [] if isinstance(c, int)
+                                             and hs.leads_for(cfg).get(c)]))
+    conv.add(conv_id, "assistant", text, "actaeon", {"hunts": hunts, "leads": leads})
+    return {"conversation_id": conv_id, "answer": text, "hunts": hunts, "leads": leads}

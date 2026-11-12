@@ -110,16 +110,16 @@ def maybe_verify(cfg, h: dict, *, llm=None, hub=None) -> dict:
     return store.get(h["id"]) or h
 
 
-def cases_for(cfg):
-    from ..cases import CaseStore
-    return CaseStore(store_for(cfg).path)
+def leads_for(cfg):
+    from ..leads import LeadStore
+    return LeadStore(store_for(cfg).path)
 
 
 def send_outputs(cfg, h: dict, *, hub=None) -> dict:
-    """Open a case if needed, then run the configured outputs and record each one as a step."""
+    """Open a lead if needed, then run the configured outputs and record each one as a step."""
     if h and h.get("status") in ("done", "stopped"):
         try:
-            cases_for(cfg).open_for(h)
+            leads_for(cfg).open_for(h)
         except Exception:
             pass
     if not h or not (cfg.raw or {}).get("outputs") or h.get("status") not in ("done", "stopped"):
