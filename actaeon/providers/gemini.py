@@ -13,7 +13,7 @@
 
 Other settings: ``location`` (default ``global``), ``base_url`` (send requests through an AI
 gateway or proxy), ``headers`` (extra headers for that gateway, values may use ``${VAR}``),
-``min_output_tokens`` (default 2048, since thinking models spend tokens before answering).
+``min_output_tokens`` (default 8192, since thinking models spend tokens before answering).
 The SDK (``google-genai``) is only imported when this provider is used.
 """
 
@@ -91,7 +91,7 @@ class GeminiProvider(LLMProvider):
                 model=use_model, contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system or None, temperature=temperature,
-                    max_output_tokens=max(int(max_tokens), int(self.cfg.get("min_output_tokens", 2048)))))
+                    max_output_tokens=max(int(max_tokens), int(self.cfg.get("min_output_tokens", 8192)))))
             text = (resp.text or "").strip()
             if not text:
                 return LLMResult(text="", model=use_model, error="Gemini returned no text (output token limit or "

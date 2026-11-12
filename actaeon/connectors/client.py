@@ -160,6 +160,7 @@ class McpClient:
         if self.spec.command == "actaeon":   # built-in bridges: run with this interpreter
             import sys
             argv = [sys.executable, "-m", "actaeon", *argv[1:]]
+            env["PYTHONSAFEPATH"] = "1"      # avoid shadowing by a repo folder named ./actaeon in cwd
         self._proc = subprocess.Popen(argv,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             env=env, text=True, bufsize=1)
