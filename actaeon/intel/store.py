@@ -39,6 +39,11 @@ class IntelStore:
                 UNIQUE(type, value));
             CREATE INDEX IF NOT EXISTS ind_value ON indicators(value);
             CREATE INDEX IF NOT EXISTS ind_updated ON indicators(updated);
+            CREATE TABLE IF NOT EXISTS actors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, slug TEXT NOT NULL UNIQUE,
+                aliases TEXT NOT NULL DEFAULT '[]', description TEXT NOT NULL DEFAULT '',
+                techniques TEXT NOT NULL DEFAULT '[]', tools TEXT NOT NULL DEFAULT '[]',
+                source TEXT NOT NULL DEFAULT 'manual', added TEXT NOT NULL, updated TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS advisories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, text TEXT NOT NULL,
                 source TEXT NOT NULL DEFAULT 'manual', url TEXT NOT NULL DEFAULT '', added TEXT NOT NULL,
@@ -215,3 +220,61 @@ class IntelStore:
                 "SELECT type, COUNT(*) n FROM indicators WHERE active=1 GROUP BY type")}
             adv = c.execute("SELECT COUNT(*) FROM advisories").fetchone()[0]
         return {"indicators": sum(by_type.values()), "by_type": by_type, "advisories": adv}
+
+    # ---- threat actors ----
+    @staticmethod
+    def slug(name: str) -> str:
+        import re
+        return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60] or "actor"
+
+    def save_actor(self, name: str, *, aliases: list[str] | None = None, description: str = "",
+                   techniques: list[str] | None = None, tools: list[str] | None = None, indicators_text: str = "",
+                   confidence: int = 70, source: str = "manual") -> dict:
+        """Create or update an actor profile. Indicators found in ``indicators_text`` are added and tagged actor:<slug>."""
+        import re
+        name = (name or "").strip()[:120]
+        if not name:
+            raise ValueError("actor name is required")
+        sl = self.slug(name)
+        found = extract(f"{description}\n{indicators_text}")
+        techs = sorted({t.strip().upper() for t in (techniques or []) if re.fullmatch(r"(?i)T\d{4}(\.\d{3})?", t.strip())}
+                       | set(found.get("technique", [])))
+        clean = lambda xs: sorted({str(x).strip()[:80] for x in xs or [] if str(x).strip()})  # noqa: E731
+        now = _now()
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT * FROM actors WHERE slug=?", (sl,)).fetchone()
+            if row:
+                techs = sorted(set(json.loads(row["techniques"])) | set(techs))
+                c.execute("UPDATE actors SET aliases=?, description=?, techniques=?, tools=?, updated=? WHERE id=?",
+                          (json.dumps(sorted(set(json.loads(row["aliases"])) | set(clean(aliases)))),
+                           description[:5000] or row["description"], json.dumps(techs),
+                           json.dumps(sorted(set(json.loads(row["tools"])) | set(clean(tools)))), now, row["id"]))
+            else:
+                c.execute("INSERT INTO actors (name, slug, aliases, description, techniques, tools, source, added, "
+                          "updated) VALUES (?,?,?,?,?,?,?,?,?)",
+                          (name, sl, json.dumps(clean(aliases)), description[:5000], json.dumps(techs),
+                           json.dumps(clean(tools)), source, now, now))
+        added = [self.add(v, k, source=source, confidence=confidence, tags=[f"actor:{sl}"])
+                 for k, vals in found.items() if k != "technique" for v in vals]
+        return {**(self.actor(sl) or {}), "indicators_added": len(added)}
+
+    def actor(self, key: str) -> dict | None:
+        sl = self.slug(str(key))
+        with self._conn() as c:
+            r = c.execute("SELECT * FROM actors WHERE slug=? OR name=?", (sl, key)).fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        for k in ("aliases", "techniques", "tools"):
+            d[k] = json.loads(d[k])
+        d["indicators"] = self.list(tag=f"actor:{d['slug']}", limit=2000)
+        return d
+
+    def actors(self) -> list[dict]:
+        with self._conn() as c:
+            rows = [dict(r) for r in c.execute("SELECT * FROM actors ORDER BY name")]
+        for d in rows:
+            for k in ("aliases", "techniques", "tools"):
+                d[k] = json.loads(d[k])
+            d["indicator_count"] = len(self.list(tag=f"actor:{d['slug']}", limit=5000))
+        return rows

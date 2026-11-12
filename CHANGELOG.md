@@ -65,3 +65,5 @@
   prompt mode for cheaper models.
 - Docker image (non-root, read-only root, health check) and compose file; CI builds and checks it.
 - Ask Actaeon: chat on a finished hunt with read-only follow-up calls added as evidence.
+- Threat-actor profiles and campaigns: actor indicators swept with triage, plus a model hunt for its
+  techniques and tools; actors feed autopilot.

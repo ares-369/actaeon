@@ -165,6 +165,35 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
                                        source=str(b.get("source") or "advisory")[:60], url=str(b.get("url", ""))[:500],
                                        **_intel_kw(b)))
 
+    @app.route("/api/intel/actors", methods=["GET", "POST"])
+    def intel_actors():
+        st = intel_store()
+        if request.method == "GET":
+            return jsonify(st.actors())
+        b = request.get_json(silent=True) or {}
+
+        def lst(v):
+            return [x.strip() for x in (v.split(",") if isinstance(v, str) else v or []) if str(x).strip()]
+        try:
+            return jsonify(st.save_actor(str(b.get("name", "")), aliases=lst(b.get("aliases")),
+                                         description=str(b.get("description", ""))[:5000],
+                                         techniques=lst(b.get("techniques")), tools=lst(b.get("tools")),
+                                         indicators_text=str(b.get("indicators", ""))[:200_000]))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.route("/api/intel/actors/<key>")
+    def intel_actor(key):
+        a = intel_store().actor(key)
+        return (jsonify(a), 200) if a else (jsonify({"error": "not found"}), 404)
+
+    @app.route("/api/intel/actors/<key>/hunt", methods=["POST"])
+    def intel_actor_hunt(key):
+        try:
+            return jsonify(hs.actor_campaign(get_config(), jobs, key, actor=_actor())), 202
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 404
+
     @app.route("/api/intel/advisories/<int:aid>")
     def intel_advisory(aid):
         d = intel_store().advisory(aid)

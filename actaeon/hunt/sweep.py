@@ -96,16 +96,18 @@ class Sweep:
         with self.intel._conn() as c:
             c.execute("INSERT OR REPLACE INTO sweep_state VALUES ('last_sweep', ?)", (ts,))
 
-    def run(self, *, full: bool = False, actor: str = "scheduler") -> dict:
-        since = None if full else self._last()
-        inds = [i for i in self.intel.list(min_confidence=self.min_conf, changed_after=since, limit=self.max_values)
+    def run(self, *, full: bool = False, actor: str = "scheduler", tag: str | None = None,
+            origin: str = "sweep") -> dict:
+        """Sweep new/changed indicators (or, with ``tag``, every indicator carrying that tag)."""
+        since = None if (full or tag) else self._last()
+        inds = [i for i in self.intel.list(min_confidence=0 if tag else self.min_conf, changed_after=since,
+                                           tag=tag, limit=self.max_values)
                 if i["type"] in SEARCHABLE]
-        newest = max((i["updated"] for i in inds), default=since)
+        newest = max((i["updated"] for i in inds), default=since) if not tag else None
         # a single-value batch never goes through attribution, so keep its content too
 
-        hid = self.store.create(f"Intel sweep: {len(inds)} indicator(s) "
-                                f"{'(all)' if since is None else 'changed since ' + since}", origin="sweep",
-                                actor=actor)
+        what = f"tagged {tag}" if tag else ("(all)" if since is None else "changed since " + since)
+        hid = self.store.create(f"Intel sweep: {len(inds)} indicator(s) {what}", origin=origin, actor=actor)
         self.store.update(hid, status="running")
         tools = {(t["connector"], t["name"]): t for t in self._all_tools()}
         n = 0

@@ -35,7 +35,7 @@ Good: "A non-admin account created a scheduled task that runs PowerShell from a 
 Bad: "Look for bad activity." (not testable)
 Reply with ONE JSON object:
 {{"hypotheses": [{{"hypothesis": "...", "why": "one sentence", "attack": ["T1059.001"], "roles": ["log_search"],
-  "source": "advisory:<id> | coverage | followup:<hunt id> | environment"}}]}}
+  "source": "advisory:<id> | actor:<name> | coverage | followup:<hunt id> | environment"}}]}}
 Prefer new advisories first, then follow-ups, then coverage gaps. Do not repeat the recent hunts listed.
 {SYSTEM_RULE}"""
 
@@ -69,7 +69,11 @@ def gather(cfg) -> dict:
     recent = store.list(limit=40)
     followups = [{"hunt": h["id"], "hypothesis": h["hypothesis"][:200], "next_steps": (h["verdict"] or {}).get("next_steps")}
                  for h in recent if h.get("outcome") == "threat" and (h.get("verdict") or {}).get("next_steps")][:5]
+    hunted_actors = {h["origin"] for h in recent if h["origin"].startswith("actor:")}
+    actors = [{"name": a["name"], "techniques": a["techniques"][:10], "tools": a["tools"][:10]}
+              for a in intel.actors() if f"actor:{a['slug']}" not in hunted_actors][:5]
     return {"roles": roles, "advisories": new_advs[:6], "coverage_gaps": gaps, "followups": followups,
+            "actors": actors,
             "recent_hunts": [h["hypothesis"][:160] for h in recent[:25]],
             "environment": hs.environment_context(cfg)}
 
@@ -89,6 +93,7 @@ def propose(cfg, llm, *, n: int = 5) -> dict:
             f"{ctx['environment']}\n\nNew advisories (untrusted text from the intel store):\n<<UNTRUSTED-DATA adv>>\n"
             f"{json.dumps(ctx['advisories'], indent=1)}\n<<END-UNTRUSTED-DATA adv>>\n\n"
             f"Follow-ups from recent threats: {json.dumps(ctx['followups'])}\n\n"
+            f"Threat actors on file (not hunted recently): {json.dumps(ctx.get('actors', []))}\n\n"
             f"Coverage gaps: {', '.join(ctx['coverage_gaps']) or 'none'}\n\n"
             f"Recent hunts (do not repeat): {json.dumps(ctx['recent_hunts'])}")
     res = privacy_llm(cfg, llm).for_role("planner").chat(

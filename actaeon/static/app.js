@@ -303,6 +303,23 @@ async function intel() {
     res.textContent = r.found ? JSON.stringify(r.matches, null, 1) : "Not in the intel store." + (r.related.length ? " Related: " + r.related.map((x) => x.value).join(", ") : "");
     res.classList.remove("hidden");
   } }, icon("magnify"))), res));
+  const actors = await api("/api/intel/actors");
+  const an = h("input", { placeholder: "Actor name" }), aa = h("input", { class: "grow", placeholder: "aliases, comma separated" });
+  const at = h("input", { class: "grow", placeholder: "ATT&CK IDs, comma separated" }), atl = h("input", { class: "grow", placeholder: "tools / malware, comma separated" });
+  const ad = h("textarea", { placeholder: "Description and indicators (paste a report; defanged values are fine)" });
+  main.append(section("Threat actors", "account-alert-outline",
+    h("table", {}, h("tbody", {}, actors.length ? actors.map((x) => h("tr", {},
+      h("td", {}, h("b", {}, x.name), h("div", { class: "muted small" }, (x.aliases || []).join(", "))),
+      h("td", { class: "small" }, x.techniques.join(", ") || "-", h("div", { class: "muted" }, x.tools.join(", "))),
+      h("td", {}, `${x.indicator_count} indicators`),
+      h("td", {}, h("button", { onclick: async () => { const r = await api(`/api/intel/actors/${encodeURIComponent(x.slug)}/hunt`); toast("Campaign started" + (r.sweep_job ? " (with an indicator sweep)" : "")); location.hash = "#hunt/" + r.hunt_id; } }, icon("play"), "Hunt this actor")))) :
+      h("tr", {}, h("td", { class: "muted" }, "No actors yet."))))),
+    h("details", {}, h("summary", {}, "Add or update an actor"),
+      h("div", { class: "row" }, an, aa), h("div", { class: "row" }, at, atl), ad,
+      h("div", { class: "row" }, h("button", { onclick: async () => {
+        const r = await api("/api/intel/actors", { name: an.value, aliases: aa.value, techniques: at.value, tools: atl.value, description: ad.value, indicators: ad.value });
+        toast(`Saved ${r.name}: ${r.indicators_added} indicator(s) added`); route();
+      } }, icon("content-save"), "Save actor")))));
   const advs = await api("/api/intel/advisories");
   main.append(section("Advisories", "file-document-outline", h("table", {}, h("tbody", {}, advs.length ? advs.map((a) => h("tr", {},
     h("td", {}, a.title, h("div", { class: "muted small" }, `${when(a.added)}  ${a.indicator_count} indicators  ${a.techniques.join(", ")}`)),

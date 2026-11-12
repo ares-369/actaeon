@@ -213,3 +213,31 @@ def run_autopilot(cfg, jobs, *, llm=None, hub=None, dry_run: bool = False) -> di
     from ..providers import get_llm
     from .autopilot import run
     return {"id": None, **run(cfg, jobs, llm or get_llm(), hub=hub, dry_run=dry_run)}
+
+
+def actor_campaign(cfg, jobs, key: str, *, actor: str = "", llm=None, hub=None) -> dict:
+    """Hunt one threat actor: sweep its indicators (with triage) and run a model hunt for its techniques and tools."""
+    prof = intel_for(cfg).actor(key)
+    if not prof:
+        raise ValueError("no such actor")
+    out = {"actor": prof["name"], "sweep_job": None, "hunt_id": None}
+    settings = (cfg.intel or {}).get("sweep") or {}
+    if prof["indicators"]:
+        def sweep_fn():
+            sw = Sweep(_hub(cfg, hub), intel_for(cfg), store_for(cfg), settings, max_results=cfg.hunt.max_results,
+                       llm=llm)
+            return send_outputs(cfg, sw.run(actor=actor or "campaign", tag=f"actor:{prof['slug']}",
+                                            origin=f"actor:{prof['slug']}"), hub=hub)
+        out["sweep_job"] = start_job(jobs, "actor-sweep", {"actor": prof["slug"]}, sweep_fn)
+    from .attack_names import name as tname
+    techs = ", ".join(f"{t} {tname(t)}".strip() for t in prof["techniques"][:15]) or "none recorded"
+    tools = ", ".join(prof["tools"][:15]) or "none recorded"
+    hyp = (f"Threat actor {prof['name']} (also known as {', '.join(prof['aliases'][:5]) or 'no aliases'}) was active "
+           f"in this environment in the last 14 days: look for its techniques ({techs}) and tools ({tools}).")
+    ctx = ("Actor profile (untrusted, from the intel store):\n<<UNTRUSTED-DATA actor>>\n"
+           f"{prof['description'][:3000]}\n<<END-UNTRUSTED-DATA actor>>\n"
+           f"Known indicators: {', '.join(i['type'] + ' ' + i['value'] for i in prof['indicators'][:40]) or 'none'}\n"
+           "Hunt the behaviour of these techniques and tools, not only the indicators (those are swept separately).")
+    out["hunt_id"] = start_hunt(jobs, cfg, hyp, actor=actor or "campaign", origin=f"actor:{prof['slug']}",
+                                context=ctx, llm=llm, hub=hub)
+    return out

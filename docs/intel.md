@@ -33,6 +33,26 @@ a ledger: `first_seen`, `last_seen` and `seen_count`. Adding a value again
 updates it (higher confidence wins, tags and sources merge) instead of making a
 copy. Deactivated or expired indicators are left out of lists.
 
+## Threat actors
+
+An actor profile holds a name, aliases, a description, ATT&CK techniques, tools
+and malware, and indicators. Indicators come from any text you give it, and are
+tagged `actor:<name>`. Saving the same actor again merges the new details.
+
+**Hunt this actor** (UI, `POST /api/intel/actors/<name>/hunt`, or
+`actaeon hunt --actor NAME`) runs a campaign:
+1. a sweep of every indicator tagged to the actor (any confidence), with
+   executed / blocked / passive triage;
+2. a model hunt for the actor's techniques and tools, with the profile as context.
+
+Autopilot also proposes hunts for actors that have not been hunted recently.
+
+```bash
+actaeon intel actor add "Sample Bear" --alias SB-1 --technique T1566.001 --tool LoaderX --indicators report.txt
+actaeon intel actor list
+actaeon hunt --actor "Sample Bear"
+```
+
 ## CLI
 
 ```bash

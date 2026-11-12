@@ -123,6 +123,24 @@ def cmd_intel(a) -> int:
                 out.append(pull_feed(store, f))
             except Exception as exc:
                 out.append({"source": f.get("name"), "error": str(exc)[:200]})
+    elif a.action == "actor":
+        if a.op == "list":
+            for r in store.actors():
+                print(f"{r['slug']:24} {r['name']:30} techniques {len(r['techniques'])}  tools {len(r['tools'])}  "
+                      f"indicators {r['indicator_count']}")
+            return 0
+        if not a.name:
+            print("a name is required")
+            return 2
+        if a.op == "show":
+            out = store.actor(a.name) or {"error": "no such actor"}
+            if "indicators" in out:
+                out["indicators"] = [f"{i['type']} {i['value']}" for i in out["indicators"]]
+        else:
+            text = Path(a.indicators).read_text(errors="replace") if a.indicators else ""
+            out = store.save_actor(a.name, aliases=a.alias, description=a.description, techniques=a.technique,
+                                   tools=a.tool, indicators_text=text, confidence=kw.get("confidence", 70))
+            out["indicators"] = len(out.get("indicators") or [])
     elif a.action == "web":
         from .hunt.service import run_web_intel
         jobs = None
@@ -158,6 +176,11 @@ def _print_verdict(v: dict) -> None:
         print(f"check: {c}")
 
 
+def store_slug(name: str) -> str:
+    from .intel.store import IntelStore
+    return IntelStore.slug(name)
+
+
 def cmd_hunt(a) -> int:
     import json as _json
 
@@ -187,6 +210,19 @@ def cmd_hunt(a) -> int:
             _print_verdict(h["verdict"])
         return 0
     context, origin = "", "manual"
+    if a.actor:
+        from .hunt.service import actor_campaign
+        from .jobs import JobManager
+        jobs = JobManager(cfg.data_dir / "actaeon.sqlite")
+        r = actor_campaign(cfg, jobs, a.actor, actor="cli")
+        print(f"campaign for {r['actor']}: hunt {r['hunt_id']}" + (" and an indicator sweep" if r["sweep_job"] else ""))
+        jobs.pool.shutdown(wait=True)
+        h = store.get(r["hunt_id"])
+        _print_verdict(h["verdict"])
+        for s in store.list(limit=20, origin=f"actor:{store_slug(a.actor)}"):
+            if s["id"] != h["id"]:
+                print(f"\nsweep {s['id']}: {s['outcome']}: {(s['verdict'] or {}).get('summary', '')}")
+        return 0
     if a.advisory:
         from .hunt.service import advisory_hunt
         a.hypothesis, context = advisory_hunt(cfg, a.advisory)
@@ -376,6 +412,14 @@ def cli_main(argv: list[str] | None = None) -> None:
     x.add_argument("--extract", action="store_true")
     x = isub.add_parser("pull", help="pull configured feeds (intel.feeds)")
     x.add_argument("name", nargs="?")
+    x = isub.add_parser("actor", help="threat actor profiles: actor list | actor add NAME ... | actor show NAME")
+    x.add_argument("op", choices=["list", "add", "show"])
+    x.add_argument("name", nargs="?")
+    x.add_argument("--alias", action="append", default=[])
+    x.add_argument("--technique", action="append", default=[])
+    x.add_argument("--tool", action="append", default=[])
+    x.add_argument("--description", default="")
+    x.add_argument("--indicators", default="", help="file with indicators or report text (defanged values are fine)")
     x = isub.add_parser("web", help="pull web intel sources now (intel.web.sources)")
     x.add_argument("name", nargs="?")
     x.add_argument("--hunt", action="store_true", help="also start advisory hunts for new advisories")
@@ -392,6 +436,7 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_h.add_argument("--list", action="store_true")
     p_h.add_argument("--json", action="store_true")
     p_h.add_argument("--advisory", type=int, metavar="ID", help="hunt the activity in a stored advisory")
+    p_h.add_argument("--actor", metavar="NAME", help="campaign: sweep an actor's indicators and hunt its techniques")
     p_lib = sub.add_parser("library", help="saved hunts: list, save a finished hunt, replay, starters")
     p_lib.add_argument("action", choices=["list", "save", "run", "starters", "delete"])
     p_lib.add_argument("id", nargs="?")
