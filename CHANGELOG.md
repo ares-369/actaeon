@@ -74,3 +74,6 @@
   2 s and wiped open panels; lists printed as text. A test now checks every UI call against the server routes.
 - Second look: threats are re-checked by a sceptical verifier pass that re-queries (confirmed / refuted /
   unconfirmed); shared read-only tool loop for chat and verification. CI container name fix.
+- Cases: auto-opened for threats and review items; acknowledge (assign to me), assign, in progress, close with
+  resolution and comment, reopen, comments, full history, stats (time to acknowledge / close).
+- Named accounts for basic/local login (`actaeon users add`), the signed-in user on every request, login page.

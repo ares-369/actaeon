@@ -61,6 +61,7 @@ class AuthConfig:
     oidc: dict = field(default_factory=dict)
     default_role: str = "admin"               # admin | operator | viewer
     roles: dict[str, str] = field(default_factory=dict)
+    users: dict[str, dict] = field(default_factory=dict)   # username -> {password_hash, role, name}
 
     @property
     def enabled(self) -> bool:
@@ -138,7 +139,11 @@ def load_config() -> Config:
         },
         default_role=str(auth_raw.get("default_role", "admin")).lower(),
         roles={str(k): str(v).lower() for k, v in (auth_raw.get("roles") or {}).items()},
+        users={str(k): dict(v or {}) for k, v in (auth_raw.get("users") or {}).items()},
     )
+    for un, u in auth.users.items():
+        if u.get("password"):
+            raise ValueError(f"auth.users.{un}: store a password_hash (actaeon users add), not a password")
     if auth.mode not in ("none", "basic", "local", "oidc", "proxy"):
         raise ValueError(f"auth.mode {auth.mode!r} is not one of none/basic/local/oidc/proxy")
 
@@ -253,3 +258,31 @@ def apply_llm_update(roles: dict) -> Config:
     path.with_name(path.name + ".bak").write_text(old_text)
     path.write_text(yaml.safe_dump(data, sort_keys=False))
     return get_config(reload=True)
+
+
+def set_user(username: str, *, password_hash: str | None = None, role: str = "operator", name: str = "",
+             remove: bool = False) -> None:
+    """Add, update or remove a named account in config.yaml (writes config.yaml.bak first)."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,63}", username or ""):
+        raise ValueError("username: letters, digits, . _ @ - (max 64)")
+    if role not in ("viewer", "operator", "admin"):
+        raise ValueError("role must be viewer, operator or admin")
+    path = config_path()
+    old = path.read_text()
+    data = yaml.safe_load(old) or {}
+    users = data.setdefault("auth", {}).setdefault("users", {}) or {}
+    data["auth"]["users"] = users
+    if remove:
+        users.pop(username, None)
+    else:
+        entry = dict(users.get(username) or {})
+        if password_hash:
+            entry["password_hash"] = password_hash
+        if not entry.get("password_hash"):
+            raise ValueError("a password is required for a new user")
+        entry["role"] = role
+        if name:
+            entry["name"] = name[:80]
+        users[username] = entry
+    path.with_name(path.name + ".bak").write_text(old)
+    path.write_text(yaml.safe_dump(data, sort_keys=False))

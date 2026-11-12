@@ -460,6 +460,12 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_out = sub.add_parser("outputs", help="list outputs, or send a sample result to one: outputs test NAME")
     p_out.add_argument("action", nargs="?", choices=["list", "test"], default="list")
     p_out.add_argument("name", nargs="?")
+    p_u = sub.add_parser("users", help="named accounts for basic/local login: users list | add NAME | remove NAME")
+    p_u.add_argument("op", choices=["list", "add", "remove"])
+    p_u.add_argument("name", nargs="?")
+    p_u.add_argument("--role", default="operator", choices=["viewer", "operator", "admin"])
+    p_u.add_argument("--full-name", default="")
+    p_u.add_argument("--password-stdin", action="store_true", help="read the password from stdin")
     p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
     p_sw.add_argument("--full", action="store_true", help="sweep every indicator, not only changed ones")
     p_note = sub.add_parser("note", help="add an analyst note to hunt memory")
@@ -539,6 +545,27 @@ def cli_main(argv: list[str] | None = None) -> None:
                   "steps": []}
         for r in dispatch(cfg, sample, only=a.name):
             print(("OK   " if r["ok"] else "FAIL ") + f"{r['name']}: {r['detail']}")
+        return
+    if a.cmd == "users":
+        from .config import get_config, set_user
+        cfg = get_config()
+        if a.op == "list" or not a.name:
+            for n, u in sorted(cfg.auth.users.items()):
+                print(f"{n:24} {u.get('role', '?'):9} {u.get('name', '')}")
+            if cfg.auth.mode in ("basic", "local"):
+                print(f"{cfg.auth.username:24} {cfg.auth.default_role:9} (auth.username account)")
+            return
+        if a.op == "remove":
+            set_user(a.name, remove=True)
+            print(f"removed {a.name}")
+            return
+        from .auth import hash_password
+        pw = sys.stdin.readline().rstrip("\n") if a.password_stdin else getpass.getpass(f"Password for {a.name}: ")
+        if len(pw) < 10:
+            print("use at least 10 characters")
+            sys.exit(2)
+        set_user(a.name, password_hash=hash_password(pw), role=a.role, name=a.full_name)
+        print(f"saved {a.name} ({a.role}); restart the server to apply")
         return
     if a.cmd == "mcp":
         from .mcp_server import run as run_mcp

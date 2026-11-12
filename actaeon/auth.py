@@ -40,6 +40,9 @@ _ADMIN_ONLY_READ_PATHS = {"/api/backup/download", "/api/audit"}
 def resolve_user_role(cfg, user: str) -> str:
     """Resolve the effective RBAC role ('viewer', 'operator', or 'admin') for an
     authenticated user."""
+    users = getattr(cfg.auth, "users", None) or {}
+    if user and user in users and str(users[user].get("role", "")).lower() in _VALID_ROLES:
+        return str(users[user]["role"]).lower()
     roles_map = getattr(cfg.auth, "roles", None) or {}
     if user and user in roles_map:
         r = str(roles_map[user]).lower()
@@ -125,6 +128,14 @@ def _check_hash(stored: str, pw: str) -> bool:
         return False
 
 
+def verify_user(cfg, user: str, pw: str) -> bool:
+    """Named accounts in auth.users first, then the single auth.username account."""
+    users = getattr(cfg.auth, "users", None) or {}
+    if user in users:
+        return _check_hash(str(users[user].get("password_hash", "")), pw)
+    return hmac.compare_digest(user or "", cfg.auth.username) and _verify_password(cfg, pw)
+
+
 def _verify_password(cfg, pw: str) -> bool:
     if cfg.auth.password_hash:
         return _check_hash(cfg.auth.password_hash, pw)
@@ -136,6 +147,11 @@ def _verify_password(cfg, pw: str) -> bool:
 def _user_allowed(cfg, user: str) -> bool:
     allow = cfg.auth.allowed_users
     return (not allow) or (user in allow)
+
+
+def _local_user() -> str:
+    import os
+    return os.getenv("ACTAEON_LOCAL_USER", "") or "local"
 
 
 def init_auth(app, cfg) -> None:
@@ -173,6 +189,7 @@ def init_auth(app, cfg) -> None:
     def _guard():
         p = request.path
         g.actaeon_role = "admin"
+        g.actaeon_user = _local_user()
         if p == "/mcp":
             import os
             mc = (cfg.raw or {}).get("mcp") or {}
@@ -181,6 +198,7 @@ def init_auth(app, cfg) -> None:
             if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), tok):
                 role = str(mc.get("token_role", "operator")).lower()
                 g.actaeon_role = role if role in _VALID_ROLES else "viewer"
+                g.actaeon_user = "mcp-token"
                 return None
         if mode == "none":
             return None
@@ -189,10 +207,10 @@ def init_auth(app, cfg) -> None:
 
         if mode == "basic":
             a = request.authorization
-            if (a and _verify_password(cfg, a.password or "")
-                    and hmac.compare_digest(a.username or "", cfg.auth.username)):
+            if a and verify_user(cfg, a.username or "", a.password or ""):
                 role = resolve_user_role(cfg, a.username or "")
                 g.actaeon_role = role
+                g.actaeon_user = a.username
                 allowed, reason = check_rbac_permission(role, request.method, p, request.args)
                 if not allowed:
                     return Response(reason, 403)
@@ -220,6 +238,7 @@ def init_auth(app, cfg) -> None:
             if user and _user_allowed(cfg, user):
                 role = resolve_user_role(cfg, user)
                 g.actaeon_role = role
+                g.actaeon_user = user
                 allowed, reason = check_rbac_permission(role, request.method, p, request.args)
                 if not allowed:
                     return Response(reason, 403)
@@ -233,6 +252,7 @@ def init_auth(app, cfg) -> None:
                 return Response("Forbidden: cross-origin state-changing request blocked (CSRF guard).", 403)
             role = session.get("role") or resolve_user_role(cfg, str(user))
             g.actaeon_role = role
+            g.actaeon_user = str(user)
             allowed, reason = check_rbac_permission(role, request.method, p, request.args)
             if not allowed:
                 return Response(reason, 403)
@@ -256,7 +276,7 @@ def init_auth(app, cfg) -> None:
                 return Response("Too many login attempts. Please wait 60 seconds.", 429)
             u = request.form.get("username", "")
             pw = request.form.get("password", "")
-            if hmac.compare_digest(u, cfg.auth.username) and _verify_password(cfg, pw):
+            if verify_user(cfg, u, pw):
                 session["user"] = u
                 return redirect("/")
             return render_template("login.html", error="Invalid credentials.",

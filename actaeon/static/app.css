@@ -49,3 +49,7 @@ details summary{cursor:pointer;color:var(--muted)}
 .demo-banner{background:#3a2d0f;color:var(--amber);padding:.45rem 1rem;border-bottom:1px solid var(--amber);display:flex;gap:.4rem;align-items:center}
 .chat{border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem;margin:.4rem 0;max-width:90%}.chat.me{margin-left:auto;background:var(--panel2)}.chat.bot{border-color:#2d4d78}.pre{white-space:pre-wrap;word-break:break-word}
 button.ghost.on{border-color:var(--accent);color:var(--accent)}
+.login-page{display:flex;min-height:100vh;align-items:center;justify-content:center}
+.login-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1.6rem;width:min(360px,92vw);display:flex;flex-direction:column;gap:.8rem}
+.login-card label{display:flex;flex-direction:column;gap:.3rem;color:var(--muted);font-size:.85rem}
+.brand.big{font-size:1.2rem;justify-content:center;margin-bottom:.4rem}

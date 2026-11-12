@@ -220,8 +220,23 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         app.extensions["actaeon_scheduler"].start()
 
     def _actor():
-        from flask import session
-        return str(session.get("user") or (request.authorization.username if request.authorization else "") or "")
+        from flask import g
+        return str(getattr(g, "actaeon_user", "") or "")
+
+    @app.route("/api/me")
+    def me():
+        from flask import g
+        c = get_config()
+        u = _actor()
+        return jsonify({"user": u, "role": getattr(g, "actaeon_role", "viewer"), "auth_mode": c.auth.mode,
+                        "name": (c.auth.users.get(u) or {}).get("name", "")})
+
+    @app.route("/api/users")
+    def users():
+        c = get_config()
+        names = sorted(set(c.auth.users) | ({c.auth.username} if c.auth.mode in ("basic", "local") else set()))
+        return jsonify([{"user": n, "name": (c.auth.users.get(n) or {}).get("name", ""),
+                         "role": (c.auth.users.get(n) or {}).get("role", c.auth.default_role)} for n in names])
 
     @app.route("/api/hunts", methods=["GET", "POST"])
     def hunts():
@@ -332,6 +347,65 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     @app.route("/api/memory/related")
     def memory_related():
         return jsonify(hs.memory_for(get_config()).related(request.args.get("q", "")))
+
+    def cases_store():
+        return hs.cases_for(get_config())
+
+    @app.route("/api/cases")
+    def cases_list():
+        a = request.args
+        assignee = a.get("assignee")
+        if assignee == "me":
+            assignee = _actor()
+        rows = cases_store().list(status=a.get("status") or None, severity=a.get("severity") or None,
+                                  assignee=assignee if assignee is not None else None,
+                                  open_only=a.get("open") == "1")
+        return jsonify(rows)
+
+    @app.route("/api/cases/stats")
+    def cases_stats():
+        return jsonify(cases_store().stats())
+
+    @app.route("/api/cases/<int:cid>")
+    def case_get(cid):
+        c = cases_store().get(cid)
+        if not c:
+            return jsonify({"error": "not found"}), 404
+        h = store_for(get_config()).get(c["hunt_id"], with_steps=False) or {}
+        c["hunt"] = {k: h.get(k) for k in ("id", "hypothesis", "status", "outcome", "origin", "created", "verdict")}
+        return jsonify(c)
+
+    @app.route("/api/cases/<int:cid>/<action>", methods=["POST"])
+    def case_action(cid, action):
+        st = cases_store()
+        b = request.get_json(silent=True) or {}
+        who = _actor() or "unknown"
+        try:
+            if action == "acknowledge":
+                out = st.acknowledge(cid, who)
+            elif action == "assign":
+                out = st.assign(cid, who, str(b.get("to", "")).strip()[:64])
+            elif action == "status":
+                out = st.set_status(cid, who, str(b.get("status", "")))
+            elif action == "close":
+                out = st.close(cid, who, str(b.get("resolution", "")), str(b.get("comment", ""))[:4000])
+                if out.get("resolution") in ("false_positive", "benign_true_positive"):
+                    h = store_for(get_config()).get(out["hunt_id"], with_steps=False) or {}
+                    label = "False positive" if out["resolution"] == "false_positive" else "Known benign"
+                    hs.memory_for(get_config()).add_note(
+                        f"{label} (case {cid}): {h.get('hypothesis', '')[:200]}. Analyst: {b.get('comment', '')}"[:2000],
+                        author=who, tags=[out["resolution"], f"case:{cid}"])
+            elif action == "reopen":
+                out = st.reopen(cid, who, str(b.get("comment", ""))[:4000])
+            elif action == "comment":
+                out = st.comment(cid, who, str(b.get("text", ""))[:4000])
+            else:
+                return jsonify({"error": "unknown action"}), 400
+        except LookupError:
+            return jsonify({"error": "not found"}), 404
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify(out)
 
     @app.route("/api/coverage")
     def coverage():

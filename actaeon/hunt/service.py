@@ -110,8 +110,18 @@ def maybe_verify(cfg, h: dict, *, llm=None, hub=None) -> dict:
     return store.get(h["id"]) or h
 
 
+def cases_for(cfg):
+    from ..cases import CaseStore
+    return CaseStore(store_for(cfg).path)
+
+
 def send_outputs(cfg, h: dict, *, hub=None) -> dict:
-    """Run the configured outputs for a finished hunt and record each one as a step."""
+    """Open a case if needed, then run the configured outputs and record each one as a step."""
+    if h and h.get("status") in ("done", "stopped"):
+        try:
+            cases_for(cfg).open_for(h)
+        except Exception:
+            pass
     if not h or not (cfg.raw or {}).get("outputs") or h.get("status") not in ("done", "stopped"):
         return h
     from ..outputs import dispatch
@@ -145,7 +155,7 @@ def add_feedback(cfg, hid: str, *, finding: int, kind: str, comment: str = "", a
     fb = (h.get("feedback") or []) + [entry]
     store.update(hid, feedback=fb)
     note = None
-    if kind in ("benign", "false_positive"):
+    if kind in ("benign", "false_positive", "benign_true_positive"):
         label = "Known benign" if kind == "benign" else "False positive"
         note = memory_for(cfg).add_note(f"{label}: {claim}" + (f" Analyst: {comment}" if comment else ""),
                                         author=author, tags=[kind, f"hunt:{hid}"])
