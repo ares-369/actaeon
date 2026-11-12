@@ -113,22 +113,24 @@ def test_threat_with_cited_evidence(tmp_path):
     h, llm = run(tmp_path, [
         call(index="e", query="cmdline:*-enc*", time_from="now-24h"),
         call("lookup", value="203.0.113.9"),
+        call(index="e", query="host:A", time_from="now-24h"),
         {"action": "verdict", "outcome": "threat", "confidence": 85, "summary": "found it",
-         "findings": [{"claim": "encoded powershell on host A", "evidence": ["E2"]},
+         "findings": [{"claim": "encoded powershell on host A", "evidence": ["E2", "E3", "E4"]},
                       {"claim": "made-up claim", "evidence": ["E99"]}],
          "attack": ["T1059.001"], "next_steps": ["isolate"]},
     ], hub=Hub(results={"search": '{"total": 1}'}))
     v = h["verdict"]
     assert h["status"] == "done" and v["outcome"] == "threat"
-    assert v["findings"] == [{"claim": "encoded powershell on host A", "evidence": ["E2"]}]
+    assert v["findings"] == [{"claim": "encoded powershell on host A", "evidence": ["E2", "E3", "E4"]}]
+    assert v["confidence"] == 85
     assert v["unsupported_claims"][0]["claim"] == "made-up claim"
     assert any("E99" in c for c in v["checks"])
     assert h["plan"]["attack"] == ["T1059.001"] and h["plan"]["missing_roles"] == ["identity"]
     kinds = [s["kind"] for s in h["steps"]]
-    assert kinds == ["plan", "call", "call", "verdict"]
+    assert kinds == ["plan", "call", "call", "call", "verdict"]
     # the result was fed back to the model as untrusted data with its evidence id
     last_prompt = llm.roles["analyst"].seen[-1][-1]["content"]
-    assert last_prompt.startswith("E3 result of local-intel.lookup") and "UNTRUSTED-DATA" in last_prompt
+    assert last_prompt.startswith("E4 result of logs.search") and "UNTRUSTED-DATA" in last_prompt
 
 
 def test_threat_without_evidence_is_downgraded(tmp_path):
@@ -333,3 +335,24 @@ def test_model_get_fields_is_reused(tmp_path):
                    call(index="e", time_from="now-7d", query="process.name:x"),
                    {"action": "verdict", "outcome": "no_results", "summary": "x"}], hub=hub)
     assert [c[1] for c in hub.calls] == ["get_fields", "search"]
+
+
+def test_threat_nudged_to_corroborate_once(tmp_path):
+    threat = {"action": "verdict", "outcome": "threat", "confidence": 95, "summary": "bad",
+              "findings": [{"claim": "encoded powershell", "evidence": ["E2"]}]}
+    h, llm = run(tmp_path, [call(index="e", time_from="now-1d", query="x"), threat, threat])
+    notes = [s["note"] for s in h["steps"] if s["kind"] == "note"]
+    assert any("asked to corroborate" in n and "intel" in n and "pivot" in n for n in notes)
+    asked = [m["content"] for m in llm.roles["analyst"].seen[-1] if m["role"] == "user"]
+    assert any("Before a threat verdict" in m for m in asked)
+    v = h["verdict"]
+    assert v["outcome"] == "threat" and v["confidence"] == 60      # second verdict accepted, capped
+    assert any("only one piece of evidence" in c for c in v["checks"])
+
+
+def test_threat_cap_one_kind_of_query(tmp_path):
+    h, _ = run(tmp_path, [call(index="e", time_from="now-1d", query="a"), call(index="e", time_from="now-2d", query="b"),
+                          call("lookup", value="1.2.3.4"),
+                          {"action": "verdict", "outcome": "threat", "confidence": 99, "summary": "x",
+                           "findings": [{"claim": "c", "evidence": ["E2", "E3"]}]}])
+    assert h["verdict"]["confidence"] == 75

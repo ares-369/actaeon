@@ -35,6 +35,12 @@ effect between steps.
 | `logs_missing` | the data needed was not there or not searchable | |
 | `inconclusive` | anything else, including limits reached | |
 
+Before accepting a `threat` verdict, the engine asks the model once to
+corroborate it, if it has not yet looked up indicators in intel, decoded an
+encoded command it mentions, or made a second data query (a pivot). Confidence
+is capped at 60 when one piece of evidence supports the threat, and at 75 when all
+the evidence comes from one kind of query.
+
 Citations to results that do not exist or failed are dropped. Claims left with
 no evidence are kept apart as `unsupported_claims`. When the outcome is changed
 by a check, confidence is capped at 40 and the reason is listed in `checks`.

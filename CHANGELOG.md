@@ -50,3 +50,6 @@
 - Web and imported advisories keep domains, URLs and emails only when the text defanged them,
   and never the publisher's own domain (a live pull showed reference links being stored as IOCs).
 - The field guard reuses the model's own get_fields result instead of fetching it twice.
+- Stricter threat verdicts: the analyst is asked once to corroborate (intel lookup, decode, a pivot)
+  before a 'threat' verdict; confidence is capped at 60 with one piece of evidence and at 75 when all
+  evidence comes from one kind of query.

@@ -226,6 +226,7 @@ class HuntEngine:
         done_calls: dict[str, str] = {}
         known_fields: dict[str, set[str]] = {}   # connector -> field names it reported
         calls = parse_fail = 0
+        nudged = False
         while True:
             self._gate()
             last = calls >= self.limits.max_steps
@@ -244,6 +245,15 @@ class HuntEngine:
                 transcript.append({"role": "user", "content": "Reply with ONE JSON object: a call or a verdict."})
                 continue
             parse_fail = 0
+            if action["action"] == "verdict" and not last and not nudged and action.get("outcome") == "threat":
+                gap = self._corroboration_gap(action, index)
+                if gap:
+                    nudged = True
+                    self.store.add_step(hid, self._next(), "note", ok=True, note=f"asked to corroborate: {gap}")
+                    transcript.append({"role": "assistant", "content": json.dumps(action)[:3000]})
+                    transcript.append({"role": "user", "content": f"Before a threat verdict, corroborate it: {gap} "
+                                       "Make those calls, then give the verdict again."})
+                    continue
             if action["action"] == "verdict" or last:
                 if action["action"] != "verdict":
                     return self._finalize({"outcome": "inconclusive",
@@ -336,6 +346,23 @@ class HuntEngine:
                                f"automatically):\n{content}", "_result": True})
         return fields
 
+    def _corroboration_gap(self, verdict: dict, index: dict) -> str:
+        """What a 'threat' verdict has not checked yet, given the tools available ('' = nothing)."""
+        done = [d for d in self.evidence.values() if d["ok"]]
+        roles_done = {r for d in done for r in str(d.get("role", "")).split(",")}
+        available = {r for t in index.values() for r in t["role"].split(",")}
+        asks = []
+        if "intel" in available and "intel" not in roles_done:
+            asks.append("look up the indicators you found (IPs, domains, hashes) in an intel tool")
+        if "analysis" in available and "analysis" not in roles_done and re.search(
+                r"(?i)-e(nc(odedcommand)?)?\b|base64|frombase64|obfusc", json.dumps(verdict)):
+            asks.append("decode the encoded command with the analysis tool")
+        data_calls = [d for d in done if any(r in DATA_ROLES for r in str(d.get("role", "")).split(","))
+                      and d["tool"] != "get_fields"]
+        if len(data_calls) < 2:
+            asks.append("pivot once in the data: the same host, user or destination around that time")
+        return "; ".join(asks)
+
     def _finalize(self, v: dict, tools: Any) -> dict:
         notes: list[str] = []
         outcome = v.get("outcome") if v.get("outcome") in OUTCOMES else "inconclusive"
@@ -368,6 +395,15 @@ class HuntEngine:
             conf = 0
         if outcome != v.get("outcome"):
             conf = min(conf, 40)
+        if outcome == "threat":
+            cited = {e for f in findings for e in f["evidence"]}
+            sources = {(self.evidence[e]["connector"], self.evidence[e]["tool"]) for e in cited if e in self.evidence}
+            if len(cited) < 2:
+                conf = min(conf, 60)
+                notes.append("only one piece of evidence; confidence capped at 60")
+            elif len(sources) < 2:
+                conf = min(conf, 75)
+                notes.append("all evidence comes from one kind of query; confidence capped at 75")
         return {
             "outcome": outcome,
             "confidence": conf,

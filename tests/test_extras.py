@@ -109,7 +109,8 @@ def test_environment_context(home):
 def test_feedback_creates_memory_note(home):
     from actaeon.hunt import HuntEngine
     cfg = config.get_config(reload=True)
-    eng = HuntEngine(LLM(PLAN, [call(index="e", time_from="now-1d"),
+    eng = HuntEngine(LLM(PLAN, [call(index="e", time_from="now-1d"), call(index="e", time_from="now-2d"),
+                                call("lookup", value="1.2.3.4"),
                                 {"action": "verdict", "outcome": "threat", "summary": "s",
                                  "findings": [{"claim": "backup01 ran rclone to cloud storage", "evidence": ["E2"]}]}]),
                      Hub(), service.store_for(cfg))
