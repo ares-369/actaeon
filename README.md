@@ -49,8 +49,8 @@ identity, and intel sources they already run.
   RBAC. Actaeon does not replace them; it sits alongside them as a read-only
   hypothesis-driven investigator over MCP.
 - **What is still missing:** single-process SQLite execution (no HA clustering),
-  text-based JSON tool calls instead of native tool calling on all providers,
-  and no published multi-provider benchmark numbers yet (see
+  native tool calling (Claude, Gemini, OpenAI-compatible) not yet tested
+  against live cloud models, and no published multi-provider benchmark numbers yet (see
   [docs/benchmarks.md](docs/benchmarks.md)).
 
 ## Run on Linux (systemd)

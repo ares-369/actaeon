@@ -51,3 +51,7 @@ When a model hits a quota or rate-limit error, Actaeon tries the next fallback
 and skips the failing model for an hour.
 
 Prompts to cloud providers are masked by default. See [privacy.md](privacy.md).
+
+## Native tool calling
+
+Claude, Gemini and OpenAI-compatible providers offer the hunt actions as native tools. If the model or gateway rejects tools, Actaeon retries the same request without them and uses the JSON action protocol. Set `native_tools: false` on a provider to always use the JSON protocol.

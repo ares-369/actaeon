@@ -37,10 +37,17 @@ class AnthropicProvider(LLMProvider):
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
-            if is_tool_loop_system(system):
+            native = is_tool_loop_system(system) and self.cfg.get("native_tools", True)
+            if native:
                 kw["tools"] = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]}
                                for t in ACTION_TOOLS]
-            resp = self._client().messages.create(**kw)
+            try:
+                resp = self._client().messages.create(**kw)
+            except Exception:
+                if not native:
+                    raise
+                kw.pop("tools", None)  # model or gateway without tool support: fall back to the JSON protocol
+                resp = self._client().messages.create(**kw)
             for b in resp.content:
                 if getattr(b, "type", "") == "tool_use":
                     return LLMResult(text=action_json(b.name, dict(getattr(b, "input", None) or {})), model=use_model)

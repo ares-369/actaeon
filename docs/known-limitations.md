@@ -15,8 +15,11 @@ Actaeon is pre-alpha. These are the limits we know about.
   names, but its query logic was still wrong and it answered `no_results`, a
   false negative. Use a stronger model for the analyst role.
 - No benchmark has been run. There are no published detection or accuracy numbers.
-- The JSON action protocol works on any provider but uses more tokens than
-  native tool calling.
+- Claude, Gemini and OpenAI-compatible providers use native tool calling and
+  fall back to the JSON action protocol when a model rejects tools (turn it off
+  with `native_tools: false` in the provider config). The native path is only
+  unit-tested; it has not been run against live cloud models yet. Ollama and
+  the `cli` provider always use the JSON protocol, which costs more tokens.
 
 ## Safety layers and their gaps
 

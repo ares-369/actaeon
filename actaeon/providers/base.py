@@ -57,8 +57,13 @@ def is_tool_loop_system(system: str) -> bool:
 
 def action_json(tool_name: str, args: dict[str, Any] | None) -> str:
     """Translate a native call_tool / submit_verdict call into Actaeon's JSON action."""
-    action = "call" if tool_name == "call_tool" else "verdict"
-    return json.dumps({"action": action, **(args or {})})
+    args = dict(args or {})
+    if tool_name == "submit_verdict":
+        return json.dumps({"action": "verdict", **args})
+    if tool_name != "call_tool":
+        # The model called a connector tool by its own name instead of call_tool.
+        args = {"tool": tool_name, "arguments": args}
+    return json.dumps({"action": "call", **args})
 
 
 @dataclass

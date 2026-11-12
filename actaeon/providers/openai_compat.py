@@ -54,14 +54,25 @@ class OpenAICompatProvider(LLMProvider):
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
-            if is_tool_loop_system(system) and self.cfg.get("native_tools", True):
+            native = is_tool_loop_system(system) and self.cfg.get("native_tools", True)
+            if native:
                 kw["tools"] = [{"type": "function", "function": t} for t in ACTION_TOOLS]
-            resp = self._client().chat.completions.create(**kw)
+            client = self._client()
+            try:
+                resp = client.chat.completions.create(**kw)
+            except Exception:
+                if not native:
+                    raise
+                kw.pop("tools", None)  # many local models reject tools: fall back to the JSON protocol
+                resp = client.chat.completions.create(**kw)
             msg = resp.choices[0].message
             tcs = getattr(msg, "tool_calls", None) or []
             if tcs:
                 fn = tcs[0].function
-                args = json.loads(fn.arguments) if isinstance(fn.arguments, str) else (fn.arguments or {})
+                try:
+                    args = json.loads(fn.arguments) if isinstance(fn.arguments, str) else (fn.arguments or {})
+                except ValueError:
+                    args = {}
                 return LLMResult(text=action_json(fn.name, args), model=use_model)
             return LLMResult(text=(msg.content or "").strip(), model=use_model)
         except Exception as exc:

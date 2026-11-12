@@ -101,12 +101,20 @@ class GeminiProvider(LLMProvider):
                     for c in ("HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_DANGEROUS_CONTENT",
                               "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_SEXUALLY_EXPLICIT")
                 ]
-            if is_tool_loop_system(system):
+            native = is_tool_loop_system(system) and self.cfg.get("native_tools", True)
+            if native:
                 cfg_kw["tools"] = [types.Tool(function_declarations=[
                     types.FunctionDeclaration(**t) for t in ACTION_TOOLS
                 ])]
-            resp = self._client.models.generate_content(
-                model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
+            try:
+                resp = self._client.models.generate_content(
+                    model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
+            except Exception:
+                if not native:
+                    raise
+                cfg_kw.pop("tools", None)  # model without function calling: fall back to the JSON protocol
+                resp = self._client.models.generate_content(
+                    model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
             fcs = getattr(resp, "function_calls", None) or []
             if fcs:
                 fc = fcs[0]
