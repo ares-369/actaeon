@@ -19,6 +19,12 @@ function h(tag, attrs, ...kids) {
   }
   return el;
 }
+// Like el.replaceChildren, but flattens arrays and skips null/false (as h() does).
+function fill(el, ...kids) {
+  el.replaceChildren(...kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false)
+    .map((k) => (k instanceof Node ? k : document.createTextNode(String(k)))));
+  return el;
+}
 const icon = (n) => h("span", { class: "mdi mdi-" + n });
 const badge = (v) => h("span", { class: "badge b-" + (v || "none") }, (v || "none").replace(/_/g, " "));
 const section = (title, ic, ...kids) => h("section", {}, h("h2", {}, icon(ic), title), ...kids);
@@ -39,6 +45,8 @@ async function api(url, body, method) {
   }
   return data;
 }
+// Actions always POST, even with no body (api() with no body is a GET).
+const post = (url, body) => api(url, body || {}, "POST");
 const when = (s) => (s || "").replace("T", " ").slice(0, 16);
 
 let poll = null;
@@ -46,7 +54,7 @@ function route() {
   clearInterval(poll); poll = null;
   const [tab, arg] = (location.hash.slice(1) || "hunts").split("/");
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === (tab === "hunt" ? "hunts" : tab)));
-  main.replaceChildren();
+  fill(main, );
   const pages = { hunts, hunt: () => huntDetail(arg), library, intel, coverage, connectors, settings };
   (pages[tab] || hunts)().catch((e) => main.append(h("p", { class: "bad" }, String(e.message || e))));
 }
@@ -72,10 +80,10 @@ async function hunts() {
     h("p", { class: "muted small" }, "Proposes hypotheses from new advisories, coverage gaps and follow-ups. Nothing starts until you choose."),
     h("div", { class: "row" },
       h("button", { class: "ghost", onclick: async (e) => {
-        e.target.disabled = true; sug.replaceChildren(h("p", { class: "muted" }, "Asking the planner..."));
+        e.target.disabled = true; fill(sug, h("p", { class: "muted" }, "Asking the planner..."));
         try {
           const r = await api("/api/autopilot", { dry_run: true });
-          sug.replaceChildren(
+          fill(sug, 
             r.note ? h("p", { class: "warn" }, r.note) : null,
             ...r.hypotheses.map((x) => h("div", { class: "row" }, h("span", { class: "grow" }, x.hypothesis,
               h("div", { class: "muted small" }, `${x.source}  ${x.attack.join(", ")}  ${x.why}`)),
@@ -84,7 +92,7 @@ async function hunts() {
         } finally { e.target.disabled = false; }
       } }, icon("lightbulb-on-outline"), "Suggest hypotheses"),
       h("button", { class: "ghost", onclick: async () => { const r = await api("/api/autopilot", { dry_run: false }); toast("Autopilot queued (job " + r.job_id + "); its hunts appear below."); } }, icon("play-circle-outline"), "Run autopilot now"),
-      h("button", { class: "ghost", onclick: async () => { const r = await api("/api/intel/web/pull"); toast("Web intel pull queued (job " + r.job_id + ")."); } }, icon("web"), "Pull web intel")),
+      h("button", { class: "ghost", onclick: async () => { const r = await post("/api/intel/web/pull"); toast("Web intel pull queued (job " + r.job_id + ")."); } }, icon("web"), "Pull web intel")),
     sug));
   const list = h("tbody");
   main.append(section("Recent hunts", "history",
@@ -92,7 +100,7 @@ async function hunts() {
       h("th", {}, "Hypothesis"), h("th", {}, "Origin"))), list)));
   const load = async () => {
     const rows = await api("/api/hunts?limit=100");
-    list.replaceChildren(...rows.map((r) => h("tr", { class: "click", onclick: () => (location.hash = "#hunt/" + r.id) },
+    fill(list, ...rows.map((r) => h("tr", { class: "click", onclick: () => (location.hash = "#hunt/" + r.id) },
       h("td", {}, when(r.created)), h("td", {}, badge(r.status)), h("td", {}, badge(r.outcome)),
       h("td", {}, r.hypothesis.slice(0, 140)), h("td", { class: "muted small" }, r.origin))));
     if (!rows.length) list.append(h("tr", {}, h("td", { colspan: 5, class: "muted" }, "No hunts yet.")));
@@ -104,19 +112,22 @@ async function hunts() {
 async function huntDetail(id) {
   const box = h("div");
   main.append(box);
+  // Re-draw only while the hunt runs; a finished hunt is drawn once, so its panels
+  // (chat, detection draft, timeline filters) keep their state.
   const draw = async () => {
     const hu = await api("/api/hunts/" + encodeURIComponent(id));
-    box.replaceChildren(renderHunt(hu));
-    if (!["queued", "running"].includes(hu.status)) { clearInterval(poll); poll = null; }
+    fill(box, renderHunt(hu));
+    const live = ["queued", "running"].includes(hu.status);
+    if (!live && poll) { clearInterval(poll); poll = null; }
+    return live;
   };
-  await draw();
-  poll = setInterval(draw, 2000);
+  if (await draw()) poll = setInterval(draw, 2000);
 }
 
 function renderHunt(hu) {
   const v = hu.verdict || {};
   const running = ["queued", "running"].includes(hu.status);
-  const act = (a) => async () => { await api(`/api/hunts/${hu.id}/${a}`); toast(a + " requested"); };
+  const act = (a) => async () => { await post(`/api/hunts/${hu.id}/${a}`); toast(a + " requested"); };
   const head = section(hu.hypothesis, "target",
     h("div", { class: "row" }, badge(hu.status), badge(hu.outcome), h("span", { class: "muted small" },
       `started ${when(hu.created)}  origin ${hu.origin}  ${hu.actor ? "by " + hu.actor : ""}`)),
@@ -190,7 +201,7 @@ function timelineBox(hu) {
       h("div", { class: "row small" }, h("span", { class: "muted" }, k + ":"),
         v.slice(0, 12).map((x) => h("button", { class: "ghost small" + (filter && filter[1] === x.value ? " on" : ""),
           onclick: () => { filter = filter && filter[1] === x.value ? null : [k, x.value]; draw(t); } }, `${x.value} (${x.count})`))));
-    box.replaceChildren(
+    fill(box, 
       h("p", { class: "muted small" }, t.total ? `${t.total} events, ${when(t.first)} to ${when(t.last)}` + (t.no_time ? `  (${t.no_time} without a time left out)` : "") : "No timestamped events in the evidence."),
       ...chips,
       h("table", {}, h("thead", {}, h("tr", {}, ["Time", "Host", "User", "What", "State", "Ev"].map((x) => h("th", {}, x)))),
@@ -204,7 +215,7 @@ function timelineBox(hu) {
 
 function detectionBox(hu) {
   const box = h("div");
-  const show = (d) => box.replaceChildren(
+  const show = (d) => fill(box, 
     h("p", { class: "warn small" }, "DRAFT: review and test before deploying. Status is set to experimental."),
     (d.problems || []).length ? h("ul", {}, d.problems.map((p) => h("li", { class: "warn small" }, p))) : null,
     d.sigma ? [h("h3", {}, "Sigma draft"), h("pre", {}, d.sigma)] : null,
@@ -213,7 +224,7 @@ function detectionBox(hu) {
       ...d.native.map((q) => h("div", {}, h("div", { class: "muted small" }, `${q.evidence}  ${q.connector}.${q.tool}  hits ${q.hits ?? "?"}`), h("pre", {}, q.query)))] : null);
   api(`/api/hunts/${hu.id}/detection`).then((ds) => { if (ds.length) show(ds[0]); });
   return section("Detection draft", "shield-check-outline",
-    h("button", { class: "ghost", onclick: async (e) => { e.target.disabled = true; try { show(await api(`/api/hunts/${hu.id}/detection`)); } finally { e.target.disabled = false; } } },
+    h("button", { class: "ghost", onclick: async (e) => { e.target.disabled = true; try { show(await post(`/api/hunts/${hu.id}/detection`)); } finally { e.target.disabled = false; } } },
       icon("file-code-outline"), "Draft a detection rule"), box);
 }
 
@@ -222,7 +233,7 @@ function chatBox(hu) {
   const input = h("input", { class: "grow", placeholder: "Ask about this hunt, or say what to check next (for example: check the other hosts)" });
   const draw = async () => {
     const msgs = await api(`/api/hunts/${hu.id}/chat`);
-    log.replaceChildren(...msgs.map((m) => h("div", { class: "chat " + (m.role === "analyst" ? "me" : "bot") },
+    fill(log, ...msgs.map((m) => h("div", { class: "chat " + (m.role === "analyst" ? "me" : "bot") },
       h("div", { class: "muted small" }, m.role === "analyst" ? (m.author || "you") : "Actaeon", "  ", when(m.ts)),
       h("div", { class: "pre" }, m.content), m.evidence.length ? h("div", { class: "small" }, "Evidence: " + m.evidence.join(", ")) : null)));
     return msgs.length;
@@ -260,7 +271,7 @@ function narrativeBox(hu) {
     h("p", { class: "muted small" }, "Optional summary written by the reporter model. Check it against the record."),
     h("button", { class: "ghost", onclick: async (e) => {
       e.target.disabled = true;
-      try { const r = await api(`/api/hunts/${hu.id}/narrative`); p.textContent = r.narrative; p.classList.remove("hidden"); }
+      try { const r = await post(`/api/hunts/${hu.id}/narrative`); p.textContent = r.narrative; p.classList.remove("hidden"); }
       finally { e.target.disabled = false; }
     } }, icon("robot-outline"), hu.narrative ? "Rewrite" : "Write"), p);
 }
@@ -278,8 +289,8 @@ async function library() {
       h("td", {}, s.last_hits === null ? "-" : s.last_hits),
       h("td", {}, h("div", { class: "row" },
         h("button", { class: "ghost", onclick: async () => { await api(`/api/library/${s.id}`, { interval_minutes: +every.value || 0 }); toast("Saved"); } }, icon("content-save")),
-        h("button", { class: "ghost", onclick: async () => { await api(`/api/library/${s.id}/run`); toast("Replay queued"); } }, icon("replay")),
-        h("button", { class: "danger", onclick: async () => { if (confirm("Delete this saved hunt?")) { await api(`/api/library/${s.id}/delete`); route(); } } }, icon("delete")))));
+        h("button", { class: "ghost", onclick: async () => { await post(`/api/library/${s.id}/run`); toast("Replay queued"); } }, icon("replay")),
+        h("button", { class: "danger", onclick: async () => { if (confirm("Delete this saved hunt?")) { await post(`/api/library/${s.id}/delete`); route(); } } }, icon("delete")))));
   });
   main.append(section("Saved hunts", "bookshelf",
     h("p", { class: "muted small" }, "Replays run the saved searches again without a model and flag matches for review."),
@@ -348,8 +359,8 @@ async function intel() {
       h("td", {}, h("b", {}, x.name), h("div", { class: "muted small" }, (x.aliases || []).join(", "))),
       h("td", { class: "small" }, x.techniques.join(", ") || "-", h("div", { class: "muted" }, x.tools.join(", "))),
       h("td", {}, `${x.indicator_count} indicators`),
-      h("td", {}, h("button", { onclick: async () => { const r = await api(`/api/intel/actors/${encodeURIComponent(x.slug)}/hunt`); toast("Campaign started" + (r.sweep_job ? " (with an indicator sweep)" : "")); location.hash = "#hunt/" + r.hunt_id; } }, icon("play"), "Hunt this actor")))) :
-      h("tr", {}, h("td", { class: "muted" }, "No actors yet."))))),
+      h("td", {}, h("button", { onclick: async () => { const r = await post(`/api/intel/actors/${encodeURIComponent(x.slug)}/hunt`); toast("Campaign started" + (r.sweep_job ? " (with an indicator sweep)" : "")); location.hash = "#hunt/" + r.hunt_id; } }, icon("play"), "Hunt this actor")))) :
+      h("tr", {}, h("td", { class: "muted" }, "No actors yet.")))),
     h("details", {}, h("summary", {}, "Add or update an actor"),
       h("div", { class: "row" }, an, aa), h("div", { class: "row" }, at, atl), ad,
       h("div", { class: "row" }, h("button", { onclick: async () => {
@@ -359,15 +370,15 @@ async function intel() {
   const advs = await api("/api/intel/advisories");
   main.append(section("Advisories", "file-document-outline", h("table", {}, h("tbody", {}, advs.length ? advs.map((a) => h("tr", {},
     h("td", {}, a.title, h("div", { class: "muted small" }, `${when(a.added)}  ${a.indicator_count} indicators  ${a.techniques.join(", ")}`)),
-    h("td", {}, h("button", { onclick: async () => { const r = await api(`/api/hunts/advisory/${a.id}`); location.hash = "#hunt/" + r.hunt_id; } }, icon("play"), "Hunt this")))) :
+    h("td", {}, h("button", { onclick: async () => { const r = await post(`/api/hunts/advisory/${a.id}`); location.hash = "#hunt/" + r.hunt_id; } }, icon("play"), "Hunt this")))) :
     h("tr", {}, h("td", { class: "muted" }, "No advisories yet."))))));
   const inds = await api("/api/intel/indicators?limit=100");
   main.append(section("Indicators", "format-list-bulleted",
-    h("div", { class: "row" }, h("button", { class: "ghost", onclick: async () => { const r = await api("/api/intel/sweep"); toast("Sweep queued (job " + r.job_id + "); it appears under Hunts."); } }, icon("radar"), "Sweep logs for new or changed indicators")),
+    h("div", { class: "row" }, h("button", { class: "ghost", onclick: async () => { const r = await post("/api/intel/sweep"); toast("Sweep queued (job " + r.job_id + "); it appears under Hunts."); } }, icon("radar"), "Sweep logs for new or changed indicators")),
     h("table", {}, h("thead", {}, h("tr", {}, ["Type", "Value", "Conf", "Seen", "Last seen", "Source", ""].map((x) => h("th", {}, x)))),
       h("tbody", {}, inds.map((i) => h("tr", {}, h("td", {}, i.type), h("td", {}, i.value), h("td", {}, i.confidence),
         h("td", {}, i.seen_count), h("td", { class: "small" }, when(i.last_seen)), h("td", { class: "small muted" }, i.source),
-        h("td", {}, h("button", { class: "ghost", title: "Deactivate", onclick: async () => { await api(`/api/intel/indicators/${i.id}/deactivate`); route(); } }, icon("cancel")))))))));
+        h("td", {}, h("button", { class: "ghost", title: "Deactivate", onclick: async () => { await post(`/api/intel/indicators/${i.id}/deactivate`); route(); } }, icon("cancel")))))))));
 }
 
 // ---------------- Coverage ----------------
@@ -401,8 +412,8 @@ async function connectors() {
       return h("tr", {}, h("td", {}, h("b", {}, c.name), h("div", { class: "muted small" }, c.description || "")),
         h("td", {}, c.roles.join(", ")), h("td", {}, c.transport), h("td", {}, c.enabled ? "on" : "off"),
         h("td", {}, h("div", { class: "row" },
-          h("button", { class: "ghost", onclick: async () => { res.textContent = "..."; const r = await api(`/api/connectors/${c.name}/test`); res.textContent = r.ok ? `${r.allowed}/${r.tools} tools allowed, ${r.ms} ms` : r.error; res.className = r.ok ? "ok small" : "bad small"; } }, icon("lan-check"), "Test"),
-          h("button", { class: "ghost", onclick: async () => { const t = await api(`/api/connectors/${c.name}/tools`); tools.replaceChildren(section(c.name + " tools", "tools",
+          h("button", { class: "ghost", onclick: async () => { res.textContent = "..."; const r = await post(`/api/connectors/${c.name}/test`); res.textContent = r.ok ? `${r.allowed}/${r.tools} tools allowed, ${r.ms} ms` : r.error; res.className = r.ok ? "ok small" : "bad small"; } }, icon("lan-check"), "Test"),
+          h("button", { class: "ghost", onclick: async () => { const t = await api(`/api/connectors/${c.name}/tools`); fill(tools, section(c.name + " tools", "tools",
             h("table", {}, h("tbody", {}, t.map((x) => h("tr", {}, h("td", {}, x.name), h("td", {}, x.allowed ? h("span", { class: "ok" }, "allowed") : h("span", { class: "bad" }, "blocked")),
               h("td", { class: "small muted" }, x.reason), h("td", { class: "small" }, x.description.slice(0, 160)))))))); } }, icon("tools"), "Tools"), res)));
     })))));
@@ -430,7 +441,7 @@ async function settings() {
     } }, icon("content-save"), "Save"),
       h("button", { class: "ghost", onclick: async (e) => {
         e.target.disabled = true; testOut.textContent = "Testing each role..."; testOut.classList.remove("hidden");
-        try { const r = await api("/api/settings/llm/test");
+        try { const r = await post("/api/settings/llm/test");
           testOut.textContent = r.map((x) => `${x.ok ? "OK  " : "FAIL"} ${x.role}  ${x.provider}/${x.model}  ${x.ok ? x.ms + " ms" : x.error}`).join("\n");
         } finally { e.target.disabled = false; }
       } }, icon("lan-check"), "Test models")), diff, testOut));
@@ -441,10 +452,10 @@ async function settings() {
     h("p", { class: "muted small" }, "Notes are added to the context of related hunts. Only people write them."),
     h("div", { class: "row" }, note, ntags, h("button", { onclick: async () => { await api("/api/memory/notes", { text: note.value, tags: ntags.value.split(",").map((x) => x.trim()).filter(Boolean) }); route(); } }, icon("plus"), "Add")),
     h("table", {}, h("tbody", {}, notes.map((n) => h("tr", {}, h("td", { class: n.active ? "" : "muted" }, n.text), h("td", { class: "small muted" }, n.tags.join(", ")),
-      h("td", {}, n.active && h("button", { class: "ghost", onclick: async () => { await api(`/api/memory/notes/${n.id}/retire`); route(); } }, icon("archive")))))))));
+      h("td", {}, n.active && h("button", { class: "ghost", onclick: async () => { await post(`/api/memory/notes/${n.id}/retire`); route(); } }, icon("archive")))))))));
   const audit = h("div", {}, h("button", { class: "ghost", onclick: async () => {
     const rows = await api("/api/audit?limit=100");
-    audit.replaceChildren(h("table", {}, h("thead", {}, h("tr", {}, ["Time", "Connector", "Tool", "Status", "Decision", "ms"].map((x) => h("th", {}, x)))),
+    fill(audit, h("table", {}, h("thead", {}, h("tr", {}, ["Time", "Connector", "Tool", "Status", "Decision", "ms"].map((x) => h("th", {}, x)))),
       h("tbody", {}, rows.map((r) => h("tr", {}, h("td", { class: "small" }, when(r.ts)), h("td", {}, r.connector), h("td", {}, r.tool),
         h("td", {}, h("span", { class: r.status === "ok" ? "ok" : "bad" }, r.status)), h("td", { class: "small muted" }, r.decision), h("td", {}, r.duration_ms))))));
   } }, icon("clipboard-text-clock"), "Show audit log (admin)"));

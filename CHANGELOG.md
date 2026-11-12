@@ -69,3 +69,6 @@
   techniques and tools; actors feed autopilot.
 - Detection drafts: the hunt's working native queries plus a checked Sigma draft (experimental).
 - Timeline per hunt from its evidence (entities, states, filters), also in the report.
+- UI fixes found by clicking through in a browser: action buttons sent GET instead of POST (pause/stop, run,
+  delete, test, sweep, web pull, actor hunt, narrative, detection, model test); finished hunts re-drew every
+  2 s and wiped open panels; lists printed as text. A test now checks every UI call against the server routes.

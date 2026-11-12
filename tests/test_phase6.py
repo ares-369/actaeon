@@ -69,3 +69,27 @@ def test_ui_never_uses_innerhtml():
     from pathlib import Path
     js = (Path(__file__).parent.parent / "actaeon" / "static" / "app.js").read_text()
     assert "innerHTML" not in js and "outerHTML" not in js and "insertAdjacentHTML" not in js
+    # arrays and nulls must go through fill(), which flattens them; plain replaceChildren would print them
+    assert js.count(".replaceChildren(") == 1
+
+
+def test_ui_get_calls_hit_get_routes(home):
+    """api(url) with no body sends GET; every such call must match a route that allows GET."""
+    import re
+    from pathlib import Path
+
+    from werkzeug.exceptions import MethodNotAllowed, NotFound
+    js = (Path(__file__).parent.parent / "actaeon" / "static" / "app.js").read_text()
+    app = create_app(config.get_config(reload=True))
+    adapter = app.url_map.bind("localhost")
+    gets = re.findall(r'\bapi\((`[^`]*`|"[^"]*")\)', js)
+    posts = re.findall(r'\bpost\((`[^`]*`|"[^"]*")', js)
+    assert gets and posts
+    for raw, method in [(g, "GET") for g in gets] + [(p, "POST") for p in posts]:
+        path = re.sub(r"\$\{[^}]*\}", "1", raw.strip('`"')).split("?")[0]
+        try:
+            adapter.match(path, method=method)
+        except MethodNotAllowed:
+            raise AssertionError(f"{method} {path} is not allowed by the server (called from app.js)") from None
+        except NotFound:
+            raise AssertionError(f"{path} is not a server route (called from app.js)") from None
