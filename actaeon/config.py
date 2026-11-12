@@ -72,6 +72,7 @@ class HuntLimits:
     max_steps: int = 25            # tool calls per hunt
     max_runtime_sec: int = 900
     max_result_bytes: int = 200_000  # per tool result fed back to the model
+    max_results: int = 200         # cap on size/limit arguments
 
 
 @dataclass
@@ -94,7 +95,10 @@ class Config:
         return os.getenv(name, "") or ""
 
     def provider_cfg(self, name: str) -> dict[str, Any]:
-        return (self.llm.get("providers") or {}).get(name, {}) or {}
+        """Provider settings with ``${VAR}`` references filled from the environment."""
+        from .connectors.spec import expand_env
+        raw = (self.llm.get("providers") or {}).get(name, {}) or {}
+        return {k: expand_env(v) if isinstance(v, str) else v for k, v in raw.items()}
 
     def role_cfg(self, role: str) -> dict[str, Any]:
         return (self.llm.get("roles") or {}).get(role, {}) or {}
@@ -143,6 +147,7 @@ def load_config() -> Config:
         max_steps=max(1, int(h.get("max_steps", 25))),
         max_runtime_sec=max(10, int(h.get("max_runtime_sec", 900))),
         max_result_bytes=max(1024, int(h.get("max_result_bytes", 200_000))),
+        max_results=max(1, int(h.get("max_results", 200))),
     )
 
     from .connectors.spec import parse_connectors

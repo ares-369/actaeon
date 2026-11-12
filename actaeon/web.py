@@ -162,6 +162,40 @@ def create_app(cfg=None) -> Flask:
         except Exception as exc:
             return jsonify({"error": str(exc)[:300]}), 502
 
+    from .hunt.service import start_hunt, store_for
+    store_for(cfg).mark_orphans()
+
+    def _actor():
+        from flask import session
+        return str(session.get("user") or (request.authorization.username if request.authorization else "") or "")
+
+    @app.route("/api/hunts", methods=["GET", "POST"])
+    def hunts():
+        if request.method == "GET":
+            return jsonify(store_for(get_config()).list(limit=min(200, int(request.args.get("limit", 50)))))
+        b = request.get_json(silent=True) or {}
+        try:
+            hid = start_hunt(jobs, get_config(), str(b.get("hypothesis", ""))[:4000], actor=_actor(),
+                             context=str(b.get("context", ""))[:8000], max_steps=b.get("max_steps"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"hunt_id": hid}), 202
+
+    @app.route("/api/hunts/<hid>")
+    def hunt_get(hid):
+        h = store_for(get_config()).get(hid)
+        return (jsonify(h), 200) if h else (jsonify({"error": "not found"}), 404)
+
+    @app.route("/api/hunts/<hid>/<action>", methods=["POST"])
+    def hunt_action(hid, action):
+        h = store_for(get_config()).get(hid, with_steps=False)
+        if not h:
+            return jsonify({"error": "not found"}), 404
+        fn = {"stop": jobs.cancel, "pause": jobs.pause, "resume": jobs.resume}.get(action)
+        if not fn:
+            return jsonify({"error": "unknown action"}), 400
+        return jsonify({"ok": bool(h.get("job_id")) and fn(h["job_id"])})
+
     @app.route("/api/jobs")
     def list_jobs():
         return jsonify(jobs.list(limit=50))

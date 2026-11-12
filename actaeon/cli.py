@@ -127,6 +127,67 @@ def cmd_intel(a) -> int:
     return 0
 
 
+def _print_verdict(v: dict) -> None:
+    print(f"\nverdict: {v['outcome']} (confidence {v['confidence']})\n{v['summary']}")
+    for f in v.get("findings") or []:
+        print(f"  - {f['claim']} [{', '.join(f['evidence'])}]")
+    for f in v.get("unsupported_claims") or []:
+        print(f"  ? (no evidence) {f['claim']}")
+    if v.get("attack"):
+        print("ATT&CK: " + ", ".join(v["attack"]))
+    for c in v.get("checks") or []:
+        print(f"check: {c}")
+
+
+def cmd_hunt(a) -> int:
+    import json as _json
+
+    from .config import get_config
+    from .hunt.service import make_engine, store_for
+    cfg = get_config()
+    store = store_for(cfg)
+    if a.list:
+        for h in store.list(limit=30):
+            print(f"{h['id']}  {h['created']}  {h['status']:8} {h['outcome'] or ''!s:22} {h['hypothesis'][:70]}")
+        return 0
+    if a.show:
+        h = store.get(a.show)
+        if not h:
+            print("no such hunt")
+            return 1
+        if a.json:
+            print(_json.dumps(h, indent=2))
+            return 0
+        print(f"{h['hypothesis']}\nstatus {h['status']}")
+        for s in h["steps"]:
+            if s["kind"] == "call":
+                print(f"E{s['n']} {'ok ' if s['ok'] else 'ERR'} {s['connector']}.{s['tool']} {_json.dumps(s['arguments'])[:150]}")
+            elif s["kind"] in ("blocked", "note"):
+                print(f"   {s['kind']}: {s['note'][:150]}")
+        if h.get("verdict"):
+            _print_verdict(h["verdict"])
+        return 0
+    if not a.hypothesis:
+        print("give a hypothesis, --show ID or --list")
+        return 2
+
+    def ev(e):
+        if e["type"] == "plan":
+            p = e["plan"]
+            print(f"plan: {p['summary']}  ATT&CK {', '.join(p['attack']) or '-'}")
+            for s in p["steps"]:
+                print(f"  [{s['role']}] {s['goal']}")
+            if p.get("missing_roles"):
+                print(f"  no connector for: {', '.join(p['missing_roles'])}")
+        elif e["type"] == "step":
+            print(f"E{e['n']} {'ok ' if e['ok'] else 'ERR'} {e['tool']}", flush=True)
+    eng = make_engine(cfg, on_event=ev, max_steps=a.max_steps)
+    h = eng.run(a.hypothesis)
+    _print_verdict(h["verdict"])
+    print(f"\nhunt id {h['id']} (actaeon hunt --show {h['id']})")
+    return 0
+
+
 def cli_main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="actaeon", description="Open-source AI threat hunter (MCP connectors).")
     sub = ap.add_subparsers(dest="cmd")
@@ -176,6 +237,12 @@ def cli_main(argv: list[str] | None = None) -> None:
     x.add_argument("--type", default=None)
     x.add_argument("--limit", type=int, default=50)
     isub.add_parser("stats")
+    p_h = sub.add_parser("hunt", help="run a hunt now and print each step, or show a past hunt")
+    p_h.add_argument("hypothesis", nargs="?")
+    p_h.add_argument("--max-steps", type=int, default=None)
+    p_h.add_argument("--show", metavar="HUNT_ID")
+    p_h.add_argument("--list", action="store_true")
+    p_h.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
 
     if a.cmd == "version":
@@ -188,6 +255,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     if a.cmd == "bridge":
         bridges[a.kind].run(a)
         return
+    if a.cmd == "hunt":
+        sys.exit(cmd_hunt(a))
     if a.cmd == "intel":
         sys.exit(cmd_intel(a))
     if a.cmd == "connectors":

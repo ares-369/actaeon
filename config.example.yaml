@@ -50,7 +50,8 @@ llm:
 hunt:
   max_steps: 25
   max_runtime_sec: 900
-  max_result_bytes: 200000
+  max_result_bytes: 200000   # per tool result shown to the model
+  max_results: 200           # cap on size/limit arguments of any tool
 
 # Local intel store: add indicators and advisories yourself (UI, API, CLI)
 # and pull feeds. Served to hunts as the built-in read-only "local-intel"

@@ -13,3 +13,7 @@
 - Local intel store: add indicators and advisories (paste with defang-aware extraction,
   files, URL feeds); ledger with first/last seen and count; served to hunts as the built-in
   read-only `local-intel` connector; UI panel, API and `actaeon intel` CLI.
+- Hunt engine: planner and analyst roles, a JSON action protocol that works with any
+  provider, a query validator, evidence ids, checked verdicts (threat / no_results /
+  telemetry_found_benign / logs_missing / inconclusive), step, time and size limits,
+  stop/pause/resume, API and `actaeon hunt` CLI. Provider settings accept `${VAR}`.

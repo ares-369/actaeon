@@ -29,3 +29,9 @@ def test_every_listed_provider_builds_without_sdk():
             _build(name, {"base_url": "http://localhost:1"}, "x")
         except ImportError:
             pass
+
+
+def test_provider_cfg_expands_env(home, monkeypatch):
+    monkeypatch.setenv("OLLAMA_URL", "http://model-host:11434")
+    write_cfg(home, lambda d: d["llm"]["providers"]["ollama"].update(base_url="${OLLAMA_URL}"))
+    assert config.load_config().provider_cfg("ollama")["base_url"] == "http://model-host:11434"
