@@ -444,6 +444,12 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         from .providers import get_llm
         return jsonify(ds.save(draft(hs.privacy_llm(c, get_llm()), h)))
 
+    @app.route("/api/hunts/<hid>/timeline")
+    def hunt_timeline(hid):
+        from .hunt.timeline import build
+        h = store_for(get_config()).get(hid)
+        return (jsonify(build(h)), 200) if h else (jsonify({"error": "not found"}), 404)
+
     @app.route("/api/detections")
     def detections():
         from .hunt.detection import DetectionStore

@@ -151,7 +151,7 @@ function renderHunt(hu) {
       h("ul", {}, (hu.plan.steps || []).map((s) => h("li", {}, h("span", { class: "muted" }, `[${s.role}] `), s.goal))),
       (hu.plan.missing_roles || []).length ? h("p", { class: "warn" }, "No connector for: " + hu.plan.missing_roles.join(", ")) : null));
   }
-  if (!running) out.push(chatBox(hu));
+  if (!running) out.push(chatBox(hu), timelineBox(hu));
   out.push(section("Steps", "format-list-numbered", (hu.steps || []).filter((s) => s.kind !== "verdict").map(stepView)));
   return h("div", {}, out);
 }
@@ -179,6 +179,27 @@ function stepView(s) {
     s.why && h("p", { class: "small" }, "Why: ", s.why),
     s.arguments && h("pre", {}, JSON.stringify(s.arguments, null, 1)),
     s.result && h("pre", {}, s.result));
+}
+
+function timelineBox(hu) {
+  const box = h("div", {}, h("p", { class: "muted small" }, "Loading..."));
+  let filter = null;
+  const draw = (t) => {
+    const rows = t.events.filter((r) => !filter || r[filter[0]] === filter[1]);
+    const chips = Object.entries(t.entities).filter(([, v]) => v.length).map(([k, v]) =>
+      h("div", { class: "row small" }, h("span", { class: "muted" }, k + ":"),
+        v.slice(0, 12).map((x) => h("button", { class: "ghost small" + (filter && filter[1] === x.value ? " on" : ""),
+          onclick: () => { filter = filter && filter[1] === x.value ? null : [k, x.value]; draw(t); } }, `${x.value} (${x.count})`))));
+    box.replaceChildren(
+      h("p", { class: "muted small" }, t.total ? `${t.total} events, ${when(t.first)} to ${when(t.last)}` + (t.no_time ? `  (${t.no_time} without a time left out)` : "") : "No timestamped events in the evidence."),
+      ...chips,
+      h("table", {}, h("thead", {}, h("tr", {}, ["Time", "Host", "User", "What", "State", "Ev"].map((x) => h("th", {}, x)))),
+        h("tbody", {}, rows.slice(0, 300).map((r) => h("tr", {}, h("td", { class: "small" }, when(r.time)), h("td", {}, r.host),
+          h("td", {}, r.user), h("td", { class: "small" }, [r.what, r.process && `${r.parent ? r.parent + " -> " : ""}${r.process}`, r.command && r.command.slice(0, 140), r.destination && "to " + r.destination].filter(Boolean).join("  ")),
+          h("td", { class: "small " + (r.state === "executed" ? "bad" : r.state === "blocked" ? "ok" : "muted") }, r.state), h("td", {}, r.evidence))))));
+  };
+  api(`/api/hunts/${hu.id}/timeline`).then(draw);
+  return section("Timeline", "timeline-clock-outline", box);
 }
 
 function detectionBox(hu) {

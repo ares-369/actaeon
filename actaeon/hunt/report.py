@@ -65,6 +65,15 @@ def markdown(h: dict, *, narrative: str = "", max_evidence_chars: int = 3000) ->
         ok = "" if s["ok"] is None else ("yes" if s["ok"] else "no")
         out.append(f"| E{s['n']} | {s['kind']} | {_md_escape(tool)} | {ok} | {s['ms'] or ''} | "
                    f"{_md_escape((s.get('note') or s.get('why') or '')[:160])} |")
+    from .timeline import build, describe
+    tl = build(h, limit=150)
+    if tl["events"]:
+        out += ["", f"## Timeline ({tl['total']} events, {tl['first']} to {tl['last']})", "",
+                "| Time (UTC) | Host | User | What | Evidence |", "|---|---|---|---|---|"]
+        out += [f"| {r['time']} | {_md_escape(r['host'])} | {_md_escape(r['user'])} | {_md_escape(describe(r))[:200]} | "
+                f"{r['evidence']} |" for r in tl["events"]]
+        if tl["truncated"]:
+            out.append(f"\n[first 150 of {tl['total']} events; the JSON export has the full record]")
     out += ["", "## Evidence", ""]
     for s in h.get("steps") or []:
         if s["kind"] != "call":

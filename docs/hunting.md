@@ -82,6 +82,16 @@ and field guard as a hunt, and their results are added to the hunt as new
 evidence. Citations to evidence that does not exist are removed. Chat cannot
 change the verdict: use feedback on findings for that.
 
+## Timeline
+
+Every finished hunt has a **Timeline** (`GET /api/hunts/<id>/timeline`, and a
+section in the report). It lists every event in the evidence in time order, with
+host, user, process (parent -> child), command line, source, destination, the
+evidence id, and the executed / blocked / passive state. Hosts, users,
+destinations and processes are listed with counts; click one to filter. It is
+built from the stored results with no model. Events with no readable time are
+counted and left out.
+
 ## Detection drafts
 
 **Draft a detection rule** on a finished hunt (`POST /api/hunts/<id>/detection`)

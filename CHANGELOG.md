@@ -68,3 +68,4 @@
 - Threat-actor profiles and campaigns: actor indicators swept with triage, plus a model hunt for its
   techniques and tools; actors feed autopilot.
 - Detection drafts: the hunt's working native queries plus a checked Sigma draft (experimental).
+- Timeline per hunt from its evidence (entities, states, filters), also in the report.
