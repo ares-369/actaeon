@@ -53,6 +53,22 @@ class DemoProvider(LLMProvider):
             return LLMResult(text="[scripted demo narrative, not written by a model] On sample host DEMO-WS07 Word "
                                   "started encoded PowerShell that downloads from the sample C2 and adds a scheduled "
                                   "task; see the evidence ids in the record.", model=self.default_model)
+        if "Actaeon's assistant for a security team" in system:
+            results = [m["content"] for m in messages[2:] if m["role"] == "user" and m["content"].startswith("Result of")]
+            if not results:
+                return LLMResult(text=json.dumps({"action": "search_records", "query": f"{C2_DOMAIN} {C2_IP}"}),
+                                 model=self.default_model)
+            if len(results) == 1:
+                return LLMResult(text=json.dumps({
+                    "action": "start_hunt", "context": "[scripted demo] the user asked about the sample C2",
+                    "hypothesis": "An Office application started PowerShell with an encoded command on any host in "
+                                  "the last 7 days (sample data)."}), model=self.default_model)
+            hid = re.search(r'"id": "([0-9a-f]{12})"', results[-1])
+            return LLMResult(text=json.dumps({
+                "action": "answer", "hunts": [hid.group(1)] if hid else [],
+                "text": f"[scripted demo] Yes. I ran hunt {hid.group(1) if hid else '?'}: Word on sample host "
+                        f"DEMO-WS07 started encoded PowerShell that downloads from {C2_DOMAIN}, and the host kept "
+                        f"contacting {C2_IP}. A case was opened for it."}), model=self.default_model)
         if "second, sceptical analyst" in system:
             new = _EID.findall("\n".join(m["content"] for m in messages[2:] if m["role"] == "user"))
             if not new:

@@ -407,6 +407,31 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             return jsonify({"error": str(exc)}), 400
         return jsonify(out)
 
+    @app.route("/api/assistant", methods=["GET", "POST"])
+    def assistant_api():
+        from .assistant import Conversations, ask
+        c = get_config()
+        conv = Conversations(store_for(c).path)
+        if request.method == "GET":
+            return jsonify(conv.list())
+        b = request.get_json(silent=True) or {}
+        msg = str(b.get("message", "")).strip()
+        if not msg:
+            return jsonify({"error": "message is required"}), 400
+        cid = b.get("conversation_id")
+        if not (isinstance(cid, int) and conv.get(cid)):
+            cid = conv.create(_actor() or "unknown", msg)
+        who = _actor() or "unknown"
+        jid = jobs.submit("ask", {"conv": cid, "t": time.time()},
+                          lambda ctl: ask(c, msg, user=who, conv_id=cid), deduplicate=False)
+        return jsonify({"conversation_id": cid, "job_id": jid}), 202
+
+    @app.route("/api/assistant/<int:cid>")
+    def assistant_conv(cid):
+        from .assistant import Conversations
+        d = Conversations(store_for(get_config()).path).get(cid)
+        return (jsonify(d), 200) if d else (jsonify({"error": "not found"}), 404)
+
     @app.route("/api/coverage")
     def coverage():
         from .hunt.coverage import build

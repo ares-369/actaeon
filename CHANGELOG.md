@@ -77,3 +77,5 @@
 - Cases: auto-opened for threats and review items; acknowledge (assign to me), assign, in progress, close with
   resolution and comment, reopen, comments, full history, stats (time to acknowledge / close).
 - Named accounts for basic/local login (`actaeon users add`), the signed-in user on every request, login page.
+- Ask assistant: questions and hunt requests in plain language; it searches records, starts stored hunts
+  (origin ask:<user>), follows up on hunts, and saves the conversation with links.
