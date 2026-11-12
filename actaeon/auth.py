@@ -21,7 +21,7 @@ import secrets
 import time
 from urllib.parse import urlparse
 
-from flask import Response, redirect, render_template, request, session
+from flask import Response, g, redirect, render_template, request, session
 
 log = logging.getLogger("actaeon.auth")
 
@@ -60,6 +60,8 @@ def check_rbac_permission(role: str, method: str, path: str, args=None) -> tuple
     """
     r = (role or "admin").lower()
     m = (method or "GET").upper()
+    if path == "/mcp":
+        return True, ""   # tool-level role checks happen in the MCP handler
     args = args or {}
     # Admin-only reads: checked BEFORE the general "GET is read-only" rule.
     sensitive_read = path in _ADMIN_ONLY_READ_PATHS or (
@@ -169,9 +171,19 @@ def init_auth(app, cfg) -> None:
 
     @app.before_request
     def _guard():
+        p = request.path
+        g.actaeon_role = "admin"
+        if p == "/mcp":
+            import os
+            mc = (cfg.raw or {}).get("mcp") or {}
+            tok = os.getenv(str(mc.get("token_env", "")), "") if mc.get("token_env") else ""
+            got = request.headers.get("Authorization", "")
+            if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), tok):
+                role = str(mc.get("token_role", "operator")).lower()
+                g.actaeon_role = role if role in _VALID_ROLES else "viewer"
+                return None
         if mode == "none":
             return None
-        p = request.path
         if p.startswith("/static/") or p in _OPEN_PATHS:
             return None
 
@@ -180,6 +192,7 @@ def init_auth(app, cfg) -> None:
             if (a and _verify_password(cfg, a.password or "")
                     and hmac.compare_digest(a.username or "", cfg.auth.username)):
                 role = resolve_user_role(cfg, a.username or "")
+                g.actaeon_role = role
                 allowed, reason = check_rbac_permission(role, request.method, p, request.args)
                 if not allowed:
                     return Response(reason, 403)
@@ -206,6 +219,7 @@ def init_auth(app, cfg) -> None:
             user = request.headers.get(cfg.auth.proxy_header, "")
             if user and _user_allowed(cfg, user):
                 role = resolve_user_role(cfg, user)
+                g.actaeon_role = role
                 allowed, reason = check_rbac_permission(role, request.method, p, request.args)
                 if not allowed:
                     return Response(reason, 403)
@@ -218,6 +232,7 @@ def init_auth(app, cfg) -> None:
             if request.method in ("POST", "PUT", "DELETE", "PATCH") and not _origin_matches_request(cfg):
                 return Response("Forbidden: cross-origin state-changing request blocked (CSRF guard).", 403)
             role = session.get("role") or resolve_user_role(cfg, str(user))
+            g.actaeon_role = role
             allowed, reason = check_rbac_permission(role, request.method, p, request.args)
             if not allowed:
                 return Response(reason, 403)

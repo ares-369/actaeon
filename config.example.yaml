@@ -63,6 +63,13 @@ privacy:
   patterns: []       # extra regexes, e.g. '\bWS-\d{4,}\b' for hostnames
   keep_public_ips: false
 
+# Actaeon as an MCP server: `actaeon mcp` (stdio) or POST /mcp (HTTP, behind login).
+mcp:
+  token_env: ""              # e.g. ACTAEON_MCP_TOKEN: bearer token accepted on /mcp only
+  token_role: operator       # role for that token: viewer | operator | admin
+  allow_intel_writes: false  # let MCP clients add indicators
+  expose: []                 # empty = all tools; or list tool names
+
 # Hunt safety limits.
 hunt:
   max_steps: 25

@@ -315,6 +315,7 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_lib.add_argument("--name", default="")
     p_lib.add_argument("--every", type=int, default=0, help="replay interval in minutes (0 = manual)")
     p_lib.add_argument("--escalate", action="store_true", help="start a full hunt when a replay finds matches")
+    sub.add_parser("mcp", help="serve Actaeon itself as an MCP server on stdio")
     p_dec = sub.add_parser("decode", help="decode an obfuscated command line (argument or stdin); runs nothing")
     p_dec.add_argument("text", nargs="?")
     p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
@@ -339,6 +340,10 @@ def cli_main(argv: list[str] | None = None) -> None:
         sys.exit(cmd_hunt(a))
     if a.cmd == "intel":
         sys.exit(cmd_intel(a))
+    if a.cmd == "mcp":
+        from .mcp_server import run as run_mcp
+        run_mcp()
+        return
     if a.cmd == "decode":
         import json as _json
 

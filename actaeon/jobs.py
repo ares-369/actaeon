@@ -66,6 +66,8 @@ class JobControl:
 
 class JobManager:
     def __init__(self, db_path, max_workers: int = 3):
+        from pathlib import Path
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.db_path = str(db_path)
         self.pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="actaeon-job")
         self._control: dict[str, str] = {}

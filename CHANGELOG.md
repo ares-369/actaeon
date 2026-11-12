@@ -32,3 +32,5 @@
 - Offline decoder (`actaeon decode`, built-in `local-tools` connector, role `analysis`).
 - Environment profile, finding feedback (benign / false positive / confirmed, saved to memory),
   advisory import from URL, PDF or HTML with private-address and redirect checks.
+- Actaeon as an MCP server: `actaeon mcp` (stdio) and `POST /mcp` (HTTP) with role checks per
+  tool, an optional `/mcp`-only bearer token, and opt-in intel writes.

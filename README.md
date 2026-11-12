@@ -54,7 +54,7 @@ network address with no login.
 4. Hunt engine (done): hypothesis, plan, queries, pivots, a verdict with cited evidence, step limits)
 5. Hunt library, scheduled replays, intel-driven hunts, memory (done)
 6. UI, reports, coverage view (done)
-7. Actaeon as an MCP server
+7. Actaeon as an MCP server (done): `actaeon mcp` or `POST /mcp`, see [docs/mcp-server.md](docs/mcp-server.md)
 8. Demo mode, known limitations, threat model
 
 ## Development

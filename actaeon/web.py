@@ -385,6 +385,27 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             return jsonify({"error": "unknown action"}), 400
         return jsonify({"ok": bool(h.get("job_id")) and fn(h["job_id"])})
 
+    from .mcp_server import build as build_mcp
+
+    def _role():
+        from flask import g
+        return getattr(g, "actaeon_role", "viewer")
+
+    mcp_srv = build_mcp(cfg, jobs, role_of=_role)
+
+    @app.route("/mcp", methods=["POST", "GET", "DELETE"])
+    def mcp_http():
+        if request.method != "POST":
+            return jsonify({"error": "use POST with a JSON-RPC message"}), 405
+        msg = request.get_json(silent=True)
+        if isinstance(msg, list):
+            replies = [r for r in (mcp_srv.handle(m) for m in msg if isinstance(m, dict)) if r]
+            return (jsonify(replies), 200) if replies else ("", 202)
+        if not isinstance(msg, dict):
+            return jsonify({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}), 400
+        reply = mcp_srv.handle(msg)
+        return (jsonify(reply), 200) if reply else ("", 202)
+
     @app.route("/api/jobs")
     def list_jobs():
         return jsonify(jobs.list(limit=50))
