@@ -43,6 +43,9 @@ Each step of a hunt uses a model role (`planner`, `analyst`, `reporter`). Each r
 a different provider: local Ollama, Anthropic, Gemini, OpenAI, Azure OpenAI or any
 OpenAI-compatible endpoint. Change them under **Models** in the UI or in `config.yaml`.
 Keys go in `.env`. Cloud SDKs are optional extras (`pip install 'actaeon[all]'`).
+Recipes for every way to connect (including Vertex AI with a service account,
+workload identity or a gateway) are in [docs/models.md](docs/models.md);
+`actaeon models test` checks a setup.
 
 ## Autonomy
 

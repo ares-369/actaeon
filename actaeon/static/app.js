@@ -339,6 +339,7 @@ async function settings() {
     return h("div", { class: "row" }, h("span", { class: "grow" }, r), sel, model);
   });
   const diff = h("pre", { class: "hidden" });
+  const testOut = h("pre", { class: "hidden" });
   const collect = () => Object.fromEntries([...document.querySelectorAll("[data-role]")].map((e) => [e.dataset.role, { provider: e.value, model: $(`[data-model="${e.dataset.role}"]`).value }]));
   main.append(section("Models", "brain", h("p", { class: "muted small" }, "One provider and model per role. Keys stay in .env. Admins only."), rows,
     h("div", { class: "row" }, h("button", { onclick: async () => {
@@ -347,7 +348,13 @@ async function settings() {
       diff.textContent = p.diff; diff.classList.remove("hidden");
       if (!confirm("Apply this change to config.yaml?")) return;
       await api("/api/settings/llm", { roles: collect() }); toast("Saved."); diff.classList.add("hidden");
-    } }, icon("content-save"), "Save")), diff));
+    } }, icon("content-save"), "Save"),
+      h("button", { class: "ghost", onclick: async (e) => {
+        e.target.disabled = true; testOut.textContent = "Testing each role..."; testOut.classList.remove("hidden");
+        try { const r = await api("/api/settings/llm/test");
+          testOut.textContent = r.map((x) => `${x.ok ? "OK  " : "FAIL"} ${x.role}  ${x.provider}/${x.model}  ${x.ok ? x.ms + " ms" : x.error}`).join("\n");
+        } finally { e.target.disabled = false; }
+      } }, icon("lan-check"), "Test models")), diff, testOut));
   const note = h("input", { class: "grow", placeholder: "Note, for example: the backup agent uploads to cloud storage from backup01 nightly" });
   const ntags = h("input", { placeholder: "tags" });
   const notes = await api("/api/memory/notes");

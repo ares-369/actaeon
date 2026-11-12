@@ -297,6 +297,38 @@ def cmd_demo(a) -> int:
     return 0
 
 
+def test_models(cfg) -> list[dict]:
+    """Send one tiny prompt to each role's model (with its fallbacks) and report."""
+    import time as _t
+
+    from .config import LLM_ROLES
+    from .hunt.service import privacy_llm
+    from .providers import get_llm
+    llm = privacy_llm(cfg, get_llm(reload=True))
+    out = []
+    for role in LLM_ROLES:
+        t0 = _t.monotonic()
+        b = llm.for_role(role)
+        res = b.chat([{"role": "system", "content": "You are a connectivity check."},
+                      {"role": "user", "content": 'Reply with exactly {"ok": true}'}], max_tokens=50)
+        out.append({"role": role, "provider": b.provider.name, "model": res.model or b.model, "ok": not res.error,
+                    "ms": int((_t.monotonic() - t0) * 1000), "error": (res.error or "")[:400],
+                    "reply": (res.text or "")[:80]})
+    return out
+
+
+def cmd_models_test() -> int:
+    from .config import get_config
+    rc = 0
+    for r in test_models(get_config()):
+        if r["ok"]:
+            print(f"OK   {r['role']:9} {r['provider']}/{r['model']}  {r['ms']} ms  reply: {r['reply']}")
+        else:
+            rc = 1
+            print(f"FAIL {r['role']:9} {r['provider']}/{r['model']}  {r['error']}")
+    return rc
+
+
 def cli_main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="actaeon", description="Open-source AI threat hunter (MCP connectors).")
     sub = ap.add_subparsers(dest="cmd")
@@ -304,7 +336,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_init = sub.add_parser("init", help="create config.yaml and .env in the Actaeon home folder")
     p_init.add_argument("--force", action="store_true")
     sub.add_parser("version")
-    sub.add_parser("models", help="show the model used for each role")
+    p_models = sub.add_parser("models", help="show the model for each role; 'models test' checks each one answers")
+    p_models.add_argument("action", nargs="?", choices=["show", "test"], default="show")
     sub.add_parser("hash-password", help="print a password hash for auth.password_hash")
     p_con = sub.add_parser("connectors", help="list, test or show tools of MCP connectors")
     p_con.add_argument("action", choices=["list", "test", "tools"], nargs="?", default="list")
@@ -393,7 +426,7 @@ def cli_main(argv: list[str] | None = None) -> None:
     if a.cmd == "init":
         sys.exit(cmd_init(a.force))
     if a.cmd == "models":
-        sys.exit(cmd_models())
+        sys.exit(cmd_models_test() if a.action == "test" else cmd_models())
     if a.cmd == "bridge":
         bridges[a.kind].run(a)
         return

@@ -35,8 +35,13 @@ llm:
       default_model: "qwen2.5:7b"
     anthropic:
       default_model: ""        # ANTHROPIC_API_KEY in .env
-    gemini:
-      default_model: ""        # GEMINI_API_KEY in .env
+    gemini:                    # see docs/models.md for every way to connect
+      auth: auto               # auto | api_key | vertex | vertex_api_key
+      default_model: ""        # e.g. a current Flash or Pro model
+      project: ""              # Vertex AI project (or GOOGLE_CLOUD_PROJECT)
+      location: global
+      credentials_file: ""     # service-account key or workload identity config (optional)
+      base_url: ""             # AI gateway or proxy (optional)
     openai:
       default_model: ""        # OPENAI_API_KEY in .env
     azure_openai:

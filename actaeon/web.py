@@ -428,6 +428,11 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         reply = mcp_srv.handle(msg)
         return (jsonify(reply), 200) if reply else ("", 202)
 
+    @app.route("/api/settings/llm/test", methods=["POST"])
+    def settings_llm_test():
+        from .cli import test_models
+        return jsonify(test_models(get_config()))
+
     @app.route("/api/jobs")
     def list_jobs():
         return jsonify(jobs.list(limit=50))

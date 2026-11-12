@@ -57,3 +57,5 @@
   password shows up as a failure instead of an OK.
 - IOC triage in sweeps: each match is executed / blocked / passive / unknown (rules, optional model second
   look); only executed matches make a threat.
+- Gemini provider: API key, Vertex AI (service account, workload identity, VM identity, gcloud login),
+  Vertex express key, AI gateway base URL and headers; `actaeon models test` and a UI Test button.
