@@ -20,6 +20,17 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     jobs = JobManager(cfg.data_dir / "actaeon.sqlite")
     app.extensions["actaeon_jobs"] = jobs
 
+    @app.after_request
+    def _security_headers(resp):
+        resp.headers.setdefault("Content-Security-Policy",
+                                "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+                                "font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; "
+                                "form-action 'self'")
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        return resp
+
     @app.route("/")
     def index():
         return render_template("index.html", name=cfg.instance_name, version=__version__)
@@ -264,6 +275,49 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     @app.route("/api/memory/related")
     def memory_related():
         return jsonify(hs.memory_for(get_config()).related(request.args.get("q", "")))
+
+    @app.route("/api/coverage")
+    def coverage():
+        from .hunt.coverage import build
+        c = get_config()
+        return jsonify(build(store_for(c), hs.library_for(c), hub().specs))
+
+    def _hunt_or_404(hid):
+        h = store_for(get_config()).get(hid)
+        if not h:
+            from flask import abort
+            abort(404)
+        return h
+
+    @app.route("/api/hunts/<hid>/report.md")
+    def hunt_report(hid):
+        from .hunt.report import markdown
+        h = _hunt_or_404(hid)
+        return app.response_class(markdown(h, narrative=h.get("narrative") or ""), mimetype="text/markdown",
+                                  headers={"Content-Disposition": f'attachment; filename="hunt-{hid}.md"'})
+
+    @app.route("/api/hunts/<hid>/export.json")
+    def hunt_export_json(hid):
+        import json as _json
+        return app.response_class(_json.dumps(_hunt_or_404(hid), indent=1), mimetype="application/json",
+                                  headers={"Content-Disposition": f'attachment; filename="hunt-{hid}.json"'})
+
+    @app.route("/api/hunts/<hid>/export.csv")
+    def hunt_export_csv(hid):
+        from .hunt.report import steps_csv
+        return app.response_class(steps_csv(_hunt_or_404(hid)), mimetype="text/csv",
+                                  headers={"Content-Disposition": f'attachment; filename="hunt-{hid}.csv"'})
+
+    @app.route("/api/hunts/<hid>/narrative", methods=["POST"])
+    def hunt_narrative(hid):
+        from .hunt.report import narrative
+        from .providers import get_llm
+        h = _hunt_or_404(hid)
+        text = narrative(get_llm(), h)
+        if not text:
+            return jsonify({"error": "the reporter model did not answer"}), 502
+        store_for(get_config()).update(hid, narrative=text)
+        return jsonify({"narrative": text})
 
     @app.route("/api/hunts/<hid>")
     def hunt_get(hid):

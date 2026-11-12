@@ -22,3 +22,8 @@
 - Intel sweeps: ledger-driven searches for new or changed indicators with per-value
   attribution; advisory hunts; hunt memory (past verdicts and analyst notes, FTS5).
 - Intel timestamps now use microseconds so the ledger never skips or repeats an indicator.
+- Web UI: hunts (start, live steps, stop/pause, verdict with clickable evidence), library,
+  intel, coverage, connectors and settings (models, memory notes, audit log). Strict CSP,
+  no inline script, untrusted data only rendered as text.
+- Reports: Markdown report, JSON and CSV export (formula-safe), optional reporter-model
+  narrative kept apart from the record. ATT&CK coverage view from hunts, saved hunts and starters.

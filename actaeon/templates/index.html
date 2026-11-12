@@ -4,90 +4,22 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ name }}</title>
 <link rel="stylesheet" href="/static/mdi/css/materialdesignicons.min.css">
-<style>
-:root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--fg:#d7dbe3;--muted:#8a93a6;--accent:#6aa9ff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,sans-serif}
-header{display:flex;align-items:center;gap:.6rem;padding:.8rem 1.2rem;border-bottom:1px solid var(--line)}
-header .mdi{font-size:1.4rem;color:var(--accent)}main{max-width:860px;margin:1.5rem auto;padding:0 1rem}
-section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:1rem 1.2rem;margin-bottom:1rem}
-h2{font-size:1rem;margin:0 0 .8rem;display:flex;gap:.5rem;align-items:center}
-.row{display:grid;grid-template-columns:110px 1fr 1fr;gap:.5rem;margin:.4rem 0;align-items:center}
-select,input{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:.4rem}
-button{background:var(--accent);color:#081020;border:0;border-radius:6px;padding:.45rem .9rem;cursor:pointer}
-.muted{color:var(--muted)}pre{white-space:pre-wrap;color:var(--muted)}
-</style>
+<link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header><span class="mdi mdi-bow-arrow"></span><strong>{{ name }}</strong><span class="muted">v{{ version }}</span></header>
-<main>
-<section><h2><span class="mdi mdi-information-outline"></span>Status</h2><div id="status" class="muted">Loading...</div></section>
-<section><h2><span class="mdi mdi-connection"></span>Connectors</h2>
-<div id="conns" class="muted">Loading...</div></section>
-<section><h2><span class="mdi mdi-shield-search"></span>Intel</h2>
-<div id="istats" class="muted"></div>
-<p class="muted">Paste indicators or a whole advisory. Defanged values (hxxp, [.]) are handled. Review the preview before saving.</p>
-<input id="ititle" placeholder="Advisory title (optional; saves the text as an advisory)" style="width:100%;margin-bottom:.4rem">
-<textarea id="itext" rows="6" style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:.5rem"></textarea>
-<div class="row" style="grid-template-columns:1fr 1fr 1fr">
-<input id="iconf" type="number" min="0" max="100" value="50" title="confidence 0-100">
-<input id="itags" placeholder="tags, comma separated">
-<span><button id="iprev"><span class="mdi mdi-eye"></span> Preview</button> <button id="isave"><span class="mdi mdi-plus"></span> Add</button></span></div>
-<pre id="iout"></pre>
-<div class="row" style="grid-template-columns:1fr auto"><input id="iq" placeholder="Look up a value"><button id="ilook"><span class="mdi mdi-magnify"></span></button></div>
-<pre id="ilist"></pre></section>
-<section><h2><span class="mdi mdi-brain"></span>Models</h2>
-<p class="muted">Pick a provider and model for each role. Keys stay in .env.</p>
-<div id="roles"></div>
-<p><button id="save"><span class="mdi mdi-content-save"></span> Save</button> <span id="msg" class="muted"></span></p>
-<pre id="diff"></pre></section>
-</main>
-<script>
-const $=s=>document.querySelector(s);
-async function load(){
-  const st=await (await fetch('/api/status')).json();
-  $('#status').textContent=`Auth: ${st.auth_mode} | Connectors: ${st.connectors}`;
-  const s=await (await fetch('/api/settings/llm')).json();
-  $('#roles').innerHTML=Object.entries(s.roles).map(([r,c])=>`<div class="row"><span>${r}</span>
-   <select data-role="${r}">${s.providers.map(p=>`<option ${p===(c.provider||'ollama')?'selected':''}>${p}</option>`).join('')}</select>
-   <input data-model="${r}" placeholder="model (blank = provider default)" value="${c.model||''}"></div>`).join('');
-}
-function collect(){const o={};document.querySelectorAll('[data-role]').forEach(e=>{const r=e.dataset.role;
-  o[r]={provider:e.value,model:document.querySelector(`[data-model="${r}"]`).value}});return o}
-$('#save').onclick=async()=>{
-  const p=await (await fetch('/api/settings/llm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roles:collect(),preview:true})})).json();
-  if(p.error){$('#msg').textContent=p.error;return}
-  if(!p.changed){$('#msg').textContent='No changes.';return}
-  $('#diff').textContent=p.diff;
-  if(!confirm('Apply this change to config.yaml?'))return;
-  const r=await (await fetch('/api/settings/llm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roles:collect()})})).json();
-  $('#msg').textContent=r.error||'Saved.';$('#diff').textContent='';
-};
-async function conns(){
-  const list=await (await fetch('/api/connectors')).json();
-  if(!list.length){$('#conns').textContent='No connectors yet. Add them under connectors: in config.yaml.';return}
-  $('#conns').innerHTML=list.map(c=>`<div class="row"><span>${c.name}</span><span>${c.roles.join(', ')} | ${c.transport}</span>
-   <span><button data-test="${c.name}"><span class="mdi mdi-lan-check"></span> Test</button> <span id="t-${c.name}"></span></span></div>`).join('');
-  document.querySelectorAll('[data-test]').forEach(b=>b.onclick=async()=>{const n=b.dataset.test;
-    document.getElementById('t-'+n).textContent='...';
-    const r=await (await fetch(`/api/connectors/${n}/test`,{method:'POST'})).json();
-    document.getElementById('t-'+n).textContent=r.ok?`${r.allowed}/${r.tools} tools allowed`:(r.error||'failed')});
-}
-const J=(u,b)=>fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{}).then(r=>r.json());
-async function intel(){
-  const s=await J('/api/intel/stats');
-  $('#istats').textContent=`${s.indicators} indicators, ${s.advisories} advisories `+JSON.stringify(s.by_type);
-  const rows=await J('/api/intel/indicators?limit=15');
-  $('#ilist').textContent=rows.map(r=>`${r.type.padEnd(9)} ${r.value}  conf ${r.confidence}  seen ${r.seen_count}  ${r.source}`).join('\n');
-}
-const ibody=()=>({text:$('#itext').value,confidence:+$('#iconf').value,tags:$('#itags').value});
-$('#iprev').onclick=async()=>{const r=await J('/api/intel/indicators',{...ibody(),preview:true});$('#iout').textContent=JSON.stringify(r.found,null,1)};
-$('#isave').onclick=async()=>{if(!$('#itext').value.trim())return;
-  const t=$('#ititle').value.trim();
-  const r=t?await J('/api/intel/advisories',{...ibody(),title:t}):await J('/api/intel/indicators',ibody());
-  $('#iout').textContent=r.error||`Added: ${r.new} new, ${r.updated} updated`+(r.advisory_id?` (advisory ${r.advisory_id})`:'');
-  $('#itext').value='';intel()};
-$('#ilook').onclick=async()=>{const r=await J('/api/intel/lookup?value='+encodeURIComponent($('#iq').value));
-  $('#iout').textContent=r.found?JSON.stringify(r.matches,null,1):'Not in the intel store.'+(r.related.length?' Related: '+r.related.map(x=>x.value).join(', '):'')};
-load();conns();intel();
-</script>
-</body></html>
+<header>
+  <span class="brand"><span class="mdi mdi-bow-arrow"></span>{{ name }}<span class="muted ver">v{{ version }}</span></span>
+  <nav id="nav">
+    <a href="#hunts" data-tab="hunts"><span class="mdi mdi-target"></span><span class="lbl">Hunts</span></a>
+    <a href="#library" data-tab="library"><span class="mdi mdi-bookshelf"></span><span class="lbl">Library</span></a>
+    <a href="#intel" data-tab="intel"><span class="mdi mdi-shield-search"></span><span class="lbl">Intel</span></a>
+    <a href="#coverage" data-tab="coverage"><span class="mdi mdi-grid"></span><span class="lbl">Coverage</span></a>
+    <a href="#connectors" data-tab="connectors"><span class="mdi mdi-connection"></span><span class="lbl">Connectors</span></a>
+    <a href="#settings" data-tab="settings"><span class="mdi mdi-cog"></span><span class="lbl">Settings</span></a>
+  </nav>
+</header>
+<main id="main"></main>
+<div id="toast" class="toast hidden"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

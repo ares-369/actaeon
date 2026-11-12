@@ -29,13 +29,17 @@ class HuntStore:
                 id TEXT PRIMARY KEY, created TEXT NOT NULL, finished TEXT, hypothesis TEXT NOT NULL,
                 origin TEXT NOT NULL DEFAULT 'manual', actor TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL, outcome TEXT, plan TEXT, verdict TEXT, error TEXT,
-                steps_used INTEGER NOT NULL DEFAULT 0, models TEXT, job_id TEXT);
+                steps_used INTEGER NOT NULL DEFAULT 0, models TEXT, job_id TEXT, narrative TEXT);
             CREATE TABLE IF NOT EXISTS steps (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, hunt_id TEXT NOT NULL, n INTEGER NOT NULL,
                 ts TEXT NOT NULL, kind TEXT NOT NULL, connector TEXT, tool TEXT, role TEXT,
                 arguments TEXT, why TEXT, ok INTEGER, ms INTEGER, result TEXT, note TEXT);
             CREATE INDEX IF NOT EXISTS steps_hunt ON steps(hunt_id, n);
             """)
+            cols = {r[1] for r in c.execute("PRAGMA table_info(hunts)")}
+            for col in ("job_id", "narrative"):
+                if col not in cols:
+                    c.execute(f"ALTER TABLE hunts ADD COLUMN {col} TEXT")
 
     def _conn(self):
         c = sqlite3.connect(self.path, timeout=10)
