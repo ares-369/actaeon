@@ -80,3 +80,5 @@
 - Ask assistant: questions and hunt requests in plain language; it searches records, starts stored hunts
   (origin ask:<user>), follows up on hunts, and saves the conversation with links.
 - Reports in PDF, Word and Markdown: per hunt, per case, and a period summary (`actaeon report`, UI, API).
+- Company setup: `actaeon init --company DIR` (private config folder), `actaeon doctor` (end-to-end check),
+  connector form in Settings with a config preview.

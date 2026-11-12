@@ -633,6 +633,24 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         reply = mcp_srv.handle(msg)
         return (jsonify(reply), 200) if reply else ("", 202)
 
+    @app.route("/api/settings/connectors", methods=["POST"])
+    def settings_connectors():
+        from .config import update_connectors
+        b = request.get_json(silent=True) or {}
+        try:
+            r = update_connectors(b.get("connector"), remove=b.get("remove"), preview=bool(b.get("preview")))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if not b.get("preview") and r["changed"]:
+            from .connectors import get_hub
+            get_hub(get_config(), reload=True)
+        return jsonify(r)
+
+    @app.route("/api/doctor")
+    def doctor_api():
+        from .doctor import run as run_doctor
+        return jsonify(run_doctor(offline=request.args.get("offline") == "1"))
+
     @app.route("/api/settings/llm/test", methods=["POST"])
     def settings_llm_test():
         from .cli import test_models

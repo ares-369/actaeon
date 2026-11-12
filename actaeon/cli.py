@@ -371,6 +371,11 @@ def cli_main(argv: list[str] | None = None) -> None:
     sub.add_parser("serve", help="run the web UI and API (default)")
     p_init = sub.add_parser("init", help="create config.yaml and .env in the Actaeon home folder")
     p_init.add_argument("--force", action="store_true")
+    p_init.add_argument("--company", metavar="DIR", help="create a private configuration folder for an organisation")
+    p_init.add_argument("--name", default="", help="instance name for --company")
+    p_doc = sub.add_parser("doctor", help="check the whole setup and say what to fix")
+    p_doc.add_argument("--offline", action="store_true", help="skip connector probes")
+    p_doc.add_argument("--models", action="store_true", help="also send one test prompt to each model role")
     sub.add_parser("version")
     p_models = sub.add_parser("models", help="show the model for each role; 'models test' checks each one answers")
     p_models.add_argument("action", nargs="?", choices=["show", "test"], default="show")
@@ -484,7 +489,22 @@ def cli_main(argv: list[str] | None = None) -> None:
         print(__version__)
         return
     if a.cmd == "init":
+        if a.company:
+            from .company import init_company
+            files = init_company(a.company, name=a.name)
+            print(f"created {a.company}:\n  " + "\n  ".join(files))
+            print("next: fill in every <...> in config.yaml, then: ACTAEON_HOME=" + a.company + " actaeon doctor")
+            return
         sys.exit(cmd_init(a.force))
+    if a.cmd == "doctor":
+        from .doctor import run as run_doctor
+        rows = run_doctor(offline=a.offline, models=a.models)
+        for r in rows:
+            print(f"{r['level']:4} {r['area']:10} {r['message']}" + (f"\n{'':16}-> {r['hint']}" if r["hint"] else ""))
+        fails = sum(r["level"] == "FAIL" for r in rows)
+        warns = sum(r["level"] == "WARN" for r in rows)
+        print(f"\n{fails} problem(s), {warns} warning(s)")
+        sys.exit(1 if fails else 0)
     if a.cmd == "models":
         sys.exit(cmd_models_test() if a.action == "test" else cmd_models())
     if a.cmd == "bridge":

@@ -68,6 +68,12 @@ clients you are signed in to, with fallbacks when a model hits its quota. See
 Results can go to email, an Excel workbook, a webhook, or a tool you allow (for
 example opening a case). See [docs/outputs.md](docs/outputs.md).
 
+## For an organisation
+
+See [docs/company-setup.md](docs/company-setup.md): a private configuration folder
+(`actaeon init --company DIR`), read-only service accounts, query notes,
+`actaeon doctor`, SSO and named accounts.
+
 ## Also included
 
 - Personal data masking before prompts reach cloud models ([docs/privacy.md](docs/privacy.md)).

@@ -286,3 +286,30 @@ def set_user(username: str, *, password_hash: str | None = None, role: str = "op
         users[username] = entry
     path.with_name(path.name + ".bak").write_text(old)
     path.write_text(yaml.safe_dump(data, sort_keys=False))
+
+
+def update_connectors(entry: dict | None = None, *, remove: str | None = None, preview: bool = False) -> dict:
+    """Add/replace one connector (by name) or remove one, validating the whole list. Returns a diff."""
+    from .connectors.spec import parse_connectors
+    path = config_path()
+    old_text = path.read_text()
+    data = yaml.safe_load(old_text) or {}
+    items = [c for c in data.get("connectors") or [] if isinstance(c, dict)]
+    if remove:
+        items = [c for c in items if c.get("name") != remove]
+    if entry:
+        clean = {k: v for k, v in entry.items() if v not in (None, "", [], {})}
+        items = [c for c in items if c.get("name") != clean.get("name")] + [clean]
+    parse_connectors(items)                      # raises ValueError with a clear message
+    data["connectors"] = items
+    old = yaml.safe_load(old_text) or {}
+
+    def dump(d):
+        return _redact(yaml.safe_dump(d.get("connectors") or [], sort_keys=False))
+    diff = "".join(difflib.unified_diff(dump(old).splitlines(True), dump(data).splitlines(True),
+                                        "connectors (current)", "connectors (proposed)"))
+    if not preview and old != data:
+        path.with_name(path.name + ".bak").write_text(old_text)
+        path.write_text(yaml.safe_dump(data, sort_keys=False))
+        get_config(reload=True)
+    return {"changed": old != data, "diff": diff}
