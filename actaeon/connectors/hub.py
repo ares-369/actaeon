@@ -23,6 +23,7 @@ BACKOFF_SEC = 1.0      # 1s, then 2s
 
 
 LOCAL_INTEL = "local-intel"
+PROBE_TOOLS = ("list_indices", "list_collections", "intel_stats", "list_hunts")
 
 
 def local_intel_connector(data_dir) -> dict:
@@ -148,8 +149,23 @@ class ConnectorHub:
         except Exception as exc:
             self._drop(name)
             return {"ok": False, "error": str(exc)[:300]}
-        return {"ok": True, "server": (info.get("serverInfo") or {}), "ms": int((time.monotonic() - start) * 1000),
-                "tools": len(tools), "allowed": sum(t["allowed"] for t in tools)}
+        out = {"ok": True, "server": (info.get("serverInfo") or {}), "tools": len(tools),
+               "allowed": sum(t["allowed"] for t in tools)}
+        # listing tools does not touch the source; if there is an argument-free read tool, try it
+        probe = next((t for t in tools if t["allowed"] and t["name"] in PROBE_TOOLS
+                      and not (t.get("inputSchema") or {}).get("required")), None)
+        if probe:
+            try:
+                res = self._client(name).call_tool(probe["name"], {})
+                text = _result_text(res)
+                out["probe"] = probe["name"]
+                if res.get("isError"):
+                    out.update(ok=False, error=f"{probe['name']} failed: {text[:300]}")
+            except Exception as exc:
+                self._drop(name)
+                out.update(ok=False, probe=probe["name"], error=f"{probe['name']} failed: {str(exc)[:300]}")
+        out["ms"] = int((time.monotonic() - start) * 1000)
+        return out
 
     # ---- calls ----
     def call(self, name: str, tool: str, arguments: dict[str, Any], *, actor: str = "", hunt_id: str = "") -> dict:

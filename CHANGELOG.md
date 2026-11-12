@@ -53,3 +53,5 @@
 - Stricter threat verdicts: the analyst is asked once to corroborate (intel lookup, decode, a pivot)
   before a 'threat' verdict; confidence is capped at 60 with one piece of evidence and at 75 when all
   evidence comes from one kind of query.
+- `connectors test` now reads from the source (list_indices, list_collections and similar), so a wrong
+  password shows up as a failure instead of an OK.

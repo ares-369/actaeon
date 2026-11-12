@@ -222,7 +222,7 @@ def test_bridge_end_to_end(tmp_path, monkeypatch):
     hub = ConnectorHub([spec], AuditLog(tmp_path / "a.sqlite"), sleep=lambda s: None)
     try:
         r = hub.test("logs")
-        assert r["ok"] and r["allowed"] == r["tools"] == 5, r
+        assert r["ok"] and r["allowed"] == r["tools"] == 5 and r["probe"] == "list_indices", r
         out = hub.call("logs", "search", {"index": "events-2026", "query": "msg:hello"})
         assert "hello" in out["content"] and not out["is_error"]
         bad = hub.call("logs", "search", {"index": "users"})
@@ -236,3 +236,25 @@ def test_cli_has_bridges():
     import subprocess
     r = subprocess.run([sys.executable, "-m", "actaeon", "bridge", "--help"], capture_output=True, text=True)
     assert "search-index" in r.stdout and "taxii" in r.stdout and "openapi" in r.stdout
+
+
+def test_connector_test_reads_the_source(tmp_path, monkeypatch):
+    class Deny(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            self.send_response(401)
+            self.end_headers()
+    srv = HTTPServer(("127.0.0.1", 0), Deny)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    spec = parse_connectors([{"name": "logs", "roles": ["log_search"], "transport": "stdio", "command": "actaeon",
+                              "args": ["bridge", "search-index", "--url", f"http://127.0.0.1:{srv.server_port}",
+                                       "--index", "x-*"], "timeout_sec": 10}])[0]
+    hub = ConnectorHub([spec], AuditLog(tmp_path / "a.sqlite"), sleep=lambda s: None)
+    try:
+        r = hub.test("logs")
+        assert not r["ok"] and "401" in r["error"]
+    finally:
+        hub.close()
+        srv.shutdown()
