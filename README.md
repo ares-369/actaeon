@@ -18,11 +18,21 @@ read-only by default, and every tool call is written to an audit log.
 
 ## Try it
 
+![actaeon demo: scripted offline run against synthetic data](docs/demo.gif)
+
+*Recorded from `actaeon demo --offline --run` using `scripts/make_demo_gif.py`.*
+
 ```bash
 pip install -e .
 actaeon demo --offline --run                  # sample data, scripted run (not AI)
 ACTAEON_HOME=~/.actaeon-demo actaeon serve    # http://127.0.0.1:8611
 ```
+
+| Cases | Hunt Verdict & Evidence |
+|---|---|
+| ![Cases](docs/screenshots/cases.png) | ![Hunt](docs/screenshots/hunt.png) |
+| **ATT&CK Coverage** | **Reports** |
+| ![Coverage](docs/screenshots/coverage.png) | ![Reports](docs/screenshots/reports.png) |
 
 See [docs/demo.md](docs/demo.md). Before relying on it, read
 [DISCLAIMER.md](DISCLAIMER.md), [docs/known-limitations.md](docs/known-limitations.md), and
