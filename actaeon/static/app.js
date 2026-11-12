@@ -151,6 +151,7 @@ function renderHunt(hu) {
       h("ul", {}, (hu.plan.steps || []).map((s) => h("li", {}, h("span", { class: "muted" }, `[${s.role}] `), s.goal))),
       (hu.plan.missing_roles || []).length ? h("p", { class: "warn" }, "No connector for: " + hu.plan.missing_roles.join(", ")) : null));
   }
+  if (!running) out.push(chatBox(hu));
   out.push(section("Steps", "format-list-numbered", (hu.steps || []).filter((s) => s.kind !== "verdict").map(stepView)));
   return h("div", {}, out);
 }
@@ -178,6 +179,31 @@ function stepView(s) {
     s.why && h("p", { class: "small" }, "Why: ", s.why),
     s.arguments && h("pre", {}, JSON.stringify(s.arguments, null, 1)),
     s.result && h("pre", {}, s.result));
+}
+
+function chatBox(hu) {
+  const log = h("div");
+  const input = h("input", { class: "grow", placeholder: "Ask about this hunt, or say what to check next (for example: check the other hosts)" });
+  const draw = async () => {
+    const msgs = await api(`/api/hunts/${hu.id}/chat`);
+    log.replaceChildren(...msgs.map((m) => h("div", { class: "chat " + (m.role === "analyst" ? "me" : "bot") },
+      h("div", { class: "muted small" }, m.role === "analyst" ? (m.author || "you") : "Actaeon", "  ", when(m.ts)),
+      h("div", { class: "pre" }, m.content), m.evidence.length ? h("div", { class: "small" }, "Evidence: " + m.evidence.join(", ")) : null)));
+    return msgs.length;
+  };
+  draw();
+  const send = async () => {
+    if (!input.value.trim()) return;
+    const before = await draw();
+    await api(`/api/hunts/${hu.id}/chat`, { message: input.value });
+    input.value = ""; toast("Thinking... answers can take a minute.");
+    let tries = 0;
+    const t = setInterval(async () => { tries++; const n = await draw(); if (n >= before + 2 || tries > 90) { clearInterval(t); } }, 2000);
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+  return section("Ask Actaeon", "chat-outline",
+    h("p", { class: "muted small" }, "Answers cite evidence. New searches run read-only and are added to this hunt."),
+    log, h("div", { class: "row" }, input, h("button", { onclick: send }, icon("send"), "Send")));
 }
 
 function saveBox(hu) {

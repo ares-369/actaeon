@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from flask import Flask, jsonify, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -380,6 +382,25 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         r = intel_store().add_advisory(title, doc["text"], source="import", url=doc.get("url", ""), confidence=conf,
                                        strict_links=True)
         return jsonify({**r, "title": title, "chars": len(doc["text"])})
+
+    @app.route("/api/hunts/<hid>/chat", methods=["GET", "POST"])
+    def hunt_chat(hid):
+        from .hunt.chat import ChatLog, ask
+        c = get_config()
+        if request.method == "GET":
+            if not store_for(c).get(hid, with_steps=False):
+                return jsonify({"error": "not found"}), 404
+            return jsonify(ChatLog(store_for(c).path).list(hid))
+        msg = str((request.get_json(silent=True) or {}).get("message", ""))
+        h = store_for(c).get(hid, with_steps=False)
+        if not h:
+            return jsonify({"error": "not found"}), 404
+        if h["status"] in ("queued", "running") or not msg.strip():
+            return jsonify({"error": "the hunt is still running" if msg.strip() else "message is required"}), 400
+        who = _actor()
+        jid = jobs.submit("chat", {"hunt_id": hid, "t": time.time()}, lambda ctl: ask(c, hid, msg, author=who),
+                          deduplicate=False)
+        return jsonify({"job_id": jid}), 202
 
     @app.route("/api/hunts/<hid>/narrative", methods=["POST"])
     def hunt_narrative(hid):

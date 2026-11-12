@@ -71,6 +71,17 @@ other layers.
 `hunt.max_result_bytes` in `config.yaml`. After 3 replies that are not valid
 actions the hunt ends as `inconclusive`.
 
+## Ask Actaeon (chat)
+
+On a finished hunt, the UI has an **Ask Actaeon** box (API:
+`POST /api/hunts/<id>/chat {"message": "..."}`, operator role). Ask about the
+result, or say what to check next ("check the other hosts for this domain",
+"what ran before the PowerShell?"). The analyst model answers from the record, or
+first makes up to 5 read-only calls. The calls get the same policy, validator
+and field guard as a hunt, and their results are added to the hunt as new
+evidence. Citations to evidence that does not exist are removed. Chat cannot
+change the verdict: use feedback on findings for that.
+
 ## Prompt size
 
 `hunt.prompt_mode: compact` is for cheaper or smaller models. The analyst sees
