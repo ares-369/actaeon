@@ -97,6 +97,7 @@ intel:
   feeds: []
   sweep:
     interval_minutes: 0
+    triage: rules             # rules | model | off: was each match executed, blocked or only mentioned?
   web:                        # web intel (see docs/autonomy.md)
     interval_minutes: 0       # > 0: pull sources on a schedule
     auto_hunt: false          # start an advisory hunt for each new advisory

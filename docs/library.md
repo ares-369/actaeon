@@ -46,8 +46,18 @@ actaeon sweep            # or POST /api/intel/sweep {"full": false}
 - Values are searched in OR batches (`batch`, default 20). When a batch matches,
   each value is searched on its own (`max_attribution_calls`, default 50) so the
   match names the indicator.
-- Matches give outcome `threat` with `needs_review: true`. A log line containing
-  an indicator is a lead, not proof of compromise.
+- Each match is **triaged** from the events that matched:
+  - `executed`: the indicator was used (process start, allowed connection, file written, successful sign-in);
+  - `blocked`: it was stopped (drop or deny, quarantine, prevention, failed sign-in);
+  - `passive`: it was only mentioned (email text, enrichment, report);
+  - `unknown`: none of the above can be read from the events.
+
+  The outcome is `threat` only if an indicator `executed`. It is
+  `telemetry_found_benign` when every match was blocked or passive, and
+  `inconclusive` (needs review) when something could not be classified.
+  `intel.sweep.triage: model` asks the analyst model to look at the `unknown`
+  ones; `rules` (the default) uses field names and values only; `off` turns
+  triage off. The rules read words, not meaning, so check before acting.
 - If a search fails, the ledger position does not move, so the next sweep tries again.
 
 Targets come from `intel.sweep.targets` (connector, tool, and an argument

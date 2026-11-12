@@ -52,7 +52,7 @@ def test_offline_demo_end_to_end(tmp_path, monkeypatch, capsys):
         c._CONFIG, h._HUB = None, None
     out = capsys.readouterr().out
     assert "NOT an AI model" in out and "verdict: threat" in out and "[E3]" in out
-    assert "matched log data" in out
+    assert "were used in this environment (executed)" in out
     from actaeon.hunt import HuntStore
     hunts = HuntStore(tmp_path / "demo" / "data" / "hunts.sqlite").list()
     demo_hunt = next(x for x in hunts if x["origin"] == "demo")

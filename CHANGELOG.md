@@ -55,3 +55,5 @@
   evidence comes from one kind of query.
 - `connectors test` now reads from the source (list_indices, list_collections and similar), so a wrong
   password shows up as a failure instead of an OK.
+- IOC triage in sweeps: each match is executed / blocked / passive / unknown (rules, optional model second
+  look); only executed matches make a threat.

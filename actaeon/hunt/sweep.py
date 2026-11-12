@@ -72,14 +72,16 @@ def _quote(v: str) -> str:
 
 class Sweep:
     def __init__(self, hub, intel: IntelStore, store: HuntStore, settings: dict | None = None, *,
-                 max_results: int = 200):
+                 max_results: int = 200, llm=None):
         self.hub, self.intel, self.store = hub, intel, store
+        self.llm = llm
         s = settings or {}
         self.lookback = str(s.get("lookback", "now-7d"))
         self.min_conf = int(s.get("min_confidence", 50))
         self.batch = max(1, min(int(s.get("batch", 20)), 100))
         self.max_values = int(s.get("max_values", 2000))
         self.max_attrib = int(s.get("max_attribution_calls", 50))
+        self.triage = str(s.get("triage", "rules"))           # rules | model | off
         self.targets = list(s.get("targets") or []) or auto_targets(getattr(hub, "specs", {}))
         self.max_results = max_results
         with self.intel._conn() as c:
@@ -99,6 +101,8 @@ class Sweep:
         inds = [i for i in self.intel.list(min_confidence=self.min_conf, changed_after=since, limit=self.max_values)
                 if i["type"] in SEARCHABLE]
         newest = max((i["updated"] for i in inds), default=since)
+        # a single-value batch never goes through attribution, so keep its content too
+
         hid = self.store.create(f"Intel sweep: {len(inds)} indicator(s) "
                                 f"{'(all)' if since is None else 'changed since ' + since}", origin="sweep",
                                 actor=actor)
@@ -112,6 +116,8 @@ class Sweep:
             gaps.append("no sweep targets: add intel.sweep.targets or a search-index bridge connector")
         if not inds:
             gaps.append("no new or changed indicators to sweep")
+
+        contents: dict[str, list[str]] = {}
 
         def search(target: dict, values: list[str]) -> tuple[int | None, int]:
             nonlocal n, ok_calls, failed
@@ -142,6 +148,8 @@ class Sweep:
             self.store.add_step(hid, n, "call", connector=target["connector"], tool=target["tool"],
                                 role=meta.get("role", ""), arguments=args, why=f"sweep of {len(values)} value(s)",
                                 ok=ok, result=content, note=f"hits={h}")
+            if ok and h and len(values) == 1:
+                contents.setdefault(values[0], []).append(content)
             return h, n
 
         values = [i["value"] for i in inds]
@@ -163,12 +171,36 @@ class Sweep:
                     if hv:
                         matched.setdefault(v, []).append(f"E{nn}")
         by_value = {i["value"]: i for i in inds}
+        from .triage import classify, events_from, model_classify
+        states: dict[str, dict] = {}
+        for v in matched:
+            evs = [e for c in contents.get(v, []) for e in events_from(c)]
+            st = classify(evs) if self.triage != "off" else {"state": "unknown", "counts": {}}
+            if st["state"] == "unknown" and self.triage == "model" and self.llm is not None and evs:
+                m = model_classify(self.llm, v, evs)
+                if m:
+                    st = {**st, **m, "by": "model"}
+            states[v] = {"by": "rules", **st} if self.triage != "off" else st
+        label = {"executed": "was USED (executed)", "blocked": "was seen but BLOCKED",
+                 "passive": "was only MENTIONED (passive)", "unknown": "matched; state UNKNOWN"}
         findings = [{"claim": f"{by_value[v]['type']} {v} (confidence {by_value[v]['confidence']}, "
-                              f"source {by_value[v]['source']}) appears in the logs", "evidence": ev}
+                              f"source {by_value[v]['source']}) {label[states[v]['state']]}"
+                              + (f": {states[v]['reason']}" if states[v].get("reason") else ""),
+                     "evidence": ev, "state": states[v]["state"]}
                     for v, ev in matched.items()]
-        if findings:
+        n_exec = sum(st["state"] == "executed" for st in states.values())
+        n_unknown = sum(st["state"] == "unknown" for st in states.values())
+        if findings and n_exec:
             outcome = "threat"
-            summary = f"{len(findings)} indicator(s) from intel matched log data; confirm each before acting."
+            summary = (f"{n_exec} indicator(s) from intel were used in this environment (executed); "
+                       f"{len(findings) - n_exec} other match(es) were blocked, passive or unclear. Confirm before acting.")
+        elif findings and n_unknown:
+            outcome = "inconclusive"
+            summary = f"{len(findings)} indicator match(es); {n_unknown} could not be classified. Review them."
+        elif findings:
+            outcome = "telemetry_found_benign"
+            summary = (f"{len(findings)} indicator match(es), all blocked or passive (mentions, drops, quarantines). "
+                       "No sign they were used.")
         elif ok_calls:
             outcome, summary = "no_results", f"No match for {len(values)} indicator(s)."
         else:
@@ -177,9 +209,12 @@ class Sweep:
         verdict = {"outcome": outcome, "confidence": max([by_value[v]["confidence"] for v in matched] or [50]),
                    "summary": summary, "findings": findings, "unsupported_claims": [], "attack": [], "gaps": gaps,
                    "next_steps": ["Open each match and check whether it is malicious"] if findings else [],
-                   "checks": ["automatic indicator sweep without a model; a match is not proof of compromise"],
-                   "needs_review": bool(findings),
-                   "sweep": {"indicators": len(values), "matched": len(matched), "failed_calls": failed}}
+                   "checks": ["automatic indicator sweep; each match triaged as executed / blocked / passive / "
+                              "unknown" + (" by rules then model" if self.triage == "model" else " by rules")
+                              + "; a match is not proof of compromise"],
+                   "needs_review": bool(findings) and outcome != "telemetry_found_benign",
+                   "sweep": {"indicators": len(values), "matched": len(matched), "failed_calls": failed,
+                             "triage": {v: st["state"] for v, st in states.items()}}}
         self.store.add_step(hid, n + 1, "verdict", note=json.dumps(verdict))
         self.store.update(hid, status="done", outcome=outcome, verdict=verdict, steps_used=n, finished=_now())
         if newest and (not inds or (ok_calls and not failed)):

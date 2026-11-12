@@ -155,7 +155,8 @@ def test_sweep_ledger_and_attribution(tmp_path):
     sw = Sweep(hub, intel, HuntStore(tmp_path / "h.sqlite"), {"targets": [target], "batch": 2})
     r = sw.run()
     v = r["verdict"]
-    assert v["outcome"] == "threat" and v["needs_review"] and v["sweep"]["indicators"] == 3
+    assert v["outcome"] == "inconclusive" and v["needs_review"] and v["sweep"]["indicators"] == 3
+    assert v["sweep"]["triage"] == {"evil.example": "unknown"}
     assert len(v["findings"]) == 1 and "evil.example" in v["findings"][0]["claim"]
     assert hub.calls[0][2]["query"].count(" OR ") == 1
     assert hub.calls[0][2]["time_from"] == "now-7d"

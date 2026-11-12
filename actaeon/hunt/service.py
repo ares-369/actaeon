@@ -160,9 +160,13 @@ def run_replay(cfg, sid: int, *, hub=None, llm=None, jobs=None, actor: str = "sc
     return res
 
 
-def run_sweep(cfg, *, full: bool = False, hub=None, actor: str = "scheduler") -> dict:
-    sweep = Sweep(_hub(cfg, hub), intel_for(cfg), store_for(cfg), (cfg.intel or {}).get("sweep") or {},
-                  max_results=cfg.hunt.max_results)
+def run_sweep(cfg, *, full: bool = False, hub=None, actor: str = "scheduler", llm=None) -> dict:
+    settings = (cfg.intel or {}).get("sweep") or {}
+    if settings.get("triage") == "model" and llm is None:
+        from ..providers import get_llm
+        llm = privacy_llm(cfg, get_llm())
+    sweep = Sweep(_hub(cfg, hub), intel_for(cfg), store_for(cfg), settings,
+                  max_results=cfg.hunt.max_results, llm=llm)
     return sweep.run(full=full, actor=actor)
 
 
