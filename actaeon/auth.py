@@ -129,12 +129,31 @@ def _check_hash(stored: str, pw: str) -> bool:
         return False
 
 
+_VERIFIED: dict[str, float] = {}     # digest(user, password, stored hash) -> expiry; avoids re-hashing per request
+_VERIFIED_TTL = 300.0
+
+
 def verify_user(cfg, user: str, pw: str) -> bool:
-    """Named accounts in auth.users first, then the single auth.username account."""
+    """Named accounts in auth.users first, then the single auth.username account.
+
+    Successful checks are remembered for 5 minutes as a digest of (user, password, stored hash), so
+    HTTP Basic requests do not each pay for a full PBKDF2 run. Changing the password changes the digest.
+    """
     users = getattr(cfg.auth, "users", None) or {}
+    stored = str(users[user].get("password_hash", "")) if user in users else (cfg.auth.password_hash or "")
+    key = hashlib.sha256(f"{user}\0{pw}\0{stored}".encode()).hexdigest()
+    now = time.monotonic()
+    if _VERIFIED.get(key, 0) > now:
+        return True
     if user in users:
-        return _check_hash(str(users[user].get("password_hash", "")), pw)
-    return hmac.compare_digest(user or "", cfg.auth.username) and _verify_password(cfg, pw)
+        ok = _check_hash(stored, pw)
+    else:
+        ok = hmac.compare_digest(user or "", cfg.auth.username) and _verify_password(cfg, pw)
+    if ok:
+        if len(_VERIFIED) > 1000:
+            _VERIFIED.clear()
+        _VERIFIED[key] = now + _VERIFIED_TTL
+    return ok
 
 
 def _verify_password(cfg, pw: str) -> bool:

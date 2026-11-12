@@ -24,6 +24,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip && pip install -e '.[dev]'
       - run: ruff check actaeon tests
+      - run: node --check actaeon/static/app.js
       - run: pytest -q
 
   wheel:

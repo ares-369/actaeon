@@ -2,7 +2,11 @@
 // it is only ever set with textContent, never parsed as HTML.
 "use strict";
 const $ = (s, el = document) => el.querySelector(s);
-const main = $("#main");
+// Pages render into `main`; route() points it at an off-screen container and swaps it in when
+// the page is ready, so the screen never goes blank between pages or after an action.
+const mainEl = $("#main");
+let main = mainEl;
+let navToken = 0;
 
 function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -52,13 +56,171 @@ const when = (s) => (s || "").replace("T", " ").slice(0, 16);
 let poll = null;
 function route() {
   clearInterval(poll); poll = null;
-  const [tab, arg] = (location.hash.slice(1) || "hunts").split("/");
-  document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === (tab === "hunt" ? "hunts" : tab)));
-  fill(main, );
-  const pages = { hunts, hunt: () => huntDetail(arg), library, intel, coverage, connectors, settings };
-  (pages[tab] || hunts)().catch((e) => main.append(h("p", { class: "bad" }, String(e.message || e))));
+  const [tab, arg] = (location.hash.slice(1) || "cases").split("/");
+  const navTab = { hunt: "hunts", case: "cases" }[tab] || tab;
+  document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === navTab));
+  const pages = { cases, case: () => caseDetail(arg), hunts, hunt: () => huntDetail(arg), ask, library, intel,
+    coverage, reports, connectors, settings };
+  const token = ++navToken;
+  const view = h("div");
+  main = view;
+  const done = () => { if (token === navToken) { fill(mainEl, view); main = mainEl; } };
+  (pages[tab] || cases)().then(done, (e) => { view.append(h("p", { class: "bad" }, String(e.message || e))); done(); });
 }
 window.addEventListener("hashchange", route);
+
+// ---------------- Who am I ----------------
+let ME = { user: "", role: "viewer" };
+const meReady = api("/api/me").then((m) => { ME = m; fill(document.getElementById("me"), icon("account-circle-outline"), " ", m.name || m.user, " ",
+  h("span", { class: "badge" }, m.role)); }).catch(() => {});
+const SEV = (s) => h("span", { class: "sev sev-" + s }, s);
+const STATUS = (s) => h("span", { class: "badge st-" + s }, s.replace("_", " "));
+const RES = { true_positive: "True positive", benign_true_positive: "Benign true positive", false_positive: "False positive",
+  duplicate: "Duplicate", other: "Other" };
+const ago = (t) => { if (!t) return "-"; const m = (Date.now() - new Date(t).getTime()) / 60000;
+  return m < 60 ? `${Math.max(1, Math.round(m))} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+const mins = (m) => (m === null || m === undefined ? "-" : m < 120 ? `${m} min` : `${(m / 60).toFixed(1)} h`);
+
+// ---------------- Cases ----------------
+async function cases() {
+  const st = await api("/api/cases/stats");
+  const kpi = (n, l, cls, hash) => h("a", { class: "kpi-card " + (cls || ""), href: hash || "#cases" }, h("b", {}, n), h("span", {}, l));
+  const mine = await api("/api/cases?assignee=me&open=1");
+  main.append(h("div", { class: "kpi-row" },
+    kpi(st.open, "open cases"), kpi(st.new, "new, not acknowledged", st.new ? "warn-card" : ""),
+    kpi(mine.length, "assigned to me"), kpi((st.by_severity_open.critical || 0) + (st.by_severity_open.high || 0), "critical + high open", "bad-card"),
+    kpi(mins(st.mean_minutes_to_acknowledge), "avg time to acknowledge"), kpi(mins(st.mean_minutes_to_close), "avg time to close")));
+  const filt = { view: "open", severity: "" };
+  const body = h("tbody");
+  const bar = h("div", { class: "row" },
+    ...[["open", "Open"], ["new", "New"], ["mine", "Mine"], ["closed", "Closed"], ["all", "All"]].map(([v, l]) =>
+      h("button", { class: "ghost seg" + (v === filt.view ? " on" : ""), "data-view": v, onclick: (e) => { filt.view = v;
+        bar.querySelectorAll(".seg").forEach((b) => b.classList.toggle("on", b.dataset.view === v)); load(); } }, l)),
+    h("select", { onchange: (e) => { filt.severity = e.target.value; load(); } },
+      h("option", { value: "" }, "Any severity"), ["critical", "high", "medium", "low"].map((x) => h("option", { value: x }, x))));
+  const load = async () => {
+    const q = new URLSearchParams();
+    if (filt.view === "open") q.set("open", "1");
+    if (filt.view === "new") q.set("status", "new");
+    if (filt.view === "closed") q.set("status", "closed");
+    if (filt.view === "mine") { q.set("assignee", "me"); q.set("open", "1"); }
+    if (filt.severity) q.set("severity", filt.severity);
+    const rows = await api("/api/cases?" + q.toString());
+    fill(body, rows.length ? rows.map((c) => h("tr", { class: "click", onclick: () => (location.hash = "#case/" + c.id) },
+      h("td", {}, `#${c.id}`), h("td", {}, SEV(c.severity)), h("td", {}, STATUS(c.status)),
+      h("td", {}, c.title, h("div", { class: "muted small" }, c.origin || "")),
+      h("td", {}, c.assignee || h("span", { class: "muted" }, "unassigned")),
+      h("td", { class: "small" }, c.status === "closed" ? (RES[c.resolution] || c.resolution) : ago(c.created)))) :
+      h("tr", {}, h("td", { colspan: 6, class: "muted" }, "No cases here.")));
+  };
+  main.append(section("Cases", "briefcase-outline",
+    h("p", { class: "muted small" }, "A case opens for every threat or result that needs review. Everyone can see every case."),
+    bar, h("table", {}, h("thead", {}, h("tr", {}, ["Case", "Severity", "Status", "Title", "Assignee", "Opened / resolution"].map((x) => h("th", {}, x)))), body)));
+  await load();
+  poll = setInterval(load, 15000);
+}
+
+async function caseDetail(id) {
+  const c = await api("/api/cases/" + encodeURIComponent(id));
+  const hu = c.hunt || {};
+  const v = hu.verdict || {};
+  const can = ME.role !== "viewer";
+  const act = async (action, body) => { await post(`/api/cases/${c.id}/${action}`, body); toast("Saved."); route(); };
+  const comment = h("textarea", { placeholder: "Add a comment (visible to everyone)" });
+  const resSel = h("select", {}, Object.entries(RES).map(([k, l]) => h("option", { value: k }, l)));
+  const closeNote = h("input", { class: "grow", placeholder: "Why? (required)" });
+  const assignSel = h("select", {}, h("option", { value: "" }, "Assign to..."));
+  const open = c.status !== "closed";
+  if (can && open) api("/api/users").then((us) => us.forEach((u) => assignSel.append(h("option", { value: u.user }, u.name ? `${u.name} (${u.user})` : u.user)))).catch(() => {});
+  main.append(section(`Case #${c.id}`, "briefcase-outline",
+    h("h3", { class: "case-title" }, c.title),
+    h("div", { class: "row" }, SEV(c.severity), STATUS(c.status),
+      h("span", { class: "small" }, "Assignee: ", h("b", {}, c.assignee || "unassigned")),
+      c.resolution ? h("span", { class: "badge st-closed" }, RES[c.resolution] || c.resolution) : null,
+      h("span", { class: "muted small" }, `opened ${when(c.created)}`)),
+    can ? h("div", { class: "row actions" },
+      open && (c.assignee !== ME.user || c.status === "new") ? h("button", { onclick: () => act("acknowledge") }, icon("hand-back-right-outline"), "Acknowledge (assign to me)") : null,
+      open && c.status !== "in_progress" && c.status !== "new" ? h("button", { class: "ghost", onclick: () => act("status", { status: "in_progress" }) }, icon("progress-wrench"), "In progress") : null,
+      open ? [assignSel, h("button", { class: "ghost", onclick: () => assignSel.value ? act("assign", { to: assignSel.value }) : toast("Pick someone first.") }, icon("account-arrow-right-outline"), "Assign")] : null,
+      !open ? h("button", { class: "ghost", onclick: () => act("reopen", { comment: comment.value }) }, icon("restore"), "Reopen") : null) :
+      h("p", { class: "muted small" }, "Read-only: your role is viewer."),
+    can && open ? h("div", { class: "row close-row" }, h("span", { class: "small" }, "Close as"), resSel, closeNote,
+      h("button", { class: "danger", onclick: () => closeNote.value.trim() ? act("close", { resolution: resSel.value, comment: closeNote.value }) : toast("Write why you are closing it.") },
+        icon("check-decagram-outline"), "Close case")) : null,
+    h("div", { class: "row" },
+      h("a", { href: `/api/cases/${c.id}/report.pdf` }, h("button", { class: "ghost" }, icon("file-pdf-box"), "PDF")),
+      h("a", { href: `/api/cases/${c.id}/report.docx` }, h("button", { class: "ghost" }, icon("file-word-box"), "Word")),
+      h("a", { href: "#hunt/" + hu.id }, h("button", { class: "ghost" }, icon("target"), "Open the hunt")))));
+  main.append(section("What was found", "magnify-scan",
+    h("p", {}, hu.hypothesis || ""), h("div", { class: "row" }, badge(hu.outcome), h("span", {}, `confidence ${v.confidence ?? "-"}`),
+      v.verification ? h("span", { class: "badge" }, icon("check-all"), " second look: " + v.verification.result) : null),
+    h("p", {}, v.summary || ""),
+    (v.findings || []).length ? h("ul", {}, v.findings.map((f) => h("li", {}, f.claim, h("span", { class: "muted" }, ` (${f.evidence.join(", ")})`)))) : null,
+    v.verification && v.verification.reason ? h("p", { class: "small muted" }, "Second look: " + v.verification.reason) : null));
+  main.append(section("Activity", "history",
+    h("ul", { class: "events" }, c.events.slice().reverse().map((e) => h("li", {},
+      h("span", { class: "muted small" }, `${when(e.ts)}  `), h("b", {}, e.user), ` ${e.action.replace("_", " ")}`,
+      e.detail ? h("div", { class: "pre small" }, e.detail) : null))),
+    can ? [comment, h("div", { class: "row" }, h("button", { class: "ghost", onclick: () => comment.value.trim() ? act("comment", { text: comment.value }) : null }, icon("comment-plus-outline"), "Comment"))] : null));
+}
+
+// ---------------- Ask ----------------
+async function ask() {
+  const convs = await api("/api/assistant");
+  let current = null;
+  const list = h("div", { class: "conv-list" });
+  const log = h("div", { class: "conv-log" });
+  const input = h("textarea", { placeholder: "Ask anything: \"has anything talked to 203.0.113.66 this week?\", \"hunt for password spraying in the last 3 days\", \"what are my open cases?\"" });
+  const drawList = (cs) => fill(list, h("button", { class: "ghost", onclick: () => { current = null; fill(log, h("p", { class: "muted" }, "New conversation.")); } }, icon("plus"), "New"),
+    cs.map((c) => h("a", { href: "#", class: "conv" + (current === c.id ? " on" : ""), onclick: (e) => { e.preventDefault(); show(c.id); } },
+      h("div", {}, c.title.slice(0, 60)), h("div", { class: "muted small" }, `${c.user}  ${ago(c.updated)}`))));
+  const show = async (cid) => {
+    current = cid;
+    const d = await api("/api/assistant/" + cid);
+    fill(log, d.messages.map((m) => h("div", { class: "chat " + (m.role === "user" ? "me" : "bot") },
+      h("div", { class: "muted small" }, m.role === "user" ? m.user : "Actaeon", "  ", when(m.ts)),
+      h("div", { class: "pre" }, m.content),
+      (m.links.hunts || []).length || (m.links.cases || []).length ? h("div", { class: "row small" },
+        (m.links.hunts || []).map((x) => h("a", { href: "#hunt/" + x }, h("span", { class: "badge" }, icon("target"), " hunt " + x))),
+        (m.links.cases || []).map((x) => h("a", { href: "#case/" + x }, h("span", { class: "badge" }, icon("briefcase-outline"), " case #" + x)))) : null)));
+    drawList(await api("/api/assistant"));
+    return d.messages.length;
+  };
+  const send = async () => {
+    if (!input.value.trim()) return;
+    const r = await post("/api/assistant", { message: input.value, conversation_id: current });
+    input.value = "";
+    const before = current === r.conversation_id ? (await api("/api/assistant/" + r.conversation_id)).messages.length : 0;
+    current = r.conversation_id;
+    toast("Working on it. Hunts can take a few minutes.", 6000);
+    let tries = 0;
+    clearInterval(poll);
+    poll = setInterval(async () => { tries++; const n = await show(current); if (n >= before + 2 || tries > 300) { clearInterval(poll); poll = null; } }, 3000);
+    await show(current);
+  };
+  drawList(convs);
+  fill(log, h("p", { class: "muted" }, "Ask a question or ask for a hunt. Hunts started here are stored like any other hunt, with their evidence."));
+  main.append(section("Ask Actaeon", "chat-question-outline", h("div", { class: "ask-grid" }, list,
+    h("div", {}, log, input, h("div", { class: "row" }, h("button", { onclick: send }, icon("send"), "Send"),
+      h("span", { class: "muted small" }, "Uses the analyst model. It can search records, look up intel and run read-only hunts."))))));
+}
+
+// ---------------- Reports ----------------
+async function reports() {
+  const days = h("select", {}, [7, 30, 90, 365].map((d) => h("option", { value: d }, `Last ${d} days`)));
+  const dl = (fmt) => () => { location.href = `/api/reports/summary.${fmt}?days=${days.value}`; };
+  main.append(section("Summary report", "file-chart-outline",
+    h("p", { class: "muted small" }, "Hunts by outcome and origin, cases opened and closed, resolutions, time to acknowledge and close, open cases, threats found and top ATT&CK techniques."),
+    h("div", { class: "row" }, days,
+      h("button", { onclick: dl("pdf") }, icon("file-pdf-box"), "PDF"),
+      h("button", { class: "ghost", onclick: dl("docx") }, icon("file-word-box"), "Word"),
+      h("button", { class: "ghost", onclick: dl("md") }, icon("language-markdown-outline"), "Markdown"))));
+  const cs = await api("/api/cases");
+  main.append(section("Case reports", "briefcase-outline",
+    h("table", {}, h("tbody", {}, cs.slice(0, 50).map((c) => h("tr", {},
+      h("td", {}, h("a", { href: "#case/" + c.id }, `#${c.id}`)), h("td", {}, SEV(c.severity)), h("td", {}, STATUS(c.status)), h("td", {}, c.title),
+      h("td", {}, h("a", { href: `/api/cases/${c.id}/report.pdf` }, "PDF"), " ", h("a", { href: `/api/cases/${c.id}/report.docx` }, "Word"))))))));
+}
 
 // ---------------- Hunts ----------------
 async function hunts() {
@@ -129,13 +291,17 @@ function renderHunt(hu) {
   const running = ["queued", "running"].includes(hu.status);
   const act = (a) => async () => { await post(`/api/hunts/${hu.id}/${a}`); toast(a + " requested"); };
   const head = section(hu.hypothesis, "target",
-    h("div", { class: "row" }, badge(hu.status), badge(hu.outcome), h("span", { class: "muted small" },
+    h("div", { class: "row" }, badge(hu.status), badge(hu.outcome),
+      hu.case ? h("a", { href: "#case/" + hu.case.id }, h("span", { class: "badge" }, icon("briefcase-outline"), ` case #${hu.case.id} ${hu.case.status}${hu.case.assignee ? " - " + hu.case.assignee : ""}`)) : null,
+      h("span", { class: "muted small" },
       `started ${when(hu.created)}  origin ${hu.origin}  ${hu.actor ? "by " + hu.actor : ""}`)),
     h("div", { class: "row" },
       running && h("button", { class: "ghost", onclick: act("pause") }, icon("pause"), "Pause"),
       running && h("button", { class: "ghost", onclick: act("resume") }, icon("play"), "Resume"),
       running && h("button", { class: "danger", onclick: act("stop") }, icon("stop"), "Stop"),
-      h("a", { href: `/api/hunts/${hu.id}/report.md` }, h("button", { class: "ghost" }, icon("file-document"), "Report")),
+      h("a", { href: `/api/hunts/${hu.id}/report.pdf` }, h("button", { class: "ghost" }, icon("file-pdf-box"), "PDF")),
+      h("a", { href: `/api/hunts/${hu.id}/report.docx` }, h("button", { class: "ghost" }, icon("file-word-box"), "Word")),
+      h("a", { href: `/api/hunts/${hu.id}/report.md` }, h("button", { class: "ghost" }, icon("file-document"), "Markdown")),
       h("a", { href: `/api/hunts/${hu.id}/export.json` }, h("button", { class: "ghost" }, icon("code-json"), "JSON")),
       h("a", { href: `/api/hunts/${hu.id}/export.csv` }, h("button", { class: "ghost" }, icon("file-delimited"), "CSV"))),
     hu.error && h("p", { class: "warn" }, hu.error));
@@ -143,8 +309,10 @@ function renderHunt(hu) {
   if (hu.verdict) {
     const vs = section("Verdict", "gavel",
       h("div", { class: "row" }, badge(v.outcome), h("span", {}, `confidence ${v.confidence}`),
+        v.verification ? h("span", { class: "badge" }, icon("check-all"), " second look: " + v.verification.result) : null,
         v.needs_review && h("span", { class: "badge b-logs_missing" }, icon("eye"), "needs review")),
       h("p", {}, v.summary || ""),
+      v.verification && v.verification.reason ? h("p", { class: "small muted" }, "Second look: " + v.verification.reason) : null,
       (v.findings || []).length ? [h("h3", {}, "Findings"), h("ul", {}, v.findings.map((f, i) =>
         h("li", {}, f.claim, " ", f.evidence.map((e) => h("a", { href: "#", onclick: (ev) => { ev.preventDefault(); const t = document.getElementById("step-" + e); if (t) { t.open = true; t.scrollIntoView(); } } }, `[${e}] `)),
           feedbackButtons(hu, i))))] : null,
@@ -418,6 +586,36 @@ async function connectors() {
               h("td", { class: "small muted" }, x.reason), h("td", { class: "small" }, x.description.slice(0, 160)))))))); } }, icon("tools"), "Tools"), res)));
     })))));
   main.append(tools);
+  const f = {};
+  const inp = (k, ph, cls) => (f[k] = h("input", { class: cls || "grow", placeholder: ph }));
+  const transport = h("select", {}, h("option", { value: "http" }, "HTTP (remote MCP server)"), h("option", { value: "stdio" }, "stdio (local command)"));
+  const authType = h("select", {}, ["none", "bearer", "api_key", "oauth_client_credentials"].map((x) => h("option", { value: x }, x)));
+  const roles = ["log_search", "endpoint", "identity", "email", "asset", "network", "cloud", "intel", "analysis"].map((r) =>
+    h("label", { class: "small chk" }, h("input", { type: "checkbox", value: r }), " " + r));
+  const out = h("pre", { class: "hidden" });
+  const build = () => {
+    const c = { name: f.name.value.trim(), roles: roles.map((l) => l.firstChild).filter((x) => x.checked).map((x) => x.value),
+      transport: transport.value, dialect: f.dialect.value.trim(), query_notes_file: f.notes.value.trim() };
+    if (c.transport === "http") c.url = f.url.value.trim(); else { c.command = f.command.value.trim(); c.args = f.args.value.trim() ? f.args.value.trim().split(/\s+/) : []; }
+    const a = authType.value;
+    if (a !== "none") c.auth = { type: a, ...(a === "bearer" ? { token_env: f.secret.value.trim() } : a === "api_key" ? { api_key_env: f.secret.value.trim() } :
+      { client_secret_env: f.secret.value.trim(), token_url: f.token_url.value.trim(), client_id: f.client_id.value.trim() }) };
+    return c;
+  };
+  const go = async (preview) => {
+    try { const r = await post("/api/settings/connectors", { connector: build(), preview });
+      out.textContent = r.diff || "No change."; out.classList.remove("hidden"); if (!preview) { toast("Saved."); route(); } } catch (e) { /* toast shown */ }
+  };
+  main.append(section("Add or update a connector", "plus-network-outline",
+    h("p", { class: "muted small" }, "Admins only. Secrets are never typed here: give the NAME of the environment variable that holds them (in .env)."),
+    h("div", { class: "row" }, inp("name", "name (lowercase, e.g. logs)", ""), transport),
+    h("div", { class: "row" }, ...roles),
+    h("div", { class: "row" }, inp("url", "https://mcp-server.example/mcp")),
+    h("div", { class: "row" }, inp("command", "command (stdio), e.g. actaeon", ""), inp("args", "arguments, e.g. bridge search-index --url ${LOGS_URL} --index logs-*")),
+    h("div", { class: "row" }, authType, inp("secret", "env var with the token / key / client secret", ""), inp("client_id", "client id (oauth)", ""), inp("token_url", "token URL (oauth)")),
+    h("div", { class: "row" }, inp("dialect", "query language name (optional)", ""), inp("notes", "query notes file path (optional)")),
+    h("div", { class: "row" }, h("button", { class: "ghost", onclick: () => go(true) }, icon("eye"), "Preview change"),
+      h("button", { onclick: () => go(false) }, icon("content-save"), "Save to config.yaml")), out));
 }
 
 // ---------------- Settings ----------------
@@ -460,6 +658,13 @@ async function settings() {
         h("td", {}, h("span", { class: r.status === "ok" ? "ok" : "bad" }, r.status)), h("td", { class: "small muted" }, r.decision), h("td", {}, r.duration_ms))))));
   } }, icon("clipboard-text-clock"), "Show audit log (admin)"));
   main.append(section("Audit log", "clipboard-text-clock", audit));
+  const doc = h("div");
+  main.append(section("Health check", "stethoscope", h("p", { class: "muted small" }, "Checks config, login, models, every connector (reads from each source), outputs, intel and schedules. Admins only."),
+    h("button", { class: "ghost", onclick: async (e) => { e.target.disabled = true; fill(doc, h("p", { class: "muted" }, "Checking...")); try {
+      const rows = await api("/api/doctor");
+      fill(doc, h("table", {}, h("tbody", {}, rows.map((r) => h("tr", {}, h("td", {}, h("span", { class: "badge " + (r.level === "OK" ? "st-closed" : r.level === "WARN" ? "b-logs_missing" : "b-threat") }, r.level)),
+        h("td", { class: "small" }, r.area), h("td", {}, r.message, r.hint ? h("div", { class: "muted small" }, r.hint) : null))))));
+    } finally { e.target.disabled = false; } } }, icon("stethoscope"), "Run health check"), doc));
 }
 
-route();
+meReady.then(route);

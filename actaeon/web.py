@@ -600,7 +600,11 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     @app.route("/api/hunts/<hid>")
     def hunt_get(hid):
         h = store_for(get_config()).get(hid)
-        return (jsonify(h), 200) if h else (jsonify({"error": "not found"}), 404)
+        if not h:
+            return jsonify({"error": "not found"}), 404
+        case = cases_store().by_hunt(hid)
+        h["case"] = {k: case[k] for k in ("id", "status", "severity", "assignee", "resolution")} if case else None
+        return jsonify(h)
 
     @app.route("/api/hunts/<hid>/<action>", methods=["POST"])
     def hunt_action(hid, action):
