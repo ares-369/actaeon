@@ -156,8 +156,11 @@ class McpClient:
     def _start_stdio(self) -> None:
         env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR", "SYSTEMROOT")}
         env.update({k: expand_env(v) for k, v in self.spec.env.items()})
-        self._proc = subprocess.Popen(
-            [self.spec.command, *[expand_env(a) for a in self.spec.args]],
+        argv = [self.spec.command, *[expand_env(a) for a in self.spec.args]]
+        if self.spec.command == "actaeon":   # built-in bridges: run with this interpreter
+            import sys
+            argv = [sys.executable, "-m", "actaeon", *argv[1:]]
+        self._proc = subprocess.Popen(argv,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             env=env, text=True, bufsize=1)
         out = self._proc.stdout

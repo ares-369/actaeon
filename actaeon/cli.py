@@ -87,6 +87,12 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_con = sub.add_parser("connectors", help="list, test or show tools of MCP connectors")
     p_con.add_argument("action", choices=["list", "test", "tools"], nargs="?", default="list")
     p_con.add_argument("name", nargs="?")
+    p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
+    br = p_br.add_subparsers(dest="kind", required=True)
+    from .bridges import openapi, search_index, taxii
+    bridges = {"search-index": search_index, "taxii": taxii, "openapi": openapi}
+    for kind, mod in bridges.items():
+        mod.add_args(br.add_parser(kind))
     a = ap.parse_args(argv)
 
     if a.cmd == "version":
@@ -96,6 +102,9 @@ def cli_main(argv: list[str] | None = None) -> None:
         sys.exit(cmd_init(a.force))
     if a.cmd == "models":
         sys.exit(cmd_models())
+    if a.cmd == "bridge":
+        bridges[a.kind].run(a)
+        return
     if a.cmd == "connectors":
         sys.exit(cmd_connectors(a.action, a.name))
     if a.cmd == "hash-password":

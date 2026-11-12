@@ -10,8 +10,8 @@ cloud or intel. The hunt engine asks for a role, never a specific product. Tools
 read-only by default, and every tool call is written to an audit log.
 
 > Status: pre-alpha. Built so far: foundation (config, model providers, auth, job engine,
-> web server) and the connector hub. The hunt engine is not built yet.
-> See [docs/connectors.md](docs/connectors.md).
+> web server), the connector hub and generic bridges. The hunt engine is not built yet.
+> See [docs/connectors.md](docs/connectors.md) and [docs/bridges.md](docs/bridges.md).
 
 ## Quick start
 
@@ -39,7 +39,7 @@ network address with no login.
 
 1. Foundation (done)
 2. Connector hub (done): MCP over stdio and HTTP, role tags, allow/deny lists, audit log
-3. Generic bridges for sources without their own MCP server (search index, STIX/TAXII, REST/OpenAPI)
+3. Generic bridges (done) for sources without their own MCP server (search index, STIX/TAXII, REST/OpenAPI)
 4. Hunt engine (hypothesis, plan, queries, pivots, a verdict with cited evidence, step limits)
 5. Hunt library, scheduled replays, intel-driven hunts
 6. UI, reports, coverage view

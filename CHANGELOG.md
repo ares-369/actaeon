@@ -7,3 +7,6 @@
 - Connector hub: MCP client for stdio and streamable HTTP (bearer, API key, OAuth client
   credentials), role tags, read-only policy with allow/deny lists, untrusted-data wrapping,
   per-connector pacing, 2 retries with backoff, append-only audit log, API and CLI.
+- Bridges (`actaeon bridge ...`): built-in stdio MCP servers for search indices (`_search` API,
+  time-bounded, capped, index allowlist, no scripts), STIX/TAXII 2.1 (read-only) and
+  REST/OpenAPI (GET only, POST only when named).
