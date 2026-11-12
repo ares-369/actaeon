@@ -57,15 +57,15 @@ let poll = null;
 function route() {
   clearInterval(poll); poll = null;
   const [tab, arg] = (location.hash.slice(1) || "leads").split("/");
-  const navTab = { hunt: "hunts", case: "leads" }[tab] || tab;
+  const navTab = { hunt: "hunts", lead: "leads" }[tab] || tab;
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === navTab));
-  const pages = { leads, case: () => leadDetail(arg), hunts, hunt: () => huntDetail(arg), ask, library, intel,
+  const pages = { leads, lead: () => leadDetail(arg), hunts, hunt: () => huntDetail(arg), ask, library, intel,
     coverage, reports, connectors, settings };
   const token = ++navToken;
   const view = h("div");
   main = view;
   const done = () => { if (token === navToken) { fill(mainEl, view); main = mainEl; } };
-  (pages[tab] || cases)().then(done, (e) => { view.append(h("p", { class: "bad" }, String(e.message || e))); done(); });
+  (pages[tab] || leads)().then(done, (e) => { view.append(h("p", { class: "bad" }, String(e.message || e))); done(); });
 }
 window.addEventListener("hashchange", route);
 
@@ -115,7 +115,7 @@ async function leads() {
   };
   main.append(section("Leads", "briefcase-outline",
     h("p", { class: "muted small" }, "A lead opens for every threat or result that needs review. Everyone can see every lead."),
-    bar, h("table", {}, h("thead", {}, h("tr", {}, ["Case", "Severity", "Status", "Title", "Assignee", "Opened / resolution"].map((x) => h("th", {}, x)))), body)));
+    bar, h("table", {}, h("thead", {}, h("tr", {}, ["Lead", "Severity", "Status", "Title", "Assignee", "Opened / resolution"].map((x) => h("th", {}, x)))), body)));
   await load();
   poll = setInterval(load, 15000);
 }
@@ -210,13 +210,13 @@ async function reports() {
   const days = h("select", {}, [7, 30, 90, 365].map((d) => h("option", { value: d }, `Last ${d} days`)));
   const dl = (fmt) => () => { location.href = `/api/reports/summary.${fmt}?days=${days.value}`; };
   main.append(section("Summary report", "file-chart-outline",
-    h("p", { class: "muted small" }, "Hunts by outcome and origin, cases opened and closed, resolutions, time to acknowledge and close, open leads, threats found and top ATT&CK techniques."),
+    h("p", { class: "muted small" }, "Hunts by outcome and origin, leads opened and closed, resolutions, time to acknowledge and close, open leads, threats found and top ATT&CK techniques."),
     h("div", { class: "row" }, days,
       h("button", { onclick: dl("pdf") }, icon("file-pdf-box"), "PDF"),
       h("button", { class: "ghost", onclick: dl("docx") }, icon("file-word-box"), "Word"),
       h("button", { class: "ghost", onclick: dl("md") }, icon("language-markdown-outline"), "Markdown"))));
   const cs = await api("/api/leads");
-  main.append(section("Case reports", "briefcase-outline",
+  main.append(section("Lead reports", "briefcase-outline",
     h("table", {}, h("tbody", {}, cs.slice(0, 50).map((c) => h("tr", {},
       h("td", {}, h("a", { href: "#lead/" + c.id }, `#${c.id}`)), h("td", {}, SEV(c.severity)), h("td", {}, STATUS(c.status)), h("td", {}, c.title),
       h("td", {}, h("a", { href: `/api/leads/${c.id}/report.pdf` }, "PDF"), " ", h("a", { href: `/api/leads/${c.id}/report.docx` }, "Word"))))))));
@@ -292,7 +292,7 @@ function renderHunt(hu) {
   const act = (a) => async () => { await post(`/api/hunts/${hu.id}/${a}`); toast(a + " requested"); };
   const head = section(hu.hypothesis, "target",
     h("div", { class: "row" }, badge(hu.status), badge(hu.outcome),
-      hu.case ? h("a", { href: "#lead/" + hu.lead.id }, h("span", { class: "badge" }, icon("briefcase-outline"), ` lead #${hu.lead.id} ${hu.lead.status}${hu.lead.assignee ? " - " + hu.lead.assignee : ""}`)) : null,
+      hu.lead ? h("a", { href: "#lead/" + hu.lead.id }, h("span", { class: "badge" }, icon("briefcase-outline"), ` lead #${hu.lead.id} ${hu.lead.status}${hu.lead.assignee ? " - " + hu.lead.assignee : ""}`)) : null,
       h("span", { class: "muted small" },
       `started ${when(hu.created)}  origin ${hu.origin}  ${hu.actor ? "by " + hu.actor : ""}`)),
     h("div", { class: "row" },
