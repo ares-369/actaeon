@@ -143,7 +143,7 @@ def cmd_hunt(a) -> int:
     import json as _json
 
     from .config import get_config
-    from .hunt.service import make_engine, store_for
+    from .hunt.service import store_for
     cfg = get_config()
     store = store_for(cfg)
     if a.list:
@@ -167,8 +167,14 @@ def cmd_hunt(a) -> int:
         if h.get("verdict"):
             _print_verdict(h["verdict"])
         return 0
+    context, origin = "", "manual"
+    if a.advisory:
+        from .hunt.service import advisory_hunt
+        a.hypothesis, context = advisory_hunt(cfg, a.advisory)
+        origin = f"advisory:{a.advisory}"
+        print(f"hypothesis: {a.hypothesis}")
     if not a.hypothesis:
-        print("give a hypothesis, --show ID or --list")
+        print("give a hypothesis, --advisory ID, --show ID or --list")
         return 2
 
     def ev(e):
@@ -181,10 +187,60 @@ def cmd_hunt(a) -> int:
                 print(f"  no connector for: {', '.join(p['missing_roles'])}")
         elif e["type"] == "step":
             print(f"E{e['n']} {'ok ' if e['ok'] else 'ERR'} {e['tool']}", flush=True)
-    eng = make_engine(cfg, on_event=ev, max_steps=a.max_steps)
-    h = eng.run(a.hypothesis)
+    from .hunt.service import run_hunt
+    h = run_hunt(cfg, a.hypothesis, origin=origin, context=context, on_event=ev, max_steps=a.max_steps)
     _print_verdict(h["verdict"])
     print(f"\nhunt id {h['id']} (actaeon hunt --show {h['id']})")
+    return 0
+
+
+def cmd_phase5(a) -> int:
+    import json as _json
+
+    from .config import get_config
+    from .hunt import service as hs
+    from .hunt.library import starters
+    cfg = get_config()
+    if a.cmd == "sweep":
+        h = hs.run_sweep(cfg, full=a.full, actor="cli")
+        _print_verdict(h["verdict"])
+        print(f"\nhunt id {h['id']}")
+        return 0
+    if a.cmd == "note":
+        mem = hs.memory_for(cfg)
+        if a.list or not a.text:
+            for n in mem.notes():
+                print(f"{n['id']:4} {'   ' if n['active'] else 'OFF'} {n['text'][:100]} {n['tags']}")
+            return 0
+        print(_json.dumps(mem.add_note(a.text, author="cli", tags=a.tag)))
+        return 0
+    lib = hs.library_for(cfg)
+    if a.action == "starters":
+        for s in starters():
+            print(f"- {s['name']} [{', '.join(s['attack'])}]\n    {s['hypothesis']}")
+        return 0
+    if a.action == "list":
+        for s in lib.list():
+            every = f"every {s['interval_minutes']}m" if s["interval_minutes"] else "manual"
+            print(f"{s['id']:4} {every:12} last={s['last_run'] or '-'} hits={s['last_hits']} {s['name'][:60]}")
+        return 0
+    if not a.id:
+        print("an id is required")
+        return 2
+    if a.action == "save":
+        h = hs.store_for(cfg).get(a.id)
+        if not h:
+            print("no such hunt")
+            return 1
+        r = lib.save_from_hunt(h, name=a.name, interval_minutes=a.every, escalate=a.escalate)
+        print(f"saved as {r['id']} with {len(r['calls'])} call(s)")
+        for w in r["warnings"]:
+            print(f"warning: {w}")
+        return 0
+    if a.action == "delete":
+        return 0 if lib.delete(int(a.id)) else 1
+    h = hs.run_replay(cfg, int(a.id), actor="cli")
+    _print_verdict(h["verdict"])
     return 0
 
 
@@ -243,6 +299,19 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_h.add_argument("--show", metavar="HUNT_ID")
     p_h.add_argument("--list", action="store_true")
     p_h.add_argument("--json", action="store_true")
+    p_h.add_argument("--advisory", type=int, metavar="ID", help="hunt the activity in a stored advisory")
+    p_lib = sub.add_parser("library", help="saved hunts: list, save a finished hunt, replay, starters")
+    p_lib.add_argument("action", choices=["list", "save", "run", "starters", "delete"])
+    p_lib.add_argument("id", nargs="?")
+    p_lib.add_argument("--name", default="")
+    p_lib.add_argument("--every", type=int, default=0, help="replay interval in minutes (0 = manual)")
+    p_lib.add_argument("--escalate", action="store_true", help="start a full hunt when a replay finds matches")
+    p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
+    p_sw.add_argument("--full", action="store_true", help="sweep every indicator, not only changed ones")
+    p_note = sub.add_parser("note", help="add an analyst note to hunt memory")
+    p_note.add_argument("text", nargs="?")
+    p_note.add_argument("--tag", action="append", default=[])
+    p_note.add_argument("--list", action="store_true")
     a = ap.parse_args(argv)
 
     if a.cmd == "version":
@@ -259,6 +328,8 @@ def cli_main(argv: list[str] | None = None) -> None:
         sys.exit(cmd_hunt(a))
     if a.cmd == "intel":
         sys.exit(cmd_intel(a))
+    if a.cmd in ("library", "sweep", "note"):
+        sys.exit(cmd_phase5(a))
     if a.cmd == "connectors":
         sys.exit(cmd_connectors(a.action, a.name))
     if a.cmd == "hash-password":

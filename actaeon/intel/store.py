@@ -20,7 +20,7 @@ from .extract import TYPES, extract, guess_type, normalize
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 class IntelStore:
@@ -140,7 +140,7 @@ class IntelStore:
         return {"value": v, "type": kind, "found": bool(exact), "matches": exact, "related": related}
 
     def list(self, *, kind: str | None = None, tag: str | None = None, min_confidence: int = 0,
-             changed_since: str | None = None, active_only: bool = True, search: str = "", limit: int = 100,
+             changed_since: str | None = None, changed_after: str | None = None, active_only: bool = True, search: str = "", limit: int = 100,
              offset: int = 0) -> list[dict]:
         q, a = ["SELECT * FROM indicators WHERE confidence >= ?"], [int(min_confidence)]
         if kind:
@@ -152,6 +152,9 @@ class IntelStore:
         if changed_since:
             q.append("AND updated >= ?")
             a.append(changed_since)
+        if changed_after:
+            q.append("AND updated > ?")
+            a.append(changed_after)
         if active_only:
             q.append("AND active=1 AND (expires IS NULL OR expires > ?)")
             a.append(_now())

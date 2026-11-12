@@ -1,0 +1,66 @@
+# Starter hypotheses. Generic on purpose: no product names and no queries.
+# The model writes the queries for your data. Check the ATT&CK IDs before you rely on them.
+- name: Encoded PowerShell from Office
+  hypothesis: An Office application started PowerShell with an encoded or hidden command line in the last 7 days.
+  attack: [T1059.001, T1204.002]
+  roles: [endpoint, log_search]
+- name: LSASS memory access
+  hypothesis: A process that is not a known security or system tool opened LSASS memory in the last 7 days.
+  attack: [T1003.001]
+  roles: [endpoint, log_search]
+- name: New scheduled task by an unusual parent
+  hypothesis: A scheduled task was created by a script host, Office application or user-writable path in the last 7 days.
+  attack: [T1053.005]
+  roles: [endpoint, log_search]
+- name: Run key persistence
+  hypothesis: A registry Run or RunOnce value was added pointing at a user-writable or temporary path in the last 7 days.
+  attack: [T1547.001]
+  roles: [endpoint, log_search]
+- name: Remote service execution
+  hypothesis: A service was created remotely on a host, or an admin share was used to copy and run a binary, in the last 7 days.
+  attack: [T1021.002, T1569.002]
+  roles: [endpoint, log_search, network]
+- name: Password spraying
+  hypothesis: One source failed to sign in to many different accounts within a short window in the last 24 hours.
+  attack: [T1110.003]
+  roles: [identity, log_search]
+- name: New privileged account
+  hypothesis: An account was created or added to a privileged group outside a change window in the last 7 days.
+  attack: [T1136, T1098]
+  roles: [identity, log_search]
+- name: Security tool tampering
+  hypothesis: A security agent or logging service was stopped, uninstalled or had its settings changed in the last 7 days.
+  attack: [T1562.001]
+  roles: [endpoint, log_search]
+- name: Event log clearing
+  hypothesis: A Windows event log was cleared on any host in the last 30 days.
+  attack: [T1070.001]
+  roles: [endpoint, log_search]
+- name: Signed binary proxy execution
+  hypothesis: rundll32, regsvr32 or mshta loaded a script or DLL from a remote location or a user-writable path in the last 7 days.
+  attack: [T1218.011, T1218.010, T1218.005]
+  roles: [endpoint, log_search]
+- name: Tool download with built-in utilities
+  hypothesis: certutil, bitsadmin or a script host downloaded a file from the internet in the last 7 days.
+  attack: [T1105]
+  roles: [endpoint, log_search, network]
+- name: Beaconing
+  hypothesis: A host made regular, evenly spaced connections to one rare external destination over the last 24 hours.
+  attack: [T1071.001]
+  roles: [network, log_search]
+- name: Unusual DNS
+  hypothesis: A host made many DNS queries with long or random-looking subdomains to one domain in the last 24 hours.
+  attack: [T1071.004, T1048]
+  roles: [network, log_search]
+- name: Upload to cloud storage
+  hypothesis: A host uploaded an unusually large amount of data to a cloud storage or file-sharing service in the last 7 days.
+  attack: [T1567.002]
+  roles: [network, cloud, log_search]
+- name: Phishing attachment to process
+  hypothesis: A user opened an email attachment that then started a script host or command shell in the last 7 days.
+  attack: [T1566.001, T1204.002]
+  roles: [email, endpoint, log_search]
+- name: Mass file changes
+  hypothesis: One process renamed or rewrote a very large number of files in a short time in the last 24 hours.
+  attack: [T1486]
+  roles: [endpoint, log_search]

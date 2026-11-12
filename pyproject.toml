@@ -46,7 +46,7 @@ actaeon = "actaeon.cli:cli_main"
 include = ["actaeon*"]
 
 [tool.setuptools.package-data]
-actaeon = ["templates/*.html", "static/**/*", "config.example.yaml"]
+actaeon = ["templates/*.html", "static/**/*", "config.example.yaml", "hunt/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -17,3 +17,8 @@
   provider, a query validator, evidence ids, checked verdicts (threat / no_results /
   telemetry_found_benign / logs_missing / inconclusive), step, time and size limits,
   stop/pause/resume, API and `actaeon hunt` CLI. Provider settings accept `${VAR}`.
+- Hunt library: save finished hunts, replay them on a schedule without a model, escalate
+  replays with matches to a full hunt; 16 generic starter hypotheses.
+- Intel sweeps: ledger-driven searches for new or changed indicators with per-value
+  attribution; advisory hunts; hunt memory (past verdicts and analyst notes, FTS5).
+- Intel timestamps now use microseconds so the ledger never skips or repeats an indicator.

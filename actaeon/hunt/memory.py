@@ -1,0 +1,108 @@
+"""Hunt memory: past verdicts and analyst notes, searched with SQLite full-text search.
+
+Before a hunt starts, the most related past hunts and notes are added to the
+model's context (for example "this admin tool on these hosts is known and
+benign"). Notes are written by analysts only, never by a model or a data source.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sqlite3
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+
+_WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{2,}")
+_STOP = {"the", "and", "for", "any", "last", "days", "hours", "from", "with", "that", "this", "was", "were", "has",
+         "have", "into", "host", "hosts", "user", "users", "or", "not", "are", "all", "one", "in", "on"}
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _fts_query(text: str) -> str:
+    words = [w.lower() for w in _WORD.findall(text or "") if w.lower() not in _STOP][:30]
+    return " OR ".join('"' + w.replace('"', "") + '"' for w in dict.fromkeys(words))
+
+
+class HuntMemory:
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        with self._conn() as c:
+            c.executescript("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS mem_hunts USING fts5(hunt_id UNINDEXED, created UNINDEXED,
+                outcome UNINDEXED, hypothesis, summary, findings, attack);
+            CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, created TEXT NOT NULL,
+                author TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]',
+                active INTEGER NOT NULL DEFAULT 1);
+            CREATE VIRTUAL TABLE IF NOT EXISTS mem_notes USING fts5(note_id UNINDEXED, text, tags);
+            """)
+
+    def _conn(self):
+        c = sqlite3.connect(self.path, timeout=10)
+        c.row_factory = sqlite3.Row
+        return c
+
+    def remember(self, hunt: dict) -> None:
+        v = hunt.get("verdict") or {}
+        if not v or hunt.get("status") not in ("done", "stopped"):
+            return
+        with self._lock, self._conn() as c:
+            c.execute("DELETE FROM mem_hunts WHERE hunt_id=?", (hunt["id"],))
+            c.execute("INSERT INTO mem_hunts VALUES (?,?,?,?,?,?,?)",
+                      (hunt["id"], hunt.get("created", ""), v.get("outcome", ""), hunt.get("hypothesis", ""),
+                       v.get("summary", ""), " | ".join(f["claim"] for f in v.get("findings") or []),
+                       " ".join(v.get("attack") or [])))
+
+    def add_note(self, text: str, *, author: str = "", tags: list[str] | None = None) -> dict:
+        text = (text or "").strip()[:2000]
+        if not text:
+            raise ValueError("note text is required")
+        tags = [str(t).strip()[:40] for t in tags or [] if str(t).strip()]
+        with self._lock, self._conn() as c:
+            cur = c.execute("INSERT INTO notes (created, author, text, tags) VALUES (?,?,?,?)",
+                            (_now(), author[:100], text, json.dumps(tags)))
+            c.execute("INSERT INTO mem_notes VALUES (?,?,?)", (cur.lastrowid, text, " ".join(tags)))
+        return {"id": cur.lastrowid, "text": text, "tags": tags}
+
+    def notes(self, limit: int = 100) -> list[dict]:
+        with self._conn() as c:
+            return [{**dict(r), "tags": json.loads(r["tags"]), "active": bool(r["active"])}
+                    for r in c.execute("SELECT * FROM notes ORDER BY id DESC LIMIT ?", (int(limit),))]
+
+    def retire_note(self, nid: int) -> bool:
+        with self._lock, self._conn() as c:
+            ok = c.execute("UPDATE notes SET active=0 WHERE id=?", (int(nid),)).rowcount > 0
+            c.execute("DELETE FROM mem_notes WHERE note_id=?", (int(nid),))
+        return ok
+
+    def related(self, text: str, k: int = 3) -> dict:
+        q = _fts_query(text)
+        if not q:
+            return {"hunts": [], "notes": []}
+        with self._conn() as c:
+            hunts = [dict(r) for r in c.execute(
+                "SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts WHERE mem_hunts "
+                "MATCH ? ORDER BY rank LIMIT ?", (q, int(k)))]
+            notes = [dict(r) for r in c.execute(
+                "SELECT n.id, n.text, n.tags FROM mem_notes m JOIN notes n ON n.id = m.note_id "
+                "WHERE mem_notes MATCH ? AND n.active=1 ORDER BY rank LIMIT ?", (q, int(k) + 2))]
+        return {"hunts": hunts, "notes": notes}
+
+    def context(self, text: str, exclude: str = "") -> str:
+        r = self.related(text)
+        lines = []
+        if r["notes"]:
+            lines.append("Analyst notes that may apply (written by people on this team):")
+            lines += [f"- {n['text']}" for n in r["notes"]]
+        hunts = [h for h in r["hunts"] if h["hunt_id"] != exclude]
+        if hunts:
+            lines.append("Related past hunts (for context only; re-check, data changes):")
+            lines += [f"- {h['created'][:10]} {h['outcome']}: {h['hypothesis'][:150]} -> {h['summary'][:200]}"
+                      for h in hunts]
+        return "\n".join(lines)

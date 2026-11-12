@@ -11,7 +11,7 @@ from .config import LLM_ROLES, PROVIDERS, apply_llm_update, get_config, preview_
 from .jobs import JobManager
 
 
-def create_app(cfg=None) -> Flask:
+def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     cfg = cfg or get_config()
     app = Flask(__name__, static_folder="static", template_folder="templates")
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # type: ignore[method-assign]
@@ -162,8 +162,14 @@ def create_app(cfg=None) -> Flask:
         except Exception as exc:
             return jsonify({"error": str(exc)[:300]}), 502
 
+    from .hunt import service as hs
+    from .hunt.library import starters
     from .hunt.service import start_hunt, store_for
     store_for(cfg).mark_orphans()
+    if start_scheduler:
+        from .hunt.scheduler import Scheduler
+        app.extensions["actaeon_scheduler"] = Scheduler(cfg, jobs)
+        app.extensions["actaeon_scheduler"].start()
 
     def _actor():
         from flask import session
@@ -180,6 +186,84 @@ def create_app(cfg=None) -> Flask:
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         return jsonify({"hunt_id": hid}), 202
+
+    @app.route("/api/hunts/advisory/<int:aid>", methods=["POST"])
+    def hunt_advisory(aid):
+        c = get_config()
+        try:
+            hyp, ctx = hs.advisory_hunt(c, aid)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 404
+        return jsonify({"hunt_id": start_hunt(jobs, c, hyp, actor=_actor(), origin=f"advisory:{aid}",
+                                              context=ctx)}), 202
+
+    @app.route("/api/library", methods=["GET", "POST"])
+    def library():
+        c = get_config()
+        lib = hs.library_for(c)
+        if request.method == "GET":
+            return jsonify({"saved": lib.list(), "starters": starters()})
+        b = request.get_json(silent=True) or {}
+        h = store_for(c).get(str(b.get("hunt_id", "")))
+        if not h:
+            return jsonify({"error": "hunt not found"}), 404
+        try:
+            return jsonify(lib.save_from_hunt(h, name=str(b.get("name", ""))[:200],
+                                              interval_minutes=int(b.get("interval_minutes", 0) or 0),
+                                              escalate=bool(b.get("escalate"))))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.route("/api/library/<int:sid>", methods=["GET", "POST"])
+    def library_item(sid):
+        lib = hs.library_for(get_config())
+        if request.method == "POST":
+            b = request.get_json(silent=True) or {}
+            item = lib.set(sid, **b)
+        else:
+            item = lib.get(sid)
+        return (jsonify(item), 200) if item else (jsonify({"error": "not found"}), 404)
+
+    @app.route("/api/library/<int:sid>/<action>", methods=["POST"])
+    def library_action(sid, action):
+        c = get_config()
+        lib = hs.library_for(c)
+        if not lib.get(sid):
+            return jsonify({"error": "not found"}), 404
+        if action == "delete":
+            return jsonify({"ok": lib.delete(sid)})
+        if action == "run":
+            jid = hs.start_job(jobs, "replay", {"saved_id": sid},
+                               lambda: hs.run_replay(c, sid, jobs=jobs, actor=_actor() or "manual"))
+            return jsonify({"job_id": jid}), 202
+        return jsonify({"error": "unknown action"}), 400
+
+    @app.route("/api/intel/sweep", methods=["POST"])
+    def intel_sweep():
+        c = get_config()
+        full = bool((request.get_json(silent=True) or {}).get("full"))
+        jid = hs.start_job(jobs, "sweep", {"sweep": True, "full": full},
+                           lambda: hs.run_sweep(c, full=full, actor=_actor() or "manual"))
+        return jsonify({"job_id": jid}), 202
+
+    @app.route("/api/memory/notes", methods=["GET", "POST"])
+    def memory_notes():
+        mem = hs.memory_for(get_config())
+        if request.method == "GET":
+            return jsonify(mem.notes())
+        b = request.get_json(silent=True) or {}
+        try:
+            return jsonify(mem.add_note(str(b.get("text", "")), author=_actor(), tags=b.get("tags") or []))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+    @app.route("/api/memory/notes/<int:nid>/retire", methods=["POST"])
+    def memory_retire(nid):
+        return jsonify({"ok": hs.memory_for(get_config()).retire_note(nid)})
+
+    @app.route("/api/memory/related")
+    def memory_related():
+        return jsonify(hs.memory_for(get_config()).related(request.args.get("q", "")))
 
     @app.route("/api/hunts/<hid>")
     def hunt_get(hid):

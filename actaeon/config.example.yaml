@@ -59,6 +59,8 @@ hunt:
 intel:
   local: true
   feeds: []
+  sweep:
+    interval_minutes: 0
 #  - name: exploited-cves
 #    url: "https://example.org/known_exploited.json"
 #    format: json            # text | csv | stix | json
@@ -67,6 +69,14 @@ intel:
 #    type: cve
 #    confidence: 90
 #    tags: [exploited]
+
+# Intel sweeps (no model): search logs for new or changed indicators.
+# Set interval_minutes > 0 to run on a schedule; `actaeon sweep` runs one now.
+#  sweep:
+#    interval_minutes: 0
+#    lookback: now-7d
+#    min_confidence: 50
+#    targets: []        # empty = every search-index bridge connector
 
 # MCP connectors. Each one is an MCP server tagged with roles:
 #   log_search, endpoint, identity, email, asset, network, cloud, intel

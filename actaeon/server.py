@@ -13,7 +13,7 @@ from .config import get_config
 
 def _load_app():
     from .web import create_app
-    return create_app()
+    return create_app(start_scheduler=True)
 
 
 _LOOPBACK = ("127.0.0.1", "localhost", "::1")
