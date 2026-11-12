@@ -77,6 +77,7 @@ def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = 
     ctx = "\n\n".join(x for x in (environment_context(cfg), context, mem.context(hypothesis)) if x)
     eng = make_engine(cfg, checkpoint=checkpoint, on_event=on_event, max_steps=max_steps, llm=llm, hub=hub)
     res = eng.run(hypothesis, hunt_id=hunt_id, origin=origin, actor=actor, context=ctx)
+    res = maybe_verify(cfg, res, llm=eng.llm, hub=hub)
     counts = eng.llm.masker.counts
     if counts:
         store = store_for(cfg)
@@ -86,6 +87,27 @@ def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = 
         res = store.get(res["id"]) or res
     mem.remember(res)
     return send_outputs(cfg, res, hub=hub)
+
+
+def maybe_verify(cfg, h: dict, *, llm=None, hub=None) -> dict:
+    """Second pass on threats: re-query to test whether the threat is real (hunt.verify, default on)."""
+    if not h or h.get("outcome") != "threat" or ((cfg.raw or {}).get("hunt") or {}).get("verify", True) is False:
+        return h
+    from .verify import apply, verify
+    if llm is None:
+        from ..providers import get_llm
+        llm = privacy_llm(cfg, get_llm())
+    store = store_for(cfg)
+    try:
+        ver = verify(cfg, h, llm=llm, hub=_hub(cfg, hub))
+    except Exception as exc:
+        ver = {"result": "unconfirmed", "reason": f"verification failed: {exc}"[:300], "evidence": [],
+               "new_evidence": [], "calls": 0}
+    v = apply(h, ver)
+    n = max([s["n"] for s in (store.get(h["id"]) or {}).get("steps") or []] + [0]) + 1
+    store.add_step(h["id"], n, "note", ok=True, note=f"verification: {ver['result']}: {ver['reason'][:300]}")
+    store.update(h["id"], verdict=v, outcome=v["outcome"])
+    return store.get(h["id"]) or h
 
 
 def send_outputs(cfg, h: dict, *, hub=None) -> dict:
@@ -185,7 +207,10 @@ def run_sweep(cfg, *, full: bool = False, hub=None, actor: str = "scheduler", ll
         llm = privacy_llm(cfg, get_llm())
     sweep = Sweep(_hub(cfg, hub), intel_for(cfg), store_for(cfg), settings,
                   max_results=cfg.hunt.max_results, llm=llm)
-    return send_outputs(cfg, sweep.run(full=full, actor=actor), hub=hub)
+    res = sweep.run(full=full, actor=actor)
+    if llm is not None or settings.get("verify"):
+        res = maybe_verify(cfg, res, llm=llm, hub=hub)
+    return send_outputs(cfg, res, hub=hub)
 
 
 def start_job(jobs, kind: str, meta: dict, fn) -> str:

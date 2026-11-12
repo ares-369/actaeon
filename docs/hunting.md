@@ -46,6 +46,22 @@ no evidence are kept apart as `unsupported_claims`. When the outcome is changed
 by a check, confidence is capped at 40 and the reason is listed in `checks`.
 Intel lookups alone never count as a data search.
 
+## Second look (verification)
+
+When a hunt ends in `threat`, a second pass runs on the analyst model with the
+opposite job: try to prove it wrong. It re-runs or widens the key searches,
+checks whether the activity continues, looks for a benign explanation (admin
+tools, updates, known service accounts, analyst notes) and checks a second data
+source. Its calls are added to the hunt as evidence.
+
+- `confirmed` (needs evidence it gathered itself): confidence rises to at least 80.
+- `refuted`: the outcome becomes `inconclusive` and needs review. A threat is never
+  closed automatically.
+- `unconfirmed`: confidence is capped at 60 and the hunt needs review.
+
+Turn it off with `hunt.verify: false`. Sweeps are verified too when a model is
+configured for triage (`intel.sweep.triage: model`) or `intel.sweep.verify: true`.
+
 ## Query validator
 
 A basic sanity check before each call, not a guarantee:

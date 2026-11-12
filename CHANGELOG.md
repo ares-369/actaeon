@@ -72,3 +72,5 @@
 - UI fixes found by clicking through in a browser: action buttons sent GET instead of POST (pause/stop, run,
   delete, test, sweep, web pull, actor hunt, narrative, detection, model test); finished hunts re-drew every
   2 s and wiped open panels; lists printed as text. A test now checks every UI call against the server routes.
+- Second look: threats are re-checked by a sceptical verifier pass that re-queries (confirmed / refuted /
+  unconfirmed); shared read-only tool loop for chat and verification. CI container name fix.

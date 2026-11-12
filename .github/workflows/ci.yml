@@ -58,18 +58,18 @@ jobs:
       - name: Start and check
         run: |
           mkdir -p data && chmod 777 data
-          docker run -d --name a -p 127.0.0.1:8601:8601 -v "$PWD/data:/data" \
+          docker run -d --name actaeon-ci -p 127.0.0.1:8601:8601 -v "$PWD/data:/data" \
             -e ACTAEON_ALLOW_UNAUTHENTICATED_NETWORK=true --read-only --tmpfs /tmp --cap-drop ALL \
             --security-opt no-new-privileges actaeon:ci
           for i in $(seq 1 40); do curl -fs http://127.0.0.1:8601/healthz && break; sleep 1; done
           curl -fs -o /dev/null http://127.0.0.1:8601/
           test -f data/config.yaml
-          test "$(docker exec a id -u)" = "10001"
-          docker exec a actaeon version
-          docker exec a actaeon demo --dir /data/demo --offline --run | grep -q "verdict: threat"
+          test "$(docker exec actaeon-ci id -u)" = "10001"
+          docker exec actaeon-ci actaeon version
+          docker exec actaeon-ci actaeon demo --dir /data/demo --offline --run | grep -q "verdict: threat"
       - name: Logs on failure
         if: failure()
-        run: docker logs a || true
+        run: docker logs actaeon-ci || true
 
   secret-scan:
     runs-on: ubuntu-latest

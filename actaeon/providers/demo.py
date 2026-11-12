@@ -53,6 +53,18 @@ class DemoProvider(LLMProvider):
             return LLMResult(text="[scripted demo narrative, not written by a model] On sample host DEMO-WS07 Word "
                                   "started encoded PowerShell that downloads from the sample C2 and adds a scheduled "
                                   "task; see the evidence ids in the record.", model=self.default_model)
+        if "second, sceptical analyst" in system:
+            new = _EID.findall("\n".join(m["content"] for m in messages[2:] if m["role"] == "user"))
+            if not new:
+                return LLMResult(text=json.dumps({
+                    "action": "call", "connector": "demo-logs", "tool": "search",
+                    "thought": "[scripted demo] is the host still talking to the C2 in a wider window?",
+                    "arguments": {"index": "demo-events", "query": f"host.name:DEMO-WS07 AND destination.ip:{C2_IP}",
+                                  "time_from": "now-7d", "size": 5}}), model=self.default_model)
+            return LLMResult(text=json.dumps({
+                "action": "verify", "result": "confirmed", "evidence": [new[0][0]],
+                "reason": "[scripted demo] DEMO-WS07 kept connecting to the sample C2 over many hours, which a one-off "
+                          "admin action would not explain."}), model=self.default_model)
         done = _EID.findall("\n".join(m["content"] for m in messages if m["role"] == "user"))
         ids = [e for e, _ in done]
         step = len(done)
