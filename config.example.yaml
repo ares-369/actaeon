@@ -52,6 +52,23 @@ hunt:
   max_runtime_sec: 900
   max_result_bytes: 200000
 
-# MCP connectors (phase 2). Each one carries role tags such as log_search,
-# endpoint, identity, email, asset, network, cloud, intel.
+# MCP connectors. Each one is an MCP server tagged with roles:
+#   log_search, endpoint, identity, email, asset, network, cloud, intel
+# Tools are read-only unless allow_write is true AND the tool is named in
+# tools.allow. Secrets come from .env via *_env keys or ${VAR}. See docs/connectors.md.
 connectors: []
+#  - name: logs
+#    roles: [log_search]
+#    transport: http                 # http | stdio
+#    url: "https://mcp.example.internal/mcp"
+#    auth: { type: bearer, token_env: LOGS_MCP_TOKEN }
+#    dialect: "lucene"               # query language hint for the planner
+#    tools: { allow: [], deny: [] }  # glob patterns
+#    rate_per_min: 60
+#    timeout_sec: 30
+#  - name: intel
+#    roles: [intel]
+#    transport: stdio
+#    command: "python"
+#    args: ["-m", "my_intel_mcp"]
+#    env: { API_KEY: "${INTEL_API_KEY}" }

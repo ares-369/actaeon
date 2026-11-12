@@ -56,6 +56,36 @@ def create_app(cfg=None) -> Flask:
         get_llm(reload=True)
         return jsonify({"ok": True, "roles": {r: c.role_cfg(r) for r in LLM_ROLES}})
 
+    def hub():
+        from .connectors import get_hub
+        return get_hub(get_config())
+
+    @app.route("/api/connectors")
+    def connectors():
+        return jsonify([s.public() for s in hub().specs.values()])
+
+    @app.route("/api/connectors/<name>/tools")
+    def connector_tools(name):
+        h = hub()
+        if name not in h.specs:
+            return jsonify({"error": "not found"}), 404
+        try:
+            return jsonify(h.tools(name, refresh=request.args.get("refresh") == "1"))
+        except Exception as exc:
+            return jsonify({"error": str(exc)[:300]}), 502
+
+    @app.route("/api/connectors/<name>/test", methods=["POST"])
+    def connector_test(name):
+        h = hub()
+        if name not in h.specs:
+            return jsonify({"error": "not found"}), 404
+        return jsonify(h.test(name))
+
+    @app.route("/api/audit")
+    def audit():
+        return jsonify(hub().audit.recent(limit=min(500, int(request.args.get("limit", 100))),
+                                          hunt_id=request.args.get("hunt_id") or None))
+
     @app.route("/api/jobs")
     def list_jobs():
         return jsonify(jobs.list(limit=50))

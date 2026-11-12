@@ -21,6 +21,8 @@ button{background:var(--accent);color:#081020;border:0;border-radius:6px;padding
 <header><span class="mdi mdi-bow-arrow"></span><strong>{{ name }}</strong><span class="muted">v{{ version }}</span></header>
 <main>
 <section><h2><span class="mdi mdi-information-outline"></span>Status</h2><div id="status" class="muted">Loading...</div></section>
+<section><h2><span class="mdi mdi-connection"></span>Connectors</h2>
+<div id="conns" class="muted">Loading...</div></section>
 <section><h2><span class="mdi mdi-brain"></span>Models</h2>
 <p class="muted">Pick a provider and model for each role. Keys stay in .env.</p>
 <div id="roles"></div>
@@ -48,6 +50,16 @@ $('#save').onclick=async()=>{
   const r=await (await fetch('/api/settings/llm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({roles:collect()})})).json();
   $('#msg').textContent=r.error||'Saved.';$('#diff').textContent='';
 };
-load();
+async function conns(){
+  const list=await (await fetch('/api/connectors')).json();
+  if(!list.length){$('#conns').textContent='No connectors yet. Add them under connectors: in config.yaml.';return}
+  $('#conns').innerHTML=list.map(c=>`<div class="row"><span>${c.name}</span><span>${c.roles.join(', ')} | ${c.transport}</span>
+   <span><button data-test="${c.name}"><span class="mdi mdi-lan-check"></span> Test</button> <span id="t-${c.name}"></span></span></div>`).join('');
+  document.querySelectorAll('[data-test]').forEach(b=>b.onclick=async()=>{const n=b.dataset.test;
+    document.getElementById('t-'+n).textContent='...';
+    const r=await (await fetch(`/api/connectors/${n}/test`,{method:'POST'})).json();
+    document.getElementById('t-'+n).textContent=r.ok?`${r.allowed}/${r.tools} tools allowed`:(r.error||'failed')});
+}
+load();conns();
 </script>
 </body></html>

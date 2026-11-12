@@ -32,8 +32,9 @@ _LOGIN_MAX_ATTEMPTS = 10
 _LOGIN_WINDOW_SEC = 60.0
 _VALID_ROLES = {"viewer", "operator", "admin"}
 _ADMIN_ONLY_PATHS = {"/api/config", "/api/config/preview", "/api/settings/llm"}
+_ADMIN_ONLY_PREFIXES = ("/api/connectors/",)
 # Reads that are NOT safe for every role (full database export) are admin-only.
-_ADMIN_ONLY_READ_PATHS = {"/api/backup/download"}
+_ADMIN_ONLY_READ_PATHS = {"/api/backup/download", "/api/audit"}
 
 
 def resolve_user_role(cfg, user: str) -> str:
@@ -69,7 +70,7 @@ def check_rbac_permission(role: str, method: str, path: str, args=None) -> tuple
         return True, ""
     if r == "viewer":
         return False, "Forbidden: role 'viewer' is read-only and cannot start hunts or modify state."
-    if r == "operator" and path in _ADMIN_ONLY_PATHS:
+    if r == "operator" and (path in _ADMIN_ONLY_PATHS or (m == "POST" and path.startswith(_ADMIN_ONLY_PREFIXES))):
         return False, f"Forbidden: role 'operator' cannot modify administrative endpoint {path}."
     return True, ""
 

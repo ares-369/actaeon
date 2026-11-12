@@ -144,6 +144,9 @@ def load_config() -> Config:
         max_result_bytes=max(1024, int(h.get("max_result_bytes", 200_000))),
     )
 
+    from .connectors.spec import parse_connectors
+    parse_connectors(list(data.get("connectors", []) or []))  # fail fast on a bad connector
+
     data_dir = Path(str(srv.get("data_dir", "") or (home_dir() / "data"))).expanduser()
     return Config(
         raw=data,

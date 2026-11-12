@@ -16,9 +16,14 @@ def home(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     shutil.copyfile(ROOT / "config.example.yaml", tmp_path / "config.yaml")
     from actaeon import config
+    from actaeon.connectors import hub
     config._CONFIG = None
+    hub._HUB = None
     yield tmp_path
+    if hub._HUB:
+        hub._HUB.close()
     config._CONFIG = None
+    hub._HUB = None
 
 
 def write_cfg(home: Path, mutate):

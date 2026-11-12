@@ -65,3 +65,43 @@ def test_proxy_needs_trusted_ips(home):
     write_cfg(home, lambda d: d["auth"].update(mode="proxy"))
     errors, _ = startup_security_check(config.load_config())
     assert errors
+
+
+def _with_fake(home):
+    import sys
+    from pathlib import Path
+    fake = str(Path(__file__).parent / "fixtures" / "fake_mcp.py")
+    write_cfg(home, lambda d: d.update(connectors=[{
+        "name": "fake", "roles": ["log_search"], "transport": "stdio", "command": sys.executable,
+        "args": [fake], "timeout_sec": 5}]))
+
+
+def test_connector_api(home):
+    _with_fake(home)
+    c = create_app(config.get_config(reload=True)).test_client()
+    assert c.get("/api/connectors").json[0]["name"] == "fake"
+    assert c.post("/api/connectors/fake/test").json["ok"]
+    tools = c.get("/api/connectors/fake/tools").json
+    assert {t["name"]: t["allowed"] for t in tools}["isolate_host"] is False
+    assert c.get("/api/connectors/nope/tools").status_code == 404
+    assert c.get("/api/audit").json == []
+
+
+def test_operator_cannot_test_connectors_or_read_audit(home, monkeypatch):
+    _with_fake(home)
+    write_cfg(home, lambda d: d["auth"].update(mode="basic", default_role="operator"))
+    monkeypatch.setenv("ACTAEON_AUTH_PASSWORD", "pw")
+    import base64
+    h = {"Authorization": "Basic " + base64.b64encode(b"actaeon:pw").decode()}
+    c = create_app(config.load_config()).test_client()
+    assert c.post("/api/connectors/fake/test", headers=h).status_code == 403
+    assert c.get("/api/audit", headers=h).status_code == 403
+    assert c.get("/api/connectors", headers=h).status_code == 200
+
+
+def test_bad_connector_fails_config(home):
+    write_cfg(home, lambda d: d.update(connectors=[{"name": "x", "roles": ["nope"], "transport": "stdio",
+                                                     "command": "x"}]))
+    import pytest
+    with pytest.raises(ValueError):
+        config.load_config()

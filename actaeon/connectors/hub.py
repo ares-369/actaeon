@@ -1,0 +1,175 @@
+"""The connector hub: one place the hunt engine asks for tools by ROLE.
+
+The engine never names a product. It asks ``hub.tools_for_role("log_search")``
+and gets the allowed tools of every enabled connector with that role.
+"""
+
+from __future__ import annotations
+
+import json
+import threading
+import time
+from typing import Any
+
+from .audit import AuditLog
+from .client import McpClient, McpError
+from .policy import decide
+from .ratelimit import Pacer
+from .spec import ConnectorSpec, parse_connectors
+from .untrusted import wrap
+
+RETRIES = 2            # extra attempts after the first
+BACKOFF_SEC = 1.0      # 1s, then 2s
+
+
+class ToolCallError(RuntimeError):
+    pass
+
+
+def _result_text(res: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for item in res.get("content") or []:
+        if item.get("type") == "text":
+            parts.append(str(item.get("text", "")))
+        elif item.get("type") == "resource":
+            r = item.get("resource") or {}
+            parts.append(str(r.get("text", "")) or f"[resource {r.get('uri', '')}]")
+        else:
+            parts.append(f"[{item.get('type', 'content')} omitted]")
+    if res.get("structuredContent") is not None and not parts:
+        parts.append(json.dumps(res["structuredContent"]))
+    return "\n".join(parts)
+
+
+class ConnectorHub:
+    def __init__(self, specs: list[ConnectorSpec], audit: AuditLog, *, max_result_bytes: int = 200_000,
+                 pacer: Pacer | None = None, sleep=time.sleep, client_factory=McpClient):
+        self.specs = {s.name: s for s in specs}
+        self.audit = audit
+        self.max_result_bytes = max_result_bytes
+        self.pacer = pacer or Pacer()
+        self._sleep = sleep
+        self._factory = client_factory
+        self._clients: dict[str, McpClient] = {}
+        self._tools: dict[str, list[dict]] = {}
+        self._lock = threading.Lock()
+
+    @classmethod
+    def from_config(cls, cfg) -> ConnectorHub:
+        return cls(parse_connectors(cfg.connectors), AuditLog(cfg.data_dir / "audit.sqlite"),
+                   max_result_bytes=cfg.hunt.max_result_bytes)
+
+    # ---- discovery ----
+    def _client(self, name: str) -> McpClient:
+        with self._lock:
+            if name not in self._clients:
+                self._clients[name] = self._factory(self.specs[name])
+            return self._clients[name]
+
+    def tools(self, name: str, refresh: bool = False) -> list[dict]:
+        """All tools a connector offers, each with ``allowed`` and ``reason``."""
+        spec = self.specs[name]
+        if refresh or name not in self._tools:
+            raw = self._client(name).list_tools()
+            out = []
+            for t in raw:
+                ok, why = decide(spec, t)
+                out.append({"name": t.get("name", ""), "description": str(t.get("description", ""))[:500],
+                            "inputSchema": t.get("inputSchema") or {}, "annotations": t.get("annotations") or {},
+                            "allowed": ok, "reason": why})
+            self._tools[name] = out
+        return self._tools[name]
+
+    def connectors_for_role(self, role: str) -> list[ConnectorSpec]:
+        return [s for s in self.specs.values() if s.enabled and role in s.roles]
+
+    def tools_for_role(self, role: str) -> list[dict]:
+        out = []
+        for s in self.connectors_for_role(role):
+            try:
+                tools = self.tools(s.name)
+            except Exception:
+                continue  # an unreachable connector just offers nothing
+            out.extend({**t, "connector": s.name, "dialect": s.dialect} for t in tools if t["allowed"])
+        return out
+
+    def test(self, name: str) -> dict:
+        """Connect, list tools, report. Used by the UI and ``actaeon connectors test``."""
+        start = time.monotonic()
+        try:
+            info = self._client(name).connect()
+            tools = self.tools(name, refresh=True)
+        except Exception as exc:
+            self._drop(name)
+            return {"ok": False, "error": str(exc)[:300]}
+        return {"ok": True, "server": (info.get("serverInfo") or {}), "ms": int((time.monotonic() - start) * 1000),
+                "tools": len(tools), "allowed": sum(t["allowed"] for t in tools)}
+
+    # ---- calls ----
+    def call(self, name: str, tool: str, arguments: dict[str, Any], *, actor: str = "", hunt_id: str = "") -> dict:
+        """Call one tool. Returns the output wrapped as untrusted data."""
+        if name not in self.specs or not self.specs[name].enabled:
+            raise ToolCallError(f"unknown or disabled connector {name!r}")
+        spec = self.specs[name]
+        known = {t["name"]: t for t in self.tools(name)}
+        meta = known.get(tool)
+        if meta is None:
+            self.audit.record(connector=name, tool=tool, arguments=arguments, decision="unknown tool",
+                              status="blocked", actor=actor, hunt_id=hunt_id)
+            raise ToolCallError(f"{name} has no tool {tool!r}")
+        ok, why = decide(spec, meta)
+        if not ok:
+            self.audit.record(connector=name, tool=tool, arguments=arguments, decision=why,
+                              status="blocked", actor=actor, hunt_id=hunt_id)
+            raise ToolCallError(f"{name}/{tool} blocked: {why}")
+
+        start = time.monotonic()
+        last_err = ""
+        for attempt in range(1, RETRIES + 2):
+            self.pacer.acquire(name, spec.rate_per_min)
+            try:
+                res = self._client(name).call_tool(tool, arguments)
+                text = _result_text(res)
+                status = "tool_error" if res.get("isError") else "ok"
+                out = wrap(name, tool, text, self.max_result_bytes)
+                out["is_error"] = bool(res.get("isError"))
+                self.audit.record(connector=name, tool=tool, arguments=arguments, decision=why, status=status,
+                                  actor=actor, hunt_id=hunt_id, attempts=attempt,
+                                  duration_ms=int((time.monotonic() - start) * 1000),
+                                  result_bytes=len(text.encode()))
+                return out
+            except (McpError, OSError, ValueError) as exc:
+                last_err = str(exc)
+                self._drop(name)
+                if attempt <= RETRIES:
+                    self._sleep(BACKOFF_SEC * (2 ** (attempt - 1)))
+        self.audit.record(connector=name, tool=tool, arguments=arguments, decision=why, status="error",
+                          actor=actor, hunt_id=hunt_id, attempts=RETRIES + 1,
+                          duration_ms=int((time.monotonic() - start) * 1000), error=last_err)
+        raise ToolCallError(f"{name}/{tool} failed after {RETRIES + 1} attempts: {last_err}")
+
+    def _drop(self, name: str) -> None:
+        with self._lock:
+            c = self._clients.pop(name, None)
+        if c:
+            try:
+                c.close()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        for n in list(self._clients):
+            self._drop(n)
+
+
+_HUB: ConnectorHub | None = None
+
+
+def get_hub(cfg=None, reload: bool = False) -> ConnectorHub:
+    global _HUB
+    if _HUB is None or reload:
+        if _HUB:
+            _HUB.close()
+        from ..config import get_config
+        _HUB = ConnectorHub.from_config(cfg or get_config())
+    return _HUB
