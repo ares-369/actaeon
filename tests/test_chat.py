@@ -82,3 +82,17 @@ def test_chat_api(home):
     assert c.get(f"/api/hunts/{h['id']}/chat").json == []
     assert c.post(f"/api/hunts/{h['id']}/chat", json={"message": ""}).status_code == 400
     assert c.post("/api/hunts/zzz/chat", json={"message": "x"}).status_code == 404
+
+
+def test_tool_loop_last_turn_gets_one_more_chance(home):
+    from actaeon.hunt.toolloop import run_loop
+    cfg = config.get_config(reload=True)
+    hub = Hub(results={"search": '{"total": 1}'})
+    h = finished(cfg, hub)
+    c = {"action": "call", "connector": "logs", "tool": "search",
+         "arguments": {"index": "e", "time_from": "now-1d", "query": "host:B"}}
+    llm = Scripted([c, dict(c, arguments={**c["arguments"], "query": "host:C"}),
+                    {"action": "answer", "text": "final"}])
+    final, _made, calls = run_loop(llm=llm, hub=hub, store=service.store_for(cfg), hid=h["id"], system="s", user="u",
+                                   final_action="answer", max_calls=1, max_results=50, actor="t", why_prefix="")
+    assert calls == 1 and final == {"action": "answer", "text": "final"}

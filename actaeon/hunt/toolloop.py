@@ -46,6 +46,16 @@ def run_loop(*, llm, hub, store, hid: str, system: str, user: str, final_action:
         if res.error:
             return {"action": final_action, "error": res.error[:300]}, made, calls
         act = action_object(res.text) or {}
+        if last and act.get("action") == "call":
+            # One more chance: models often make one more call on the last turn.
+            transcript.append({"role": "assistant", "content": json.dumps(act)[:3000]})
+            transcript.append({"role": "user", "content": f"No more tool calls are possible. Reply with the "
+                               f"{final_action} JSON object only, based on what you already found."})
+            res = llm.for_role("analyst").chat([{"role": "system", "content": system}, {"role": "user", "content": user},
+                                               *transcript], max_tokens=1500)
+            if res.error:
+                return {"action": final_action, "error": res.error[:300]}, made, calls
+            act = action_object(res.text) or {}
         if act.get("action") == final_action or last or act.get("action") != "call":
             if act.get("action") != final_action:
                 act = {"action": final_action, "text": res.text[:4000], "unstructured": True}
