@@ -305,3 +305,12 @@ def test_snapshot_tools_advertise_no_time_args():
     for name in ("search", "count", "top_values"):
         props = tools[name]["inputSchema"]["properties"]
         assert "time_from" not in props and "time_to" not in props, name
+
+
+def test_bridge_now_pins_relative_times(monkeypatch):
+    from actaeon.bridges.common import parse_time
+    monkeypatch.setenv("BRIDGE_NOW", "2026-11-13T09:00:00Z")
+    assert parse_time("now-7d", default="now").isoformat() == "2026-11-06T09:00:00+00:00"
+    assert parse_time("", default="now").isoformat() == "2026-11-13T09:00:00+00:00"
+    monkeypatch.delenv("BRIDGE_NOW")
+    assert parse_time("now", default="now").year >= 2026

@@ -35,10 +35,20 @@ def session_from_env(prefix: str = "BRIDGE", verify_tls: bool = True, ca_bundle:
     return s
 
 
+def bridge_now() -> datetime:
+    """The bridge's "now". ``BRIDGE_NOW`` (ISO-8601) pins it, so hunts over a frozen copy of data see
+    the same time window on every run (used by benchmarks)."""
+    v = os.getenv("BRIDGE_NOW", "").strip()
+    if v:
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc)
+
+
 def parse_time(value: str, *, default: str) -> datetime:
     """Accept ISO-8601 or relative ``now-24h`` / ``now-7d`` / ``now``."""
     v = (value or default).strip()
-    now = datetime.now(timezone.utc)
+    now = bridge_now()
     if v == "now":
         return now
     m = _REL.match(v)
