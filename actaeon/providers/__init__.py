@@ -61,7 +61,22 @@ _COOLDOWN: dict[tuple[str, str], float] = {}   # (provider, model) -> skip until
 COOLDOWN_SEC = 3600
 SHORT_COOLDOWN_SEC = 60
 # Short rate limits (shared-capacity 429s, overload) usually clear in seconds: retry with backoff first.
-RETRY_DELAYS = (3.0, 8.0, 20.0)
+RETRY_DELAYS = (5.0, 15.0, 30.0, 60.0)
+
+
+_LAST_CALL: dict[str, float] = {}
+
+
+def _pace(provider: LLMProvider) -> None:
+    """Optional ``min_interval_sec`` per provider: spaces requests to stay under per-minute limits."""
+    gap = float((provider.cfg or {}).get("min_interval_sec") or 0)
+    if gap <= 0:
+        return
+    now = _time.monotonic()
+    nxt = _LAST_CALL.get(provider.name, 0) + gap
+    if nxt > now:
+        _time.sleep(nxt - now)
+    _LAST_CALL[provider.name] = _time.monotonic()
 
 
 @dataclass
@@ -75,9 +90,13 @@ class BoundModel:
         errors = []
         for b in chain:
             key = (b.provider.name, b.model)
-            if _COOLDOWN.get(key, 0) > _time.monotonic():
+            wait = _COOLDOWN.get(key, 0) - _time.monotonic()
+            if 0 < wait <= SHORT_COOLDOWN_SEC and b is chain[-1]:
+                _time.sleep(wait)   # last model in the chain on a short rate limit: wait it out
+            elif wait > 0:
                 errors.append(f"{b.provider.name}/{b.model}: skipped (quota cooldown)")
                 continue
+            _pace(b.provider)
             res = b.provider.chat(messages, model=b.model, **kw)
             for delay in RETRY_DELAYS:
                 if not res.error or not _QUOTA.search(res.error) or _HARD_QUOTA.search(res.error):

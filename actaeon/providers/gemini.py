@@ -128,6 +128,19 @@ class GeminiProvider(LLMProvider):
                     model=use_model,
                 )
             text = (resp.text or "").strip()
+            if not text and not getattr(resp, "function_calls", None) and "STOP" in str(_finish_reason(resp)) \
+                    and not getattr(getattr(resp, "prompt_feedback", None), "block_reason", None):
+                # An empty reply that "finished normally" happens now and then: ask once more.
+                resp = self._client.models.generate_content(
+                    model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
+                fcs = getattr(resp, "function_calls", None) or []
+                if fcs:
+                    return LLMResult(text=action_json(getattr(fcs[0], "name", ""), dict(getattr(fcs[0], "args", None) or {})),
+                                     model=use_model)
+                text = (resp.text or "").strip()
+                if not text:
+                    # Not an error: the hunt engine treats it as an unusable reply and asks again.
+                    return LLMResult(text="", model=use_model)
             if not text:
                 fb = getattr(getattr(resp, "prompt_feedback", None), "block_reason", None)
                 cands = getattr(resp, "candidates", None) or []

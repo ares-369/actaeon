@@ -14,7 +14,7 @@ import json
 from ..connectors import ROLES
 from ..connectors.hub import ToolCallError
 from .engine import _fields_from, query_fields, resolve_tool
-from .jsonparse import first_object
+from .jsonparse import action_object
 from .validator import ValidationError, validate_call
 
 
@@ -45,7 +45,7 @@ def run_loop(*, llm, hub, store, hid: str, system: str, user: str, final_action:
         res = llm.for_role("analyst").chat([{"role": "system", "content": system}, {"role": "user", "content": user}, *transcript], max_tokens=1500)
         if res.error:
             return {"action": final_action, "error": res.error[:300]}, made, calls
-        act = first_object(res.text) or {}
+        act = action_object(res.text) or {}
         if act.get("action") == final_action or last or act.get("action") != "call":
             if act.get("action") != final_action:
                 act = {"action": final_action, "text": res.text[:4000], "unstructured": True}

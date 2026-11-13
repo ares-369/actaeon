@@ -80,3 +80,21 @@ def test_gemini_retries_without_tools_on_malformed_call(monkeypatch):
     assert r.error is None and r.text == '{"action": "verdict"}'
     assert len(calls) == 2 and calls[0].tools and not calls[1].tools
     assert isinstance(calls[1], types.GenerateContentConfig)
+
+
+def test_gemini_empty_stop_reply_is_retried():
+    import pytest
+    pytest.importorskip("google.genai")
+    from actaeon.providers.gemini import GeminiProvider
+    n = []
+
+    class Models:
+        def generate_content(self, model, contents, config):
+            n.append(1)
+            if len(n) == 1:
+                return NS(function_calls=None, text="", prompt_feedback=None, candidates=[NS(finish_reason="FinishReason.STOP")])
+            return NS(function_calls=None, text='{"action": "verdict"}', prompt_feedback=None, candidates=[])
+    p = GeminiProvider({"default_model": "m", "auth": "api_key"}, "k")
+    p._client = NS(models=Models())
+    r = p.chat(_msgs())
+    assert r.error is None and r.text == '{"action": "verdict"}' and len(n) == 2

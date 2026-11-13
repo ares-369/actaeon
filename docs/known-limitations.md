@@ -14,7 +14,7 @@ Actaeon is pre-alpha. These are the limits we know about.
   present. Its tool calls worked, and the field guard corrected its made-up field
   names, but its query logic was still wrong and it answered `no_results`, a
   false negative. Use a stronger model for the analyst role.
-- No benchmark has been run. There are no published detection or accuracy numbers.
+- The only benchmark numbers are on the synthetic demo suite (see benchmarks.md). Nothing has been measured on real or independent data yet.
 - Claude, Gemini and OpenAI-compatible providers use native tool calling and
   fall back to the JSON action protocol when a model rejects tools (turn it off
   with `native_tools: false` in the provider config). The native path is only

@@ -396,3 +396,12 @@ def test_compact_mode_narrows_tools(tmp_path):
     first = llm.roles["analyst"].seen[0][1]["content"]
     assert 'connector "mail"' not in first          # plan does not use the email role
     assert 'connector "logs"' in first and 'connector "local-intel"' in first
+
+
+def test_native_shapes_in_text_are_accepted():
+    from actaeon.hunt.jsonparse import action_object
+    v = action_object('{"action": "submit_verdict", "arguments": {"outcome": "threat", "confidence": 90, "summary": "x"}}')
+    assert v["action"] == "verdict" and v["outcome"] == "threat"
+    c = action_object('{"action": "call_tool", "arguments": {"connector": "logs", "tool": "search", "arguments": {"q": 1}}}')
+    assert c == {"action": "call", "connector": "logs", "tool": "search", "arguments": {"q": 1}}
+    assert action_object('{"action": "call", "tool": "t"}') == {"action": "call", "tool": "t"}

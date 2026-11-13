@@ -46,3 +46,12 @@ actaeon bench --cases my-cases.yaml
   real-world detection coverage.
 - Always inspect cited evidence (`E1`, `E2`, ...) rather than relying on a
   verdict label alone.
+
+## Recorded results
+
+Synthetic demo suite only (8 cases written by the project, not an independent benchmark).
+
+| Date | Analyst model | Accuracy | Threat precision | Threat recall | Notes |
+|---|---|---|---|---|---|
+| 2026-11-13 | fast cloud model, native tool calling | 7/8 (88%) | 1.00 | 1.00 | The miss was an empty model reply that ended the hunt; it is now retried. 15-25 tool calls and 1-7 minutes per case. |
+| 2026-11-13 | 7B local model | not usable | - | - | Tool calls worked, query logic did not. |

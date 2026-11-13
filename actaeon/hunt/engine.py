@@ -23,7 +23,7 @@ from typing import Any
 
 from ..connectors import ROLES
 from ..connectors.hub import ToolCallError
-from .jsonparse import first_object
+from .jsonparse import action_object, first_object
 from .prompts import ANALYST_SYSTEM, PLANNER_SYSTEM, analyst_user, planner_user
 from .store import OUTCOMES, HuntStore
 from .validator import ValidationError, validate_call
@@ -257,7 +257,7 @@ class HuntEngine:
             if last:
                 transcript.append({"role": "user", "content": "Tool budget used up. Give the verdict now."})
             text = self._ask("analyst", self._messages(base, transcript))
-            action = first_object(text)
+            action = action_object(text)
             if not action or action.get("action") not in ("call", "verdict"):
                 parse_fail += 1
                 self.store.add_step(hid, self._next(), "note", ok=False, note="reply was not a valid action",
@@ -284,7 +284,7 @@ class HuntEngine:
                     transcript.append({"role": "assistant", "content": json.dumps(action)[:3000]})
                     transcript.append({"role": "user", "content": "No more tool calls are possible. Reply with the "
                                        "verdict JSON object only, based on the evidence you already have."})
-                    action = first_object(self._ask("analyst", self._messages(base, transcript))) or {}
+                    action = action_object(self._ask("analyst", self._messages(base, transcript))) or {}
                 if action.get("action") != "verdict":
                     return self._finalize({"outcome": "inconclusive",
                                            "summary": "Step limit reached without a verdict."}, tools)
