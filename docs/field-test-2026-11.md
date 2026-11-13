@@ -6,7 +6,8 @@ are listed with the passes.
 
 ## The environment
 
-- About 24 hosts with an endpoint agent: 20 Debian, 3 Ubuntu, 1 Kali, 1 Windows 11. Mostly
+- About 24 hosts with an endpoint agent: 20 Debian, 3 Ubuntu, 1 Kali, and 1 Windows 11 (a dual-boot
+  machine that was switched off throughout, so only its months-old inventory was there). Mostly
   containers running self-hosted services, plus two hypervisor hosts.
 - One SIEM collecting from those agents. Actaeon read three kinds of data from it, all read-only:
   - **alerts**: events that matched a detection rule (about 8,900 in 7 days);
@@ -96,7 +97,8 @@ model as the judge. Ten questions per incident were sampled with a fixed seed (8
 
 Per incident, mean reward ranged from 0.14 to 0.88. The paper reports roughly 26 to 56 percent for
 strong models, but the judge model and the sample differ, so this is indicative only, not a
-leaderboard entry. Reproduce with `benchmarks/excytin/` (see its docstrings).
+leaderboard entry. Reproduce with `benchmarks/excytin/` (see its docstrings). A later run with query
+notes describing the tables scored 0.512 (40 / 80); see benchmarks.md.
 
 ## 3b. Follow-up: a repeatable lab benchmark
 

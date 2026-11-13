@@ -457,3 +457,17 @@ def test_known_good_threat_is_capped_and_flagged(tmp_path):
     v = h["verdict"]
     assert h["outcome"] == "threat" and v["confidence"] <= 50 and v.get("needs_review")
     assert any("known-good" in c for c in v["checks"])
+
+
+def test_count_evidence_grounds_the_values_it_searched_for(tmp_path):
+    hub = Hub(tools={"log_search": [SEARCH, {**SEARCH, "name": "count"}]}, results={"count": '{"count": 57}'})
+    acts = [{"action": "call", "connector": "logs", "tool": "count",
+             "arguments": {"index": "e", "time_from": "now-7d", "query": "destination.ip:203.0.113.66"}},
+            {"action": "verdict", "outcome": "no_results", "summary": "s",
+             "findings": [{"claim": "host connected to 203.0.113.66 many times", "evidence": ["E2"]}]}]
+    h, _ = run(tmp_path, acts, hub=hub)
+    f = h["verdict"]["findings"][0]
+    assert f.get("grounded") is True and not f.get("missing_values")
+    hub0 = Hub(tools={"log_search": [SEARCH, {**SEARCH, "name": "count"}]}, results={"count": '{"count": 0}'})
+    h0, _ = run(tmp_path / "zero", acts, hub=hub0)
+    assert h0["verdict"]["findings"] == [] or h0["verdict"]["findings"][0].get("missing_values") == ["203.0.113.66"]

@@ -26,6 +26,7 @@ from ..connectors.hub import ToolCallError
 from .attack_names import check as attack_check
 from .jsonparse import action_object, first_object
 from .prompts import ANALYST_SYSTEM, PLANNER_SYSTEM, analyst_user, planner_user
+from .signals import hits
 from .store import OUTCOMES, HuntStore
 from .validator import ValidationError, validate_call
 
@@ -361,8 +362,13 @@ class HuntEngine:
                     known_fields[connector] = known_fields.get(connector, set()) | learned
                     fetched.add((connector, str(args.get("index") or "")))
             done_calls[key] = eid
+            text = content[:400_000] if ok else ""
+            if ok and (hits(content) or 0) > 0:
+                # A count or search that matched: the values it searched for are evidence too
+                # (a count result holds only a number). A query that matched nothing adds nothing.
+                text += "\n" + json.dumps(args, default=str)
             self.evidence[eid] = {"ok": ok, "connector": connector, "tool": tool, "role": meta["role"], "args": args,
-                                  "text": content[:400_000] if ok else ""}
+                                  "text": text}
             self.store.add_step(hid, n, "call", connector=connector, tool=tool, role=meta["role"], arguments=args,
                                 why=str(action.get("thought", "")), ok=ok, ms=ms, result=content,
                                 note="; ".join(notes))

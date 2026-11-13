@@ -69,6 +69,8 @@ tested in one home lab and on public and synthetic benchmarks (see `docs/benchma
 - Per-hunt token counts showed the server's running total.
 - Loopback and private addresses from news articles were stored as indicators.
 - Short rate limits locked a model out for an hour.
+- A count that matched an indicator did not count as evidence for it.
+- Table cells in the UI broke words in the middle.
 
 ### Known limitations
 See `docs/known-limitations.md`. In short: one process with SQLite (no high availability), benchmark

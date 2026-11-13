@@ -6,7 +6,7 @@ reproduce help the most.
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'
-ruff check actaeon tests && pytest -q
+ruff check actaeon tests benchmarks scripts && node --check actaeon/static/app.js && pytest -q
 actaeon demo --offline --run      # quick end-to-end check
 ```
 

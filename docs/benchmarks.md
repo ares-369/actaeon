@@ -75,18 +75,20 @@ regression subset in about 10 to 15 minutes.
 ### Lab benchmark on real data (2026-11-13)
 
 A frozen copy of one home lab's real SIEM data (37k alerts, 294k raw events, host inventory and
-vulnerability findings), 11 labelled cases: 4 attacks planted before the freeze (a hidden process in
-`/dev/shm`, a listener from a hidden interpreter copy, a second UID 0 account, log lines with real
-indicators from a security news advisory in the intel store) and 7 cases that must not be called a
-threat (the owner's own services, an agent outage that was planned maintenance, a benign key-file
-change, two hunts whose data does not exist here, and two real known-exploited CVEs that are installed
-but were not exploited).
+vulnerability findings) with 11 labelled cases:
+
+- **5 threats:** 4 attacks planted on a throwaway host before the freeze (a hidden process in `/dev/shm`,
+  a listener from a hidden interpreter copy, a second UID 0 account, and log lines with real indicators
+  from a security news advisory in the intel store), plus a root crontab entry left by an earlier test.
+- **6 that must not be called a threat:** an agent outage that was planned maintenance, a benign
+  key-file change, two hunts whose data does not exist in this lab, and two real known-exploited CVEs
+  that are installed but were not exploited.
 
 | Run | Correct | Threats found | False positives | Input tokens per hunt |
 |---|---|---|---|---|
 | Field test hunts, before handoff, known-good list and missing-data fix | - | - | 2 of 2 "threats" were the owner's own activity | - |
-| Lab run 2, after those fixes | 10 / 11 | 3 / 4 | 0 | 533k |
-| Lab run 4, after compact results and trimmed history | **11 / 11** | **4 / 4** | **0** | **438k (-18%)** |
+| Lab run 2, after those fixes | 10 / 11 | 4 / 5 | 0 | 533k |
+| Lab run 4, after compact results and trimmed history | **11 / 11** | **5 / 5** | **0** | **438k (-18%)** |
 
 One label was corrected after review: the frozen week also held an earlier test that planted a root
 crontab entry, so finding it is the right answer for the cron/systemd case (run 2 had called it benign).

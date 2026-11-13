@@ -56,7 +56,7 @@ identity, and intel sources they already run.
 
 | Test | Result |
 |---|---|
-| Lab benchmark on a frozen week of real SIEM data (11 labelled cases) | 11 / 11; 4 of 4 planted attacks found, no false positives |
+| Lab benchmark on a frozen week of real SIEM data (11 labelled cases) | 11 / 11; 5 of 5 threats found, no false positives |
 | ExCyTIn-Bench sample (80 public investigation questions) | mean reward 0.512, 40 / 80 fully correct |
 | Field test: implant planted where no detection rule covered it | found from host inventory with no alert behind it |
 
@@ -148,7 +148,7 @@ network address with no login.
 ## Development
 
 ```bash
-ruff check actaeon tests && pytest -q
+ruff check actaeon tests benchmarks scripts && node --check actaeon/static/app.js && pytest -q
 ```
 
 ## License & Community
