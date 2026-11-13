@@ -386,10 +386,10 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
     br = p_br.add_subparsers(dest="kind", required=True)
     from .bridges import demo as demo_bridge
-    from .bridges import local_intel, local_tools, openapi, search_index, taxii
+    from .bridges import local_intel, local_tools, openapi, search_index, sql, taxii
     from .bridges import web as web_bridge
     bridges = {"search-index": search_index, "taxii": taxii, "openapi": openapi, "local-intel": local_intel,
-               "local-tools": local_tools, "demo": demo_bridge, "web": web_bridge}
+               "local-tools": local_tools, "demo": demo_bridge, "web": web_bridge, "sql": sql}
     for kind, mod in bridges.items():
         mod.add_args(br.add_parser(kind))
     p_in = sub.add_parser("intel", help="add, import, pull and look up intel in the local store")

@@ -75,3 +75,26 @@ Turns an OpenAPI 3 document into tools.
 - At most `--max-tools` (default 150) operations; narrow large specs with `--include`.
 
 The connector's own read-only policy still applies on top of all of this.
+
+## SQL (`actaeon bridge sql`)
+
+Read-only queries over a SQLite file, MySQL/MariaDB or PostgreSQL.
+
+```yaml
+connectors:
+  - name: case-db
+    roles: [log_search]
+    transport: stdio
+    command: actaeon
+    args: [bridge, sql, --url, "sqlite:///data/logs.db", --max-rows, "200"]
+    # MySQL/PostgreSQL: --url mysql://reader@db.internal/logs ; password in env BRIDGE_PASSWORD
+```
+
+Tools: `list_tables`, `describe_table` (optional sample rows), `query` (one statement).
+
+Guards: one statement only, it must start with SELECT, WITH, SHOW, DESCRIBE or EXPLAIN,
+and write keywords are refused even inside a WITH. SQLite opens the file read-only with
+an authorizer that denies anything but reads. MySQL and PostgreSQL sessions are set to
+read-only transactions with a statement timeout. Rows are capped and long values cut.
+`--table` (repeatable) limits which tables can be read. MySQL needs `pymysql` and
+PostgreSQL `psycopg`; neither is installed by default. Use a read-only account anyway.
