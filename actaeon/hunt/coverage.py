@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from .attack_names import _data, data_components, name, tactics, version
+from .attack_names import _data, current, data_components, name, tactics, version
 from .library import starters
 
 _RANK = {"threat": 5, "telemetry_found_benign": 4, "no_results": 3, "inconclusive": 2, "logs_missing": 1}
@@ -16,7 +16,7 @@ def build(store, library, hub_specs: dict) -> dict:
                                                   "saved": 0, "scheduled": 0, "starter": False})
     missing_roles: dict[str, int] = defaultdict(int)
     for h in store.list(limit=5000):
-        ids = set(((h.get("plan") or {}).get("attack") or []) + ((h.get("verdict") or {}).get("attack") or []))
+        ids = {current(t) for t in ((h.get("plan") or {}).get("attack") or []) + ((h.get("verdict") or {}).get("attack") or [])}
         for r in (h.get("plan") or {}).get("missing_roles") or []:
             missing_roles[r] += 1
         for t in ids:
@@ -25,7 +25,7 @@ def build(store, library, hub_specs: dict) -> dict:
             d["last"] = max(d["last"], h["created"])
             d["outcomes"][h.get("outcome") or "none"] += 1
     for s in library.list():
-        for t in s["attack"]:
+        for t in {current(x) for x in s["attack"]}:
             techs[t]["saved"] += 1
             techs[t]["scheduled"] += int(s["enabled"] and s["interval_minutes"] > 0)
     for s in starters():
