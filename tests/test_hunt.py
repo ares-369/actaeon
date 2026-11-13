@@ -345,6 +345,23 @@ def test_model_get_fields_is_reused(tmp_path):
     assert [c[1] for c in hub.calls] == ["get_fields", "search"]
 
 
+def test_filtered_get_fields_does_not_block_other_fields(tmp_path):
+    class FieldsHub(Hub):
+        def call(self, connector, tool, args, actor="", hunt_id=""):
+            if tool == "get_fields":
+                self.calls.append((connector, tool, args))
+                f = {"rule.id": "keyword"} if args.get("contains") else {"rule.id": "keyword", "rule.groups": "keyword"}
+                return {"content": json.dumps({"fields": f}), "is_error": False}
+            return super().call(connector, tool, args, actor, hunt_id)
+    hub = FieldsHub(tools={"log_search": [SEARCH, GET_FIELDS]})
+    h, _ = run(tmp_path, [{"action": "call", "connector": "logs", "tool": "get_fields",
+                           "arguments": {"index": "e", "contains": "rule.id"}},
+                          call(index="e", time_from="now-7d", query="rule.groups:sudo"),
+                          {"action": "verdict", "outcome": "no_results", "summary": "x"}], hub=hub)
+    assert [c[1] for c in hub.calls] == ["get_fields", "get_fields", "search"]   # full list fetched, query allowed
+    assert not [s for s in h["steps"] if s["kind"] == "blocked"]
+
+
 def test_threat_nudged_to_corroborate_once(tmp_path):
     threat = {"action": "verdict", "outcome": "threat", "confidence": 95, "summary": "bad",
               "findings": [{"claim": "encoded powershell", "evidence": ["E2"]}]}

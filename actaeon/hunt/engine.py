@@ -251,7 +251,8 @@ class HuntEngine:
                                                          self._guides(tools), self.limits.compact)}]
         transcript: list[dict] = []
         done_calls: dict[str, str] = {}
-        known_fields: dict[str, set[str]] = {}   # connector -> field names it reported
+        known_fields: dict[str, set[str]] = {}   # connector -> field names it reported (union over indices)
+        fetched: set[tuple[str, str]] = set()     # (connector, index) whose full field list was read
         calls = parse_fail = 0
         nudged = False
         while True:
@@ -319,8 +320,14 @@ class HuntEngine:
             if isinstance(args.get("query"), str) and (connector, "get_fields") in index and tool != "get_fields":
                 if connector not in known_fields:
                     known_fields[connector] = self._learn_fields(hid, connector, args, actor, transcript)
+                    fetched.add((connector, str(args.get("index") or "")))
                 fields = known_fields[connector]
                 unknown = [f for f in query_fields(args["query"]) if fields and f not in fields]
+                if unknown and (connector, str(args.get("index") or "")) not in fetched:
+                    # The known list may come from another index or a filtered call: fetch this index once.
+                    fetched.add((connector, str(args.get("index") or "")))
+                    fields = known_fields[connector] = fields | self._learn_fields(hid, connector, args, actor, transcript)
+                    unknown = [f for f in unknown if f not in fields]
                 if unknown:
                     import difflib
                     tips = {u: difflib.get_close_matches(u, list(fields), n=3, cutoff=0.4) for u in unknown}
@@ -347,10 +354,11 @@ class HuntEngine:
                 ok, content = False, f"call failed: {exc}"
             ms = int((time.monotonic() - t0) * 1000)
             self.data_ok += ok and is_data
-            if ok and tool == "get_fields" and connector not in known_fields:
-                learned = _fields_from(content)
+            if ok and tool == "get_fields" and not args.get("contains"):
+                learned = _fields_from(content)   # a filtered (contains) list is partial: never learn from it
                 if learned:
-                    known_fields[connector] = learned   # reuse the model's own call; no second fetch
+                    known_fields[connector] = known_fields.get(connector, set()) | learned
+                    fetched.add((connector, str(args.get("index") or "")))
             done_calls[key] = eid
             self.evidence[eid] = {"ok": ok, "connector": connector, "tool": tool, "role": meta["role"], "args": args,
                                   "text": content[:400_000] if ok else ""}
