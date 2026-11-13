@@ -50,7 +50,8 @@ def test_group_roles(home):
 
 def test_bad_group_role_rejected(home):
     p = home / "config.yaml"
-    raw = p.read_text().replace("auth:\n", "auth:\n  group_roles: {soc: boss}\n", 1)
+    raw = p.read_text().replace("  group_roles: {}", "  group_roles: {soc: boss}", 1)
+    assert "{soc: boss}" in raw
     p.write_text(raw)
     with pytest.raises(ValueError, match="group_roles"):
         config.get_config(reload=True)
