@@ -53,6 +53,13 @@ admin). Actaeon will not start on a network address with no login. Session
 requests get a CSRF origin check. The `/mcp` token is scoped to `/mcp` only, and
 the ticket-reply token (`tickets.token_env`) to `POST /api/tickets/reply` only.
 
+**T4b. An analyst sees data they should not (insider, HR, executive sources).**
+Connectors can be limited to groups, roles or users. Others' hunts cannot call them, and hunts
+that read them are hidden from people outside the list (hunts, leads, reports, exports, memory,
+assistant conversations, outputs). Roles can come from identity-provider groups.
+*Residual:* scheduled work reads every connector; analyst notes are not restricted; the source's own
+permissions remain the real boundary.
+
 **T5. Cross-site scripting through data shown in the UI.**
 The UI only ever sets text, never HTML (a test enforces this), and the CSP
 allows scripts from the server only, with no inline script. CSV exports guard

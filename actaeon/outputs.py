@@ -35,6 +35,9 @@
         tool: create_case
         arguments: {title: "{title}", description: "{summary}", severity: "{severity}"}
 
+A hunt that read a connector with ``access`` limits is not sent to an output
+unless that output has ``include_restricted: true``.
+
 ``mcp_tool`` outputs go through the connector policy: the connector needs
 ``allow_write: true`` and the tool named exactly in ``tools.allow``. Outputs never
 contain raw tool results; they carry the verdict, findings, evidence ids,
@@ -258,6 +261,11 @@ def dispatch(cfg, h: dict, *, hub=None, only: str | None = None, smtp_cls=None, 
         elif not only and not (when & ev):
             continue
         if o.get("origins") and not any(h.get("origin", "").startswith(p) for p in o["origins"]):
+            continue
+        if h.get("restricted") and not o.get("include_restricted"):
+            # The hunt read a connector with access limits: do not send it out unless the output says so.
+            results.append({"name": o.get("name"), "ok": True,
+                            "detail": "skipped: restricted hunt (set include_restricted: true to send)"})
             continue
         try:
             t = o["type"]

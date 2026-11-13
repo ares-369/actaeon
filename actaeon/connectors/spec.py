@@ -64,6 +64,7 @@ class ConnectorSpec:
     timeout_sec: float = 30.0
     enabled: bool = True
     verify_tls: bool = True
+    access: list[str] = field(default_factory=list)   # who may use it: group, role:<r>, user:<u>; empty = all
 
     def public(self) -> dict[str, Any]:
         """Safe view for the UI/API (no secrets, no env values)."""
@@ -71,7 +72,7 @@ class ConnectorSpec:
             "name": self.name, "roles": self.roles, "transport": self.transport,
             "url": self.url, "command": self.command, "dialect": self.dialect,
             "description": self.description, "auth_type": self.auth.get("type", "none"),
-            "allow": self.allow, "deny": self.deny, "allow_write": self.allow_write,
+            "allow": self.allow, "deny": self.deny, "allow_write": self.allow_write, "access": self.access,
             "rate_per_min": self.rate_per_min, "enabled": self.enabled,
             "query_notes": bool(self.query_notes), "query_examples": len(self.query_examples),
         }
@@ -114,6 +115,12 @@ def _spec(raw: dict[str, Any]) -> ConnectorSpec:
         if auth.get(k) and not _VAR_RE.fullmatch(str(auth[k])):
             raise ValueError(f"connector {name}: put auth.{k} in .env and reference it as {k}_env or ${{VAR}}")
     tools = raw.get("tools") or {}
+    access = raw.get("access") or []
+    if not isinstance(access, list) or not all(isinstance(a, str) and a.strip() for a in access):
+        raise ValueError(f"connector {name}: access must be a list of group names, role:<role> or user:<name>")
+    for a in access:
+        if a.startswith("role:") and a[5:].strip().lower() not in ("viewer", "operator", "admin"):
+            raise ValueError(f"connector {name}: access {a!r}: role must be viewer, operator or admin")
     return ConnectorSpec(
         name=name, roles=roles, transport=transport,
         url=str(raw.get("url", "")), command=str(raw.get("command", "")),
@@ -131,6 +138,7 @@ def _spec(raw: dict[str, Any]) -> ConnectorSpec:
         timeout_sec=float(raw.get("timeout_sec", 30)),
         enabled=bool(raw.get("enabled", True)),
         verify_tls=bool(raw.get("verify_tls", True)),
+        access=[a.strip() for a in access],
     )
 
 

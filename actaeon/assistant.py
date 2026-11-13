@@ -73,10 +73,18 @@ class Conversations:
                       (cid, _now(), role, user, content[:20000], json.dumps(links or {})))
             c.execute("UPDATE conversations SET updated=? WHERE id=?", (_now(), cid))
 
+    @staticmethod
+    def _mine(owner: str) -> bool:
+        """With connector access limits in force, people only see their own conversations (answers can
+        quote restricted hunts). Admins and unrestricted callers see all."""
+        from .access import current
+        a = current()
+        return a is None or a.connectors is None or owner == a.user
+
     def get(self, cid: int) -> dict | None:
         with self._conn() as c:
             r = c.execute("SELECT * FROM conversations WHERE id=?", (int(cid),)).fetchone()
-            if not r:
+            if not r or not self._mine(r["user"]):
                 return None
             msgs = [{**dict(m), "links": json.loads(m["links"] or "{}")}
                     for m in c.execute("SELECT * FROM conv_msgs WHERE conv_id=? ORDER BY id", (int(cid),))]
@@ -85,7 +93,7 @@ class Conversations:
     def list(self, limit: int = 100) -> list[dict]:
         with self._conn() as c:
             return [dict(r) for r in c.execute("SELECT * FROM conversations ORDER BY updated DESC LIMIT ?",
-                                               (int(limit),))]
+                                               (int(limit),)) if self._mine(r["user"])]
 
 
 def _records(cfg, query: str) -> dict:

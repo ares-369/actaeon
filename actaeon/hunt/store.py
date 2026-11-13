@@ -37,7 +37,7 @@ class HuntStore:
             CREATE INDEX IF NOT EXISTS steps_hunt ON steps(hunt_id, n);
             """)
             cols = {r[1] for r in c.execute("PRAGMA table_info(hunts)")}
-            for col in ("job_id", "narrative", "feedback"):
+            for col in ("job_id", "narrative", "feedback", "restricted"):
                 if col not in cols:
                     c.execute(f"ALTER TABLE hunts ADD COLUMN {col} TEXT")
 
@@ -75,10 +75,26 @@ class HuntStore:
     @staticmethod
     def _hunt(r: sqlite3.Row) -> dict:
         d = dict(r)
-        for k in ("plan", "verdict", "models", "feedback"):
+        for k in ("plan", "verdict", "models", "feedback", "restricted"):
             d[k] = json.loads(d[k]) if d.get(k) else None
         d["feedback"] = d["feedback"] or []
+        d["restricted"] = d["restricted"] or []
         return d
+
+    def add_restricted(self, hid: str, connector: str) -> None:
+        """Record that this hunt read a connector with ``access`` limits (see actaeon/access.py)."""
+        with self._lock, self._conn() as c:
+            r = c.execute("SELECT restricted FROM hunts WHERE id=?", (hid,)).fetchone()
+            if not r:
+                return
+            cur = json.loads(r["restricted"]) if r["restricted"] else []
+            if connector not in cur:
+                c.execute("UPDATE hunts SET restricted=? WHERE id=?", (json.dumps(sorted([*cur, connector])), hid))
+
+    def restricted_of(self, hid: str) -> list[str]:
+        with self._conn() as c:
+            r = c.execute("SELECT restricted FROM hunts WHERE id=?", (hid,)).fetchone()
+        return json.loads(r["restricted"]) if r and r["restricted"] else []
 
     def get(self, hid: str, with_steps: bool = True) -> dict | None:
         with self._conn() as c:
@@ -86,6 +102,9 @@ class HuntStore:
             if not r:
                 return None
             d = self._hunt(r)
+            from ..access import can_see
+            if not can_see(d["restricted"]):
+                return None
             if with_steps:
                 d["steps"] = []
                 for s in c.execute("SELECT * FROM steps WHERE hunt_id=? ORDER BY id", (hid,)):
@@ -102,8 +121,9 @@ class HuntStore:
             a.append(f"{origin}%")
         q += " ORDER BY created DESC LIMIT ?"
         a.append(int(limit))
+        from ..access import can_see
         with self._conn() as c:
-            return [self._hunt(r) for r in c.execute(q, a)]
+            return [h for h in (self._hunt(r) for r in c.execute(q, a)) if can_see(h["restricted"])]
 
     def mark_orphans(self) -> None:
         """Hunts left running by a restart can never finish; mark them stopped."""

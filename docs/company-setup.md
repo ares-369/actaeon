@@ -29,9 +29,11 @@
    says what to fix. Settings > Health check in the UI runs it too (admin).
 
 6. **Run it** with Docker (docs/deploy.md) behind your SSO, and add analysts. With
-   OIDC or a proxy, people sign in with their own accounts. Map roles with
+   OIDC or a proxy, people sign in with their own accounts. Map roles from your
+   identity provider's groups with `auth.group_roles`, or per person with
    `auth.roles`; anyone else gets `auth.default_role`. Without SSO, use named
-   accounts: `actaeon users add alice --role operator`.
+   accounts: `actaeon users add alice --role operator`. To limit who can query
+   sensitive sources (email, identity, HR systems), see [access.md](access.md).
 
 7. **Turn on the schedules** once results look right: `intel.sweep.interval_minutes`,
    `intel.web.interval_minutes`, `autopilot.interval_minutes`, plus replays of saved hunts.

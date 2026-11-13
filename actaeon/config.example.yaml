@@ -14,6 +14,9 @@ auth:
   username: "actaeon"        # basic/local; password in .env ACTAEON_AUTH_PASSWORD
   default_role: "admin"      # admin | operator | viewer
   roles: {}                  # username: role
+  group_roles: {}            # identity-provider group: role, e.g. {soc-analysts: operator} (docs/access.md)
+  require_group_role: false  # refuse people in none of the group_roles groups
+  proxy_groups_header: ""    # proxy mode: header with the user's groups, e.g. X-Forwarded-Groups
   proxy_header: "X-Forwarded-User"
   proxy_trusted_ips: []      # required for proxy mode
   allowed_users: []
@@ -22,6 +25,7 @@ auth:
     client_id: ""            # client secret in .env OIDC_CLIENT_SECRET
     scopes: "openid email profile"
     username_claim: "email"
+    groups_claim: "groups"   # claim listing the user's groups (for group_roles and connector access)
 
 # Model per role. Change from Settings > Models in the UI, or here.
 llm:
@@ -176,6 +180,7 @@ connectors: []
 #    query_examples:
 #      - {goal: "process starts by parent", query: "process.parent.name:winword.exe AND process.name:powershell.exe"}
 #    tools: { allow: [], deny: [] }  # glob patterns
+#    access: []                      # who may use it: group names, "role:admin", "user:name"; empty = all
 #    rate_per_min: 60
 #    timeout_sec: 30
 #  - name: intel

@@ -62,7 +62,7 @@ See [docs/demo.md](docs/demo.md).
 | Detection | Draft rules from a hunt (Sigma, plus native queries) with a backtest of how often they would have fired |
 | Outputs | Email, Excel, webhook, or a write tool you explicitly allow (such as opening a case). A reply in the ticket can continue the hunt |
 | Reports | Markdown, CSV, PDF and Word, plus an ATT&CK coverage view |
-| Access | `basic`, `local`, OIDC single sign-on or a trusted proxy, with viewer, operator and admin roles. All of these are free |
+| Access | `basic`, `local`, OIDC single sign-on or a trusted proxy; viewer, operator and admin roles, mapped from your identity provider's groups; per-source limits so only some people can query (and see hunts over) sensitive sources ([access](docs/access.md)). All of it is free |
 | Interfaces | Web UI, CLI, REST API, and Actaeon itself as an MCP server |
 | Running it | pip, Docker / compose (non-root, read-only filesystem) or systemd. Runs with no internet access, with local models ([air-gapped](docs/air-gapped.md)) |
 
@@ -155,7 +155,7 @@ not in this repository.
 | Outputs and ticket replies | [docs/outputs.md](docs/outputs.md) |
 | Models and providers | [docs/models.md](docs/models.md) |
 | Privacy masking | [docs/privacy.md](docs/privacy.md) |
-| Organisation setup | [docs/company-setup.md](docs/company-setup.md) |
+| Organisation setup, roles and access | [docs/company-setup.md](docs/company-setup.md), [docs/access.md](docs/access.md) |
 | Deployment, air-gapped networks | [docs/deploy.md](docs/deploy.md), [docs/air-gapped.md](docs/air-gapped.md) |
 | Actaeon as an MCP server | [docs/mcp-server.md](docs/mcp-server.md) |
 | Benchmarks | [docs/benchmarks.md](docs/benchmarks.md) |

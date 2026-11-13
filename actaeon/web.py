@@ -237,8 +237,11 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         from flask import g
         c = get_config()
         u = _actor()
+        a = getattr(g, "actaeon_access", None)
         return jsonify({"user": u, "role": getattr(g, "actaeon_role", "viewer"), "auth_mode": c.auth.mode,
-                        "name": (c.auth.users.get(u) or {}).get("name", "")})
+                        "name": (c.auth.users.get(u) or {}).get("name", ""),
+                        "groups": list(getattr(g, "actaeon_groups", []) or []),
+                        "connectors": None if a is None or a.connectors is None else sorted(a.connectors)})
 
     @app.route("/api/users")
     def users():

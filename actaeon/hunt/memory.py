@@ -101,10 +101,20 @@ class HuntMemory:
         q = _fts_query(text)
         if not q:
             return {"hunts": [], "notes": []}
+        from ..access import can_see
         with self._conn() as c:
-            hunts = [dict(r) for r in c.execute(
+            rows = [dict(r) for r in c.execute(
                 "SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts WHERE mem_hunts "
-                "MATCH ? ORDER BY rank LIMIT ?", (q, int(k)))]
+                "MATCH ? ORDER BY rank LIMIT ?", (q, int(k) * 4))]
+            hunts = []
+            for h in rows:
+                try:
+                    r = c.execute("SELECT restricted FROM hunts WHERE id=?", (h["hunt_id"],)).fetchone()
+                except sqlite3.OperationalError:
+                    r = None
+                if can_see(json.loads(r["restricted"]) if r and r["restricted"] else []):
+                    hunts.append(h)
+            hunts = hunts[:int(k)]
             notes = [dict(r) for r in c.execute(
                 "SELECT n.id, n.text, n.tags, n.author, n.created, n.expires FROM mem_notes m "
                 "JOIN notes n ON n.id = m.note_id WHERE mem_notes MATCH ? AND n.active=1 "

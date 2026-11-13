@@ -61,7 +61,10 @@ class AuthConfig:
     oidc: dict = field(default_factory=dict)
     default_role: str = "admin"               # admin | operator | viewer
     roles: dict[str, str] = field(default_factory=dict)
-    users: dict[str, dict] = field(default_factory=dict)   # username -> {password_hash, role, name}
+    users: dict[str, dict] = field(default_factory=dict)   # username -> {password_hash, role, name, groups}
+    group_roles: dict[str, str] = field(default_factory=dict)   # IdP group -> role (highest match wins)
+    require_group_role: bool = False         # with group_roles: refuse people in none of those groups
+    proxy_groups_header: str = ""            # proxy mode: header with the user's groups (comma separated)
 
     @property
     def enabled(self) -> bool:
@@ -138,11 +141,18 @@ def load_config() -> Config:
             "client_secret": os.getenv("OIDC_CLIENT_SECRET", oidc_raw.get("client_secret", "")) or "",
             "scopes": str(oidc_raw.get("scopes", "openid email profile")),
             "username_claim": str(oidc_raw.get("username_claim", "email")),
+            "groups_claim": str(oidc_raw.get("groups_claim", "groups")),
         },
         default_role=str(auth_raw.get("default_role", "admin")).lower(),
         roles={str(k): str(v).lower() for k, v in (auth_raw.get("roles") or {}).items()},
         users={str(k): dict(v or {}) for k, v in (auth_raw.get("users") or {}).items()},
+        group_roles={str(k): str(v).lower() for k, v in (auth_raw.get("group_roles") or {}).items()},
+        require_group_role=bool(auth_raw.get("require_group_role", False)),
+        proxy_groups_header=str(auth_raw.get("proxy_groups_header", "") or ""),
     )
+    bad = {g: r for g, r in auth.group_roles.items() if r not in ("viewer", "operator", "admin")}
+    if bad:
+        raise ValueError(f"auth.group_roles: roles must be viewer, operator or admin, got {bad}")
     for un, u in auth.users.items():
         if u.get("password"):
             raise ValueError(f"auth.users.{un}: store a password_hash (actaeon users add), not a password")

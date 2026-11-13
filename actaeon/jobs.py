@@ -7,6 +7,7 @@ with cooperative stop/pause. No external broker needed.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import sqlite3
 import threading
@@ -149,7 +150,9 @@ class JobManager:
                 (job_id, kind, meta_json, "queued", now_ts, now_ts),
             )
             conn.commit()
-        self.pool.submit(self._run, job_id, fn)
+        # Run with the submitter's context: a hunt started by a person keeps that person's access
+        # (actaeon/access.py); scheduler threads have none and see everything.
+        self.pool.submit(contextvars.copy_context().run, self._run, job_id, fn)
         return job_id
 
     def _run(self, job_id: str, fn: Callable[[JobControl], dict]):

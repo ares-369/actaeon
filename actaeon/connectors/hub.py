@@ -131,7 +131,9 @@ class ConnectorHub:
         return self._tools[name]
 
     def connectors_for_role(self, role: str) -> list[ConnectorSpec]:
-        return [s for s in self.specs.values() if s.enabled and role in s.roles]
+        """Enabled connectors with this role that the current caller may use (see actaeon/access.py)."""
+        from ..access import can_use
+        return [s for s in self.specs.values() if s.enabled and role in s.roles and can_use(s.name)]
 
     def tools_for_role(self, role: str) -> list[dict]:
         out = []
@@ -180,6 +182,11 @@ class ConnectorHub:
         if name not in self.specs or not self.specs[name].enabled:
             raise ToolCallError(f"unknown or disabled connector {name!r}")
         spec = self.specs[name]
+        from ..access import can_use
+        if not can_use(name):
+            self.audit.record(connector=name, tool=tool, arguments=arguments, decision="caller may not use this "
+                              "connector (access)", status="blocked", actor=actor, hunt_id=hunt_id)
+            raise ToolCallError(f"{name}: you are not allowed to use this connector")
         known = {t["name"]: t for t in self.tools(name)}
         meta = known.get(tool)
         if meta is None:
@@ -212,6 +219,8 @@ class ConnectorHub:
                 status = "tool_error" if res.get("isError") else "ok"
                 out = wrap(name, tool, text, self.max_result_bytes)
                 out["is_error"] = bool(res.get("isError"))
+                if spec.access and hunt_id:
+                    self._mark_restricted(hunt_id, name)
                 self.audit.record(connector=name, tool=tool, arguments=arguments, decision=why, status=status,
                                   actor=actor, hunt_id=hunt_id, attempts=attempt,
                                   duration_ms=int((time.monotonic() - start) * 1000),
@@ -226,6 +235,14 @@ class ConnectorHub:
                           actor=actor, hunt_id=hunt_id, attempts=attempts,
                           duration_ms=int((time.monotonic() - start) * 1000), error=last_err)
         raise ToolCallError(f"{name}/{tool} failed after {attempts} attempt{'' if attempts == 1 else 's'}: {last_err}")
+
+    def _mark_restricted(self, hunt_id: str, name: str) -> None:
+        """A hunt that read a restricted connector is visible only to people who may use it."""
+        from ..hunt.store import HuntStore
+        try:
+            HuntStore(self.audit.path.parent / "hunts.sqlite").add_restricted(hunt_id, name)
+        except Exception:
+            pass
 
     def _drop(self, name: str) -> None:
         with self._lock:

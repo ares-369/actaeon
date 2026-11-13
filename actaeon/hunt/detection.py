@@ -127,9 +127,13 @@ class DetectionStore:
         q, a = "SELECT * FROM detections", ()
         if hunt_id:
             q, a = q + " WHERE hunt_id=?", (hunt_id,)
+        from .store import HuntStore
+        hs = HuntStore(self.path)
+        from ..access import can_see
         with self._conn() as c:
-            return [{**json.loads(r["body"]), "id": r["id"], "created": r["created"]}
-                    for r in c.execute(q + " ORDER BY id DESC", a)]
+            rows = list(c.execute(q + " ORDER BY id DESC", a))
+        return [{**json.loads(r["body"]), "id": r["id"], "created": r["created"]} for r in rows
+                if can_see(hs.restricted_of(r["hunt_id"]))]
 
 
 def backtest(hub, h: dict, days: int = 14) -> dict:

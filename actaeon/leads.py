@@ -103,10 +103,18 @@ class LeadStore:
                 self._event(c, cid, "system", "opened", v.get("summary", "")[:500])
         return self.get(cid)
 
+    def _visible(self, c, hunt_id: str) -> bool:
+        from .access import can_see
+        try:
+            r = c.execute("SELECT restricted FROM hunts WHERE id=?", (hunt_id,)).fetchone()
+        except sqlite3.OperationalError:     # no hunts table in this file (tests)
+            return True
+        return can_see(json.loads(r["restricted"]) if r and r["restricted"] else [])
+
     def get(self, cid: int) -> dict | None:
         with self._conn() as c:
             r = c.execute("SELECT * FROM leads WHERE id=?", (int(cid),)).fetchone()
-            if not r:
+            if not r or not self._visible(c, r["hunt_id"]):
                 return None
             d = dict(r)
             d["events"] = [dict(e) for e in c.execute("SELECT * FROM lead_events WHERE lead_id=? ORDER BY id",
@@ -136,12 +144,13 @@ class LeadStore:
                  "id DESC LIMIT ?")
         a.append(int(limit))
         with self._conn() as c:
-            return [dict(r) for r in c.execute(" ".join(q), a)]
+            return [dict(r) for r in c.execute(" ".join(q), a) if self._visible(c, r["hunt_id"])]
 
     # ---- actions ----
     def _change(self, cid: int, user: str, action: str, detail: str, **fields) -> dict:
         with _lock, self._conn() as c:
-            if not c.execute("SELECT 1 FROM leads WHERE id=?", (int(cid),)).fetchone():
+            row = c.execute("SELECT hunt_id FROM leads WHERE id=?", (int(cid),)).fetchone()
+            if not row or not self._visible(c, row["hunt_id"]):
                 raise LookupError("no such lead")
             fields["updated"] = _now()
             cols = ", ".join(f"{k}=?" for k in fields)
@@ -192,8 +201,8 @@ class LeadStore:
 
     def stats(self) -> dict:
         with self._conn() as c:
-            rows = [dict(r) for r in c.execute("SELECT status, severity, resolution, created, acknowledged_at, "
-                                                "closed_at FROM leads")]
+            rows = [dict(r) for r in c.execute("SELECT hunt_id, status, severity, resolution, created, "
+                                                "acknowledged_at, closed_at FROM leads") if self._visible(c, r["hunt_id"])]
 
         def mins(a, b):
             try:

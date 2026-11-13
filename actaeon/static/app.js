@@ -325,7 +325,8 @@ function renderHunt(hu) {
       h("a", { href: `/api/hunts/${hu.id}/export.json` }, h("button", { class: "ghost" }, icon("code-json"), "JSON")),
       h("a", { href: `/api/hunts/${hu.id}/export.csv` }, h("button", { class: "ghost" }, icon("file-delimited"), "CSV")),
       h("a", { href: `/api/hunts/${hu.id}/stix`, title: "Indicators, techniques and a report as a STIX 2.1 bundle" }, h("button", { class: "ghost" }, icon("export-variant"), "STIX"))),
-    hu.error && h("p", { class: "warn" }, hu.error));
+    hu.error && h("p", { class: "warn" }, hu.error),
+    (hu.restricted || []).length > 0 && h("p", { class: "muted small" }, icon("lock"), ` Restricted: read ${hu.restricted.join(", ")}, so only people allowed to use those sources can see this hunt.`));
   const out = [head];
   if (hu.verdict) {
     const vs = section("Verdict", "gavel",

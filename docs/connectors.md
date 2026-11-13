@@ -57,6 +57,11 @@ returned data in earlier hunts on the same connector are added automatically as
 your data. This is the biggest help for models writing a language they know
 little about.
 
+## Who may use a connector
+
+`access: [group, "role:admin", "user:name"]` limits a connector to those people; hunts that read
+it are then visible only to them. See [access.md](access.md).
+
 ## Read-only by default
 
 For each tool, in order:

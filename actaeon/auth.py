@@ -38,9 +38,38 @@ _ADMIN_ONLY_PREFIXES = ("/api/connectors/",)
 _ADMIN_ONLY_READ_PATHS = {"/api/backup/download", "/api/audit", "/api/audit/verify", "/api/doctor"}
 
 
-def resolve_user_role(cfg, user: str) -> str:
+_RANK = {"viewer": 0, "operator": 1, "admin": 2}
+
+
+def user_groups(cfg, user: str, extra=()) -> list[str]:
+    """Groups from the identity provider (``extra``) plus any listed for a named account."""
+    users = getattr(cfg.auth, "users", None) or {}
+    own = (users.get(user) or {}).get("groups") or [] if user else []
+    out = [str(g).strip() for g in [*(extra or []), *own] if str(g).strip()]
+    return sorted(set(out))[:200]
+
+
+def parse_groups(value) -> list[str]:
+    """A claim or header value: a list, or a comma/semicolon separated string."""
+    if isinstance(value, (list, tuple)):
+        return [str(v) for v in value]
+    if isinstance(value, str):
+        return [v.strip() for v in value.replace(";", ",").split(",") if v.strip()]
+    return []
+
+
+def group_role(cfg, groups) -> str:
+    """Highest role mapped from the user's groups by auth.group_roles, or ''."""
+    gr = getattr(cfg.auth, "group_roles", None) or {}
+    roles = [gr[g] for g in groups or () if gr.get(g) in _VALID_ROLES]
+    return max(roles, key=lambda r: _RANK[r]) if roles else ""
+
+
+def resolve_user_role(cfg, user: str, groups=()) -> str:
     """Resolve the effective RBAC role ('viewer', 'operator', or 'admin') for an
-    authenticated user."""
+    authenticated user. Order: the named account's role, auth.roles, the highest role
+    from auth.group_roles, the proxy role header, auth.default_role. Returns '' when
+    auth.require_group_role is on and none of the user's groups has a role."""
     users = getattr(cfg.auth, "users", None) or {}
     if user and user in users and str(users[user].get("role", "")).lower() in _VALID_ROLES:
         return str(users[user]["role"]).lower()
@@ -49,7 +78,13 @@ def resolve_user_role(cfg, user: str) -> str:
         r = str(roles_map[user]).lower()
         if r in _VALID_ROLES:
             return r
-    hdr_role = (request.headers.get("X-ACTAEON-Role") or "").strip().lower()
+    gr = group_role(cfg, groups)
+    if gr:
+        return gr
+    if getattr(cfg.auth, "group_roles", None) and getattr(cfg.auth, "require_group_role", False):
+        return ""
+    from flask import has_request_context
+    hdr_role = (request.headers.get("X-ACTAEON-Role") or "").strip().lower() if has_request_context() else ""
     if cfg.auth.mode == "proxy" and hdr_role in _VALID_ROLES:
         return hdr_role
     default_role = str(getattr(cfg.auth, "default_role", "admin") or "admin").lower()
@@ -169,6 +204,15 @@ def _user_allowed(cfg, user: str) -> bool:
     return (not allow) or (user in allow)
 
 
+def get_config_for_access(cfg):
+    """The live config (connectors can change at runtime), falling back to the app's own."""
+    try:
+        from .config import get_config
+        return get_config()
+    except Exception:
+        return cfg
+
+
 def _local_user() -> str:
     import os
     return os.getenv("ACTAEON_LOCAL_USER", "") or "local"
@@ -210,6 +254,7 @@ def init_auth(app, cfg) -> None:
         p = request.path
         g.actaeon_role = "admin"
         g.actaeon_user = _local_user()
+        g.actaeon_groups = []
         if p == "/mcp":
             import os
             mc = (cfg.raw or {}).get("mcp") or {}
@@ -219,6 +264,7 @@ def init_auth(app, cfg) -> None:
                 role = str(mc.get("token_role", "operator")).lower()
                 g.actaeon_role = role if role in _VALID_ROLES else "viewer"
                 g.actaeon_user = "mcp-token"
+                g.actaeon_groups = parse_groups(mc.get("token_groups") or [])
                 return None
         if p == "/api/tickets/reply" and request.method == "POST":
             import os
@@ -228,6 +274,7 @@ def init_auth(app, cfg) -> None:
             if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), tok):
                 g.actaeon_role = "operator"
                 g.actaeon_user = "ticket-token"
+                g.actaeon_groups = parse_groups(tc.get("token_groups") or [])
                 return None
         if mode == "none":
             return None
@@ -237,9 +284,13 @@ def init_auth(app, cfg) -> None:
         if mode == "basic":
             a = request.authorization
             if a and verify_user(cfg, a.username or "", a.password or ""):
-                role = resolve_user_role(cfg, a.username or "")
+                groups = user_groups(cfg, a.username or "")
+                role = resolve_user_role(cfg, a.username or "", groups)
+                if not role:
+                    return Response("Forbidden: none of your groups has a role here.", 403)
                 g.actaeon_role = role
                 g.actaeon_user = a.username
+                g.actaeon_groups = groups
                 allowed, reason = check_rbac_permission(role, request.method, p, request.args)
                 if not allowed:
                     return Response(reason, 403)
@@ -265,9 +316,14 @@ def init_auth(app, cfg) -> None:
                 return Response("Forbidden: request did not arrive via a trusted proxy.", 403)
             user = request.headers.get(cfg.auth.proxy_header, "")
             if user and _user_allowed(cfg, user):
-                role = resolve_user_role(cfg, user)
+                hdr = cfg.auth.proxy_groups_header
+                groups = user_groups(cfg, user, parse_groups(request.headers.get(hdr, "")) if hdr else [])
+                role = resolve_user_role(cfg, user, groups)
+                if not role:
+                    return Response("Forbidden: none of your groups has a role here.", 403)
                 g.actaeon_role = role
                 g.actaeon_user = user
+                g.actaeon_groups = groups
                 allowed, reason = check_rbac_permission(role, request.method, p, request.args)
                 if not allowed:
                     return Response(reason, 403)
@@ -279,9 +335,14 @@ def init_auth(app, cfg) -> None:
         if user:
             if request.method in ("POST", "PUT", "DELETE", "PATCH") and not _origin_matches_request(cfg):
                 return Response("Forbidden: cross-origin state-changing request blocked (CSRF guard).", 403)
-            role = session.get("role") or resolve_user_role(cfg, str(user))
+            groups = user_groups(cfg, str(user), session.get("groups") or [])
+            role = session.get("role") or resolve_user_role(cfg, str(user), groups)
+            if not role:
+                session.clear()
+                return Response("Forbidden: none of your groups has a role here.", 403)
             g.actaeon_role = role
             g.actaeon_user = str(user)
+            g.actaeon_groups = groups
             allowed, reason = check_rbac_permission(role, request.method, p, request.args)
             if not allowed:
                 return Response(reason, 403)
@@ -289,6 +350,30 @@ def init_auth(app, cfg) -> None:
         if p.startswith("/api/"):
             return Response("Authentication required.", 401)
         return redirect("/login")
+
+    @app.before_request
+    def _set_access():
+        """Runs after _guard let the request through: hold who is asking for this request (actaeon/access.py)."""
+        from .access import build, set_current
+        from .connectors.spec import parse_connectors
+        try:
+            specs = parse_connectors(list(get_config_for_access(cfg).connectors))
+        except Exception:
+            specs = []
+        a = build(specs, user=str(getattr(g, "actaeon_user", "") or ""), role=getattr(g, "actaeon_role", "viewer"),
+                  groups=getattr(g, "actaeon_groups", []) or [])
+        g.actaeon_access = a
+        g.actaeon_access_token = set_current(a)
+
+    @app.teardown_request
+    def _reset_access(_exc=None):
+        from .access import reset
+        tok = g.pop("actaeon_access_token", None)
+        if tok is not None:
+            try:
+                reset(tok)
+            except ValueError:
+                pass
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -341,7 +426,11 @@ def init_auth(app, cfg) -> None:
         user = info.get(claim) or info.get("email") or info.get("preferred_username") or info.get("sub")
         if not user or not _user_allowed(cfg, user):
             return Response("Forbidden: your account is not permitted.", 403)
+        groups = parse_groups(info.get(cfg.auth.oidc.get("groups_claim", "groups")))
+        if not resolve_user_role(cfg, str(user), user_groups(cfg, str(user), groups)):
+            return Response("Forbidden: none of your groups has a role here.", 403)
         session["user"] = user
+        session["groups"] = groups[:200]
         return redirect("/")
 
     @app.route("/logout")

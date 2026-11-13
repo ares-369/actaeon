@@ -16,6 +16,14 @@
 - The audit log is hash-chained; `actaeon audit verify` and `GET /api/audit/verify` find changed
   or removed rows.
 
+### Access
+- Roles from identity-provider groups (`auth.group_roles`, OIDC `groups_claim`, proxy
+  `proxy_groups_header`, `require_group_role`).
+- Per-connector `access` (groups, `role:`, `user:`). People outside it cannot use the connector, and
+  hunts that read it are hidden from them everywhere (hunts, leads, reports, exports, memory,
+  assistant conversations, detection drafts) and are not sent to outputs unless an output opts in.
+  See docs/access.md.
+
 ### Open standards and community
 - Hunt packs: the 65 starter hypotheses are now one YAML file per hunt under `actaeon/hunts/<tactic>/`,
   with a schema, `actaeon library validate`, and `hunt.library_dirs` for private packs.

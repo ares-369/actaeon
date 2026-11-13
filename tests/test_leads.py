@@ -65,7 +65,7 @@ def test_leads_api_with_named_users(home, monkeypatch):
     service.send_outputs(config.get_config(), hstore.get(hid))
     a, v = hdr("alice", "alice-password-1"), hdr("victor", "victor-password-1")
     assert c.get("/api/me", headers=a).json == {"user": "alice", "role": "operator", "auth_mode": "basic",
-                                                 "name": "Alice A"}
+                                                 "name": "Alice A", "groups": [], "connectors": None}
     leads = c.get("/api/leads", headers=v).json                      # viewers see everything
     cid = leads[0]["id"]
     assert c.post(f"/api/leads/{cid}/acknowledge", headers=v).status_code == 403   # but cannot change it
