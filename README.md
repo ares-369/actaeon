@@ -15,8 +15,9 @@ read-only by default, and every tool call is written to an audit log.
 > bridges (search index, SQL, STIX/TAXII, OpenAPI, web), local intel store, hunt engine with
 > verification, hunt library with replays and intel sweeps, leads, reports, coverage, an MCP
 > server and a demo. It has been scored on a small synthetic suite and on a sample of the
-> public ExCyTIn-Bench (see [docs/benchmarks.md](docs/benchmarks.md)); it has not yet been
-> run against a production environment. Start with [docs/connectors.md](docs/connectors.md),
+> public ExCyTIn-Bench (see [docs/benchmarks.md](docs/benchmarks.md)), and field-tested in a home lab,
+> where it found a planted implant that raised no alert ([docs/field-test-2026-11.md](docs/field-test-2026-11.md)).
+> It has not been run in a production environment. Start with [docs/connectors.md](docs/connectors.md),
 > [docs/hunting.md](docs/hunting.md) and [docs/known-limitations.md](docs/known-limitations.md).
 
 ## Try it

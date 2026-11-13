@@ -24,6 +24,12 @@ Actaeon is early software (0.1.0-dev). These are the limits we know about.
   exercised live with one cloud model (Gemini on Vertex) so far. Ollama and
   the `cli` provider always use the JSON protocol, which costs more tokens.
 
+- Hunts flag the environment's own administration (custom services, planned changes) until they
+  know what is normal there; a field test produced two such false positives. Describe normal
+  activity in `environment.notes` until a known-good list exists.
+- When a search succeeds but the data could never match (Windows hunts with only Linux logs), the
+  outcome can be `no_results` instead of `logs_missing`.
+
 ## Safety layers and their gaps
 
 - Read-only enforcement is layered: the connector policy (deny/allow lists,

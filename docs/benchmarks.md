@@ -55,3 +55,16 @@ Synthetic demo suite only (8 cases written by the project, not an independent be
 |---|---|---|---|---|---|
 | 2026-11-13 | fast cloud model, native tool calling | 7/8 (88%) | 1.00 | 1.00 | The miss was an empty model reply that ended the hunt; it is now retried. 15-25 tool calls and 1-7 minutes per case. |
 | 2026-11-13 | 7B local model | not usable | - | - | Tool calls worked, query logic did not. |
+
+### ExCyTIn-Bench sample (2026-11-13)
+
+80 of 589 questions (10 per incident, fixed seed), read-only SQL bridge, 25 tool calls per question,
+graded with the benchmark's published judge prompts by the same fast cloud model.
+
+| Mean reward | Fully correct | Partial | Used all 25 calls | Avg per question |
+|---|---|---|---|---|
+| 0.495 | 38 / 80 | 4 | 38 | 18 calls, ~2.4 min |
+
+Indicative only: the judge model and the sample differ from the paper. Details and the field test in
+[field-test-2026-11.md](field-test-2026-11.md).
+
