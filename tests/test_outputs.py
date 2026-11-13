@@ -1,7 +1,7 @@
 import pytest
 
 from actaeon import config
-from actaeon.outputs import append_excel, dispatch, events_of, facts, send_email, validate
+from actaeon.outputs import dispatch, events_of, facts, send_email, validate
 from tests.conftest import write_cfg
 
 HUNT = {"id": "abc123", "hypothesis": "Office started encoded PowerShell", "origin": "manual", "status": "done",
@@ -35,9 +35,11 @@ class FakeSMTP:
 
 
 def test_validate():
-    validate([{"name": "a", "type": "excel", "path": "x.xlsx"}])
-    for bad in ([{"name": "A", "type": "excel", "path": "x"}], [{"name": "a", "type": "sms"}],
-                [{"name": "a", "type": "email", "smtp_host": "h"}], [{"name": "a", "type": "excel", "path": "x", "when": ["meh"]}],
+    validate([{"name": "a", "type": "webhook", "url": "https://h.example"}])
+    with pytest.raises(ValueError, match="excel output was removed"):
+        validate([{"name": "a", "type": "excel", "path": "x.xlsx"}])
+    for bad in ([{"name": "A", "type": "webhook", "url": "x"}], [{"name": "a", "type": "sms"}],
+                [{"name": "a", "type": "email", "smtp_host": "h"}], [{"name": "a", "type": "webhook", "url": "x", "when": ["meh"]}],
                 [{"name": "a", "type": "webhook", "url": "u", "token": "plain"}]):
         with pytest.raises(ValueError):
             validate(bad)
@@ -64,29 +66,20 @@ def test_email_critical_recipients(monkeypatch):
     assert "lead@x.example" not in FakeSMTP.sent[-1]["To"]
 
 
-def test_excel_appends_rows(tmp_path):
-    from openpyxl import load_workbook
-    o = {"name": "x", "type": "excel", "path": str(tmp_path / "audit.xlsx")}
-    append_excel(o, facts(HUNT))
-    append_excel(o, facts(dict(HUNT, id="def456")))
-    ws = load_workbook(tmp_path / "audit.xlsx")["Hunts"]
-    rows = list(ws.values)
-    assert rows[0][0] == "Time (UTC)" and len(rows) == 3 and rows[2][1] == "def456"
-    assert "'E3" not in str(rows[1][10]) and str(rows[1][10]).startswith("E3")
-
-
 def test_dispatch_filters_and_never_raises(home, monkeypatch):
     write_cfg(home, lambda d: d.update(outputs=[
-        {"name": "sheet", "type": "excel", "when": ["all"], "path": str(home / "data" / "a.xlsx")},
+        {"name": "ok-hook", "type": "webhook", "when": ["all"], "url": "https://up.example"},
         {"name": "hook", "type": "webhook", "when": ["needs_review"], "url": "https://hook.example"},
         {"name": "broken", "type": "webhook", "when": ["threat"], "url": "https://down.example"}]))
     cfg = config.load_config()
 
     class S:
         def post(self, url, **kw):
-            raise ConnectionError("down")
+            if "down" in url:
+                raise ConnectionError("down")
+            return type("R", (), {"status_code": 200})()
     r = dispatch(cfg, HUNT, session=S())
-    assert [(x["name"], x["ok"]) for x in r] == [("sheet", True), ("broken", False)]
+    assert [(x["name"], x["ok"]) for x in r] == [("ok-hook", True), ("broken", False)]
 
 
 def test_mcp_tool_output_respects_write_policy(home):
@@ -126,23 +119,29 @@ def test_mcp_tool_output_respects_write_policy(home):
     assert ToolCallError
 
 
-def test_hunt_runs_outputs_and_records_them(home):
+MAIL = {"name": "mail", "type": "email", "when": ["all"], "smtp_host": "smtp.example", "from": "a@x.example",
+        "to": ["soc@x.example"]}
+
+
+def test_hunt_runs_outputs_and_records_them(home, monkeypatch):
     from actaeon.hunt import service
     from tests.test_hunt import LLM, PLAN, Hub, call
-    write_cfg(home, lambda d: d.update(outputs=[{"name": "sheet", "type": "excel", "when": ["all"],
-                                                 "path": str(home / "data" / "a.xlsx")}]))
+    monkeypatch.setattr("actaeon.outputs.smtplib.SMTP", FakeSMTP)
+    FakeSMTP.sent.clear()
+    write_cfg(home, lambda d: d.update(outputs=[MAIL]))
     cfg = config.load_config()
     h = service.run_hunt(cfg, "x", llm=LLM(PLAN, [call(index="e", time_from="now-1d"),
                                                   {"action": "verdict", "outcome": "no_results", "summary": "s"}]),
                          hub=Hub())
     out = [s for s in h["steps"] if s["kind"] == "output"]
-    assert out and out[0]["tool"] == "sheet" and out[0]["ok"]
-    assert (home / "data" / "a.xlsx").exists()
+    assert out and out[0]["tool"] == "mail" and out[0]["ok"]
+    assert FakeSMTP.sent and FakeSMTP.sent[-1]["To"] == "soc@x.example"
 
 
-def test_outputs_test_cli(home, capsys):
+def test_outputs_test_cli(home, capsys, monkeypatch):
     from actaeon import cli
-    write_cfg(home, lambda d: d.update(outputs=[{"name": "sheet", "type": "excel", "path": str(home / "t.xlsx")}]))
+    monkeypatch.setattr("actaeon.outputs.smtplib.SMTP", FakeSMTP)
+    write_cfg(home, lambda d: d.update(outputs=[MAIL]))
     config.get_config(reload=True)
-    cli.cli_main(["outputs", "test", "sheet"])
-    assert "OK   sheet" in capsys.readouterr().out
+    cli.cli_main(["outputs", "test", "mail"])
+    assert "OK   mail" in capsys.readouterr().out

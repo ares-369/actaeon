@@ -13,10 +13,6 @@
         to: ["soc@example.org"]
         to_critical: ["soc-leads@example.org"]   # added when confidence >= critical_confidence
         critical_confidence: 80
-      - name: audit-sheet
-        type: excel
-        when: [all]
-        path: "/var/lib/actaeon/hunt-audit.xlsx"
       - name: chat-hook
         type: webhook
         when: [threat, needs_review]
@@ -50,19 +46,14 @@ import json
 import re
 import smtplib
 import ssl
-import threading
 from datetime import datetime, timezone
 from email.message import EmailMessage
-from pathlib import Path
 from typing import Any
 
 import requests
 
-TYPES = ("email", "excel", "webhook", "mcp_tool", "taxii")
+TYPES = ("email", "webhook", "mcp_tool", "taxii")
 EVENTS = ("threat", "needs_review", "benign", "no_results", "logs_missing", "inconclusive", "all", "reply")
-_XLSX_LOCK = threading.Lock()
-HEADERS = ["Time (UTC)", "Hunt id", "Origin", "Hypothesis", "Outcome", "Confidence", "Needs review", "Summary",
-           "Findings", "Indicators", "Queries executed", "Result per query", "ATT&CK", "Link"]
 
 
 def validate(outputs: list) -> None:
@@ -72,12 +63,14 @@ def validate(outputs: list) -> None:
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,39}", n) or n in names:
             raise ValueError(f"outputs: name {n!r} must be unique, lowercase letters, digits, _ or -")
         names.add(n)
+        if o.get("type") == "excel":
+            raise ValueError(f"outputs.{n}: the excel output was removed; use email, or download hunts as CSV/JSON")
         if o.get("type") not in TYPES:
             raise ValueError(f"outputs.{n}: type must be one of {TYPES}")
         bad = set(o.get("when") or ["threat"]) - set(EVENTS)
         if bad:
             raise ValueError(f"outputs.{n}: unknown 'when' values {sorted(bad)}; use {EVENTS}")
-        need = {"email": ("smtp_host", "from", "to"), "excel": ("path",), "webhook": ("url",),
+        need = {"email": ("smtp_host", "from", "to"), "webhook": ("url",),
                 "mcp_tool": ("connector", "tool"), "taxii": ("url",)}[o["type"]]
         missing = [k for k in need if not o.get(k)]
         if missing:
@@ -168,38 +161,6 @@ def send_email(o: dict, f: dict, env=None, smtp_cls=None) -> str:
     return f"sent to {len(set(to))} recipient(s)"
 
 
-def append_excel(o: dict, f: dict) -> str:
-    try:
-        from openpyxl import Workbook, load_workbook
-    except ImportError as exc:
-        raise RuntimeError("excel outputs need the excel extra: pip install 'actaeon[excel]'") from exc
-    path = Path(str(o["path"])).expanduser()
-    sheet = str(o.get("sheet", "Hunts"))[:31]
-    row = [f["time"], f["hunt_id"], f["origin"], f["hypothesis"], f["outcome"], f["confidence"],
-           "yes" if f["needs_review"] else "no", f["summary"], "\n".join(f["findings"]), ", ".join(f["indicators"]),
-           "\n".join(f["queries"]), "\n".join(f["results"]), ", ".join(f["attack"]), f["link"]]
-    # spreadsheet apps run cells that start with = + - @ as formulas
-    row = [("'" + c) if isinstance(c, str) and c[:1] in ("=", "+", "-", "@") else c for c in row]
-    with _XLSX_LOCK:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        new_sheet = True
-        if path.exists():
-            wb = load_workbook(path)
-            new_sheet = sheet not in wb.sheetnames
-            ws = wb.create_sheet(sheet) if new_sheet else wb[sheet]
-        else:
-            wb = Workbook()
-            ws = wb.active
-            ws.title = sheet
-        if new_sheet:
-            ws.append(HEADERS)
-        ws.append([str(c)[:32000] if isinstance(c, str) else c for c in row])
-        tmp = path.with_suffix(".tmp.xlsx")
-        wb.save(tmp)
-        tmp.replace(path)
-    return f"row added to {path.name}"
-
-
 def send_webhook(o: dict, f: dict, session=None) -> str:
     from .connectors.spec import expand_env
     headers = {str(k): expand_env(str(v)) for k, v in (o.get("headers") or {}).items()}
@@ -271,8 +232,6 @@ def dispatch(cfg, h: dict, *, hub=None, only: str | None = None, smtp_cls=None, 
             t = o["type"]
             if t == "email":
                 detail = send_email(o, f, smtp_cls=smtp_cls)
-            elif t == "excel":
-                detail = append_excel(o, f)
             elif t == "webhook":
                 detail = send_webhook(o, f, session=session)
             elif t == "taxii":

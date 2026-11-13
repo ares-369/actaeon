@@ -77,8 +77,7 @@ def init_company(target: str, *, name: str = "") -> list[str]:
     cfg["outputs"] = [
         {"name": "soc-mail", "type": "email", "when": ["threat"], "smtp_host": "<mail relay>", "smtp_port": 587,
          "username_env": "SMTP_USER", "password_env": "SMTP_PASSWORD", "from": "actaeon@<domain>",
-         "to": ["<soc mailbox>"], "to_critical": ["<soc leads>"]},
-        {"name": "audit-sheet", "type": "excel", "when": ["all"], "path": "data/hunt-audit.xlsx"}]
+         "to": ["<soc mailbox>"], "to_critical": ["<soc leads>"]}]
     cfg["connectors"] = [{
         "name": "logs", "roles": ["log_search", "endpoint", "network", "identity"], "transport": "http",
         "url": "https://<your log platform's MCP server>/mcp",

@@ -16,7 +16,7 @@ with `config.yaml` and `.env`. Edit them there and run `docker compose restart`.
 The container:
 - runs as a non-root user (uid 10001) with a read-only root filesystem, no Linux
   capabilities and `no-new-privileges`;
-- keeps everything (config, `.env`, databases, audit log, Excel outputs) in the
+- keeps everything (config, `.env`, databases, audit log) in the
   `/data` volume;
 - publishes the port on the host's loopback only. For remote use, put a reverse
   proxy with a login in front (`auth.mode: proxy` or `oidc`), or set `auth.mode` to
@@ -27,7 +27,7 @@ Secrets: put them in `actaeon-data/.env`, or inject them as environment variable
 from your secret manager (Key Vault, Secret Manager and so on). Actaeon reads only
 environment variables and `.env`.
 
-Build with only the extras you need: `docker build --build-arg EXTRAS="gemini,excel" -t actaeon .`
+Build with only the extras you need: `docker build --build-arg EXTRAS="gemini,reports" -t actaeon .`
 
 ## Network: what Actaeon needs to reach
 

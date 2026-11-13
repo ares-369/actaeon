@@ -32,17 +32,8 @@ Optional `origins: ["sweep", "autopilot"]` limits an output to some kinds of hun
 The body has the outcome, the summary, findings with their evidence ids,
 indicators, ATT&CK, the queries that ran and a link (set `actaeon.external_url`).
 
-**excel** (an `.xlsx` workbook; needs the `excel` extra)
-```yaml
-- name: audit-sheet
-  type: excel
-  when: [all]
-  path: "/var/lib/actaeon/hunt-audit.xlsx"
-  sheet: "Hunts"
-```
-One row per result: time, hunt id, origin, hypothesis, outcome, confidence,
-needs review, summary, findings, indicators, queries executed, result per query,
-ATT&CK and link. Cells that start with `=`, `+`, `-` or `@` are written as text.
+A record of every hunt stays in Actaeon; download any hunt as CSV or JSON from its page
+(`/api/hunts/<id>/export.csv`, `.json`) or the PDF/Word report.
 
 **webhook**: POST JSON (the same facts, or your own `body` template) to a URL,
 with optional `headers` (`${VAR}` for secrets).

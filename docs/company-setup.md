@@ -5,7 +5,7 @@
    actaeon init --company /srv/actaeon-config --name "SOC Hunting"
    ```
    It holds `config.yaml` (with enterprise defaults: SSO, masking, verification,
-   email and Excel outputs, a deny list for response tools), `.env.example`,
+   an email output, a deny list for response tools), `.env.example`,
    `notes/` (query notes per connector), a README and a Docker override. Replace
    every `<...>`.
 

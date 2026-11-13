@@ -24,6 +24,11 @@
   assistant conversations, detection drafts) and are not sent to outputs unless an output opts in.
   See docs/access.md.
 
+### Removed
+- The Excel output and the `excel` extra. Use the email output for alerts; every hunt can still be
+  downloaded as CSV, JSON, PDF or Word. A config that still has `type: excel` stops with a message
+  saying so.
+
 ### Running at scale
 - `jobs.mode: queue` and `actaeon worker`: the web server records jobs as named tasks and worker
   processes run them, as the person who started each one. Stop and pause work across processes,

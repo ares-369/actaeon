@@ -61,7 +61,7 @@ See [docs/demo.md](docs/demo.md).
 | Intel | A local indicator and advisory store with first/last-seen tracking. Paste IOCs, import files, PDFs or URLs, or pull feeds. Export as STIX 2.1, or push a hunt's indicators to a TAXII 2.1 collection |
 | Analyst work | Leads with assignment, status, resolution and history; chat on a finished hunt; feedback on findings; a timeline view |
 | Detection | Draft rules from a hunt (Sigma, plus native queries), converted to each connector's query language with pySigma, and a backtest of how often they would have fired |
-| Outputs | Email, Excel, webhook, or a write tool you explicitly allow (such as opening a case). A reply in the ticket can continue the hunt |
+| Outputs | Email, webhook, or a write tool you explicitly allow (such as opening a case). A reply in the ticket can continue the hunt |
 | Reports | Markdown, CSV, PDF and Word, plus an ATT&CK coverage view |
 | Access | `basic`, `local`, OIDC single sign-on or a trusted proxy; viewer, operator and admin roles, mapped from your identity provider's groups; per-source limits so only some people can query (and see hunts over) sensitive sources ([access](docs/access.md)). All of it is free |
 | Interfaces | Web UI, CLI, REST API, and Actaeon itself as an MCP server |
@@ -109,7 +109,7 @@ other models are welcome. Details, failures included, are in
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -e '.[all]'      # or just -e . ; extras add cloud SDKs, PDF/Word reports, Excel
+pip install -e '.[all]'      # or just -e . ; extras add cloud SDKs, PDF/Word reports, Sigma
 actaeon init                 # writes config.yaml and .env
 actaeon serve                # http://127.0.0.1:8601
 ```

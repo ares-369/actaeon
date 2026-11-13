@@ -10,7 +10,6 @@ from __future__ import annotations
 import importlib.util
 import os
 import shutil
-from pathlib import Path
 
 
 def _has(mod: str) -> bool:
@@ -119,18 +118,14 @@ def run(cfg=None, *, offline: bool = False, models: bool = False) -> list[dict]:
     # outputs
     outs = (cfg.raw or {}).get("outputs") or []
     for o in outs:
-        if o["type"] == "excel" and not _has("openpyxl"):
-            add("FAIL", "outputs", f"{o['name']}: excel output needs the excel extra", "pip install 'actaeon[excel]'")
-        elif o["type"] == "email":
+        if o["type"] == "email":
             missing = [e for e in (o.get("username_env"), o.get("password_env")) if e and not os.getenv(e)]
             add("WARN" if missing else "OK", "outputs", f"{o['name']}: email to {len(o.get('to') or [])} recipient(s)"
                 + (f"; env not set: {', '.join(missing)}" if missing else ""), "actaeon outputs test " + o["name"])
-        elif o["type"] == "excel":
-            add("OK", "outputs", f"{o['name']}: excel {Path(str(o['path'])).expanduser()}")
         else:
             add("OK", "outputs", f"{o['name']}: {o['type']}")
     if not outs:
-        add("WARN", "outputs", "no outputs: threats are only visible in the UI", "add email/excel under outputs:")
+        add("WARN", "outputs", "no outputs: threats are only visible in the UI", "add an email output under outputs:")
     if not _has("reportlab") or not _has("docx"):
         add("WARN", "reports", "PDF/Word reports need the reports extra", "pip install 'actaeon[reports]'")
 
