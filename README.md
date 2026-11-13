@@ -52,10 +52,28 @@ identity, and intel sources they already run.
   tuned correlation rules, native connectors, high availability, and enterprise
   RBAC. Actaeon does not replace them; it sits alongside them as a read-only
   hypothesis-driven investigator over MCP.
-- **What is still missing:** single-process SQLite execution (no HA clustering),
-  native tool calling (Claude, Gemini, OpenAI-compatible) not yet tested
-  against live cloud models, and no published multi-provider benchmark numbers yet (see
-  [docs/benchmarks.md](docs/benchmarks.md)).
+- **What is still missing:** single-process SQLite execution (no HA clustering), benchmark
+  numbers for more than one model (so far one fast cloud model), and a test in a production
+  environment.
+
+## Results so far
+
+| Test | Result |
+|---|---|
+| Lab benchmark on a frozen week of real SIEM data (11 labelled cases) | 11 / 11; 4 of 4 planted attacks found, no false positives |
+| ExCyTIn-Bench sample (80 public investigation questions) | mean reward 0.512, 40 / 80 fully correct |
+| Field test: implant planted where no detection rule covered it | found from host inventory with no alert behind it |
+
+One model, small samples, and cases written by someone who knew the answers: read these as
+"it checks and clears correctly", not as proof it finds every attacker. Details, failures included,
+are in [docs/benchmarks.md](docs/benchmarks.md) and [docs/field-test-2026-11.md](docs/field-test-2026-11.md).
+
+## When it cannot answer
+
+Actaeon does not guess. A hunt that runs out of steps, lacks the data it needs, cannot confirm a
+threat on a second look, or only finds things you listed as normal is handed to a person: a
+"needs analyst" lead opens with what was searched, what was missing and what to check next.
+Missing data is reported as missing, never as clean. See [docs/hunting.md](docs/hunting.md).
 
 ## Run on Linux (systemd)
 
@@ -94,7 +112,9 @@ workload identity or a gateway) are in [docs/models.md](docs/models.md);
 
 ## Autonomy
 
-Actaeon can pull advisories from web sources and hunt them, propose its own
+Actaeon can pull advisories from security news feeds and advisory sites, decide which ones
+matter to your environment (what you run, by name) and hunt only those, keeping every decision
+in the intel ledger. It can also propose its own
 hypotheses from intel, coverage gaps and earlier findings (autopilot), and look
 up public indicators on the web during a hunt. It can also use model command-line
 clients you are signed in to, with fallbacks when a model hits its quota. See
@@ -115,7 +135,11 @@ See [docs/company-setup.md](docs/company-setup.md): a private configuration fold
 
 - Personal data masking before prompts reach cloud models ([docs/privacy.md](docs/privacy.md)).
 - An offline decoder for obfuscated command lines (`actaeon decode`, and a tool hunts can use). It never runs them.
-- An environment profile in `config.yaml` (platforms, key assets, what is not present) given to every hunt.
+- An environment profile in `config.yaml` (platforms, products, key assets, what is not present, and
+  what is known good) given to every hunt.
+- Data sources beyond logs: host inventory (running processes, listening ports, accounts, packages) and
+  read-only SQL databases, so it can find what exists right now even when no event was logged.
+- Draft detection rules from a hunt, and a backtest of how often they would have fired.
 - Feedback on findings (benign, false positive, confirmed). Benign calls become memory for later hunts.
 - Advisory import from a URL, a PDF or HTML file, or pasted text.
 
@@ -135,6 +159,10 @@ network address with no login.
 6. UI, reports, coverage view (done)
 7. Actaeon as an MCP server (done): `actaeon mcp` or `POST /mcp`, see [docs/mcp-server.md](docs/mcp-server.md)
 8. Demo mode, known limitations, threat model (done)
+9. Analyst handoff, known-good list, relevance-filtered news feeds, benchmarks on real data (done)
+
+Next: benchmark more models, a longer run in a real environment to measure how many leads analysts
+close as benign, and broader lab cases that do not name the technique being hunted.
 
 ## Development
 

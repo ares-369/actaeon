@@ -1,6 +1,28 @@
 # Changelog
 
 ## Unreleased
+- Analyst handoff: hunts Actaeon cannot answer (inconclusive, data missing, threat not confirmed,
+  threat naming only known-good items, errors) open a "needs analyst" lead with what was searched,
+  what was missing and next steps; repeats update the open lead.
+- `logs_missing` when the kind of data a hypothesis needs exists in no source (`needed_data_present`).
+- `environment.known_good`: normal activity given to every hunt; a threat naming only known-good items
+  is capped and handed over.
+- Web intel relevance: each new advisory is matched against the environment (products, platforms),
+  then checked by the model; only relevant ones are hunted; every decision is kept in the ledger.
+- Advisories never keep loopback or private addresses as indicators.
+- SQL bridge (SQLite, MySQL/MariaDB, PostgreSQL; read-only).
+- Search-index snapshot mode for host inventory (no event time), and compact search results
+  (shared fields once); `BRIDGE_NOW` pins time for frozen benchmark data.
+- Full ATT&CK dataset: IDs checked and revoked IDs mapped to their replacements; coverage by tactic.
+- Evidence grounding: values a finding names must appear in the evidence.
+- 65 starter hunts, including baseline and rarity hunts; `first_seen` tool.
+- Interactive OAuth sign-in for HTTP connectors (`actaeon connectors login`).
+- Detection backtest: day-by-day counts for a hunt's queries.
+- Token and cost tracking per hunt; default `hunt.max_result_bytes` 20000.
+- Benchmarks: `actaeon bench --workers`, reruns of cases that die on service errors, ExCyTIn-Bench
+  runner (`benchmarks/excytin/`) and a lab benchmark on frozen real data (`benchmarks/lab/`).
+- Fixed: concurrent calls on one stdio connector could lose replies; per-hunt token counts; last-turn
+  and malformed replies in the tool loop; filtered field lists refusing valid fields.
 - Response and destructive actions (isolate, quarantine, kill, delete, disable, revoke, block, ...)
   are always blocked, even with `allow_write`.
 - Short rate limits (429 "try again later", overload) are retried with backoff before a model is

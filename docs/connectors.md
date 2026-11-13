@@ -34,10 +34,10 @@ A connector can carry more than one role.
 | `bearer` | `token_env` |
 | `api_key` | `api_key_env`, `header` (default `X-API-Key`), optional `prefix` |
 | `oauth_client_credentials` | `token_url`, `client_id`, `client_secret_env`, optional `scope`, `audience` |
+| `oauth` | interactive sign-in (authorization code + PKCE); optional `client_id`, `client_secret_env`, `scope`, `redirect_port`. See below |
 
 Secrets never go in `config.yaml`. Use `*_env` keys or `${VAR}` references to
-values in `.env`; a plain-text secret is rejected at startup. Interactive OAuth
-(authorization-code sign-in) is not supported yet.
+values in `.env`; a plain-text secret is rejected at startup.
 
 ## Query guides
 
