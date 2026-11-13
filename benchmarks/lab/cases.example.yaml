@@ -1,0 +1,30 @@
+# Example lab benchmark cases. Write your own from what you planted and what you checked by hand.
+# expect: the outcomes that count as correct.
+#   threat | no_results | telemetry_found_benign | logs_missing | inconclusive
+
+# Planted before the snapshot on a throwaway host (really in the data):
+- id: planted-implant
+  hypothesis: A process is running from a memory-backed or world-writable path such as /dev/shm or /tmp on any host, or a process has a hidden name that imitates a system daemon.
+  expect: [threat]
+- id: planted-listener
+  hypothesis: A host has a listening network service on an unusual port that belongs to a process started from a temporary or hidden location.
+  expect: [threat]
+- id: planted-root-account
+  hypothesis: A local account other than root has user ID 0 (root-equivalent) on any host.
+  expect: [threat]
+- id: planted-intel
+  hypothesis: Infrastructure from <campaign named in a real advisory whose indicators are in the intel store> was contacted or used by any host in the last 7 days.
+  expect: [threat]
+
+# Real activity you checked by hand that must not be called a threat:
+- id: own-services
+  hypothesis: A cron entry, systemd unit or timer was created or changed on a Linux host outside package installs in the last 7 days.
+  expect: [no_results, telemetry_found_benign]
+- id: missing-data
+  hypothesis: A process that is not a known security or system tool opened LSASS memory in the last 7 days.   # no such telemetry here
+  expect: [logs_missing]
+
+# Real intel about software that is really installed (exposure, no exploitation):
+- id: known-exploited-cve
+  hypothesis: <CVE from the known-exploited list that your vulnerability scan shows installed> was exploited on any host in the last 7 days.
+  expect: [no_results, telemetry_found_benign, logs_missing]

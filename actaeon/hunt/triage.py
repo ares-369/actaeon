@@ -57,7 +57,8 @@ def events_from(content: str) -> list[dict[str, str]]:
     rows = data.get("hits") if isinstance(data, dict) else data
     if not isinstance(rows, list):
         return []
-    return [_flat(r) for r in rows if isinstance(r, dict)][:200]
+    common = _flat(data.get("common") or {}) if isinstance(data, dict) else {}   # compacted results
+    return [{**common, **_flat(r)} for r in rows if isinstance(r, dict)][:200]
 
 
 def classify_event(e: dict[str, str]) -> str:

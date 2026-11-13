@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import datetime
 
 from ..demo.data import LABEL, events
-from .common import baseline_window, cap, time_window
+from .common import baseline_window, cap, compact_hits, time_window
 from .search_index import TIME_SCHEMA
 from .server import McpServer, ToolInputError
 
@@ -135,7 +135,7 @@ class DemoBridge:
         size = cap(a.get("size"), 50, self.max_size)
         fields = a.get("fields")
         rows = [{k: v for k, v in e.items() if not fields or k in fields or k == "sample"} for e in hits[:size]]
-        return {"index": INDEX, "total": len(hits), "returned": len(rows), "hits": rows}
+        return {"index": INDEX, "total": len(hits), "returned": len(rows), **compact_hits(rows)}
 
     def count(self, a):
         return {"index": INDEX, "count": len(self._select(a))}

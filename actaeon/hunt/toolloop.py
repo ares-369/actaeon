@@ -29,6 +29,23 @@ def available_tools(hub) -> list[dict]:
     return tools
 
 
+KEEP_FULL = 3       # newest tool results sent in full
+TRIM_TO = 800       # older results are cut to this, with a note; their evidence id stays valid
+
+
+def _prompt(transcript: list[dict]) -> list[dict]:
+    """The transcript as sent to the model: older tool results trimmed so prompts stop growing."""
+    results = [i for i, m in enumerate(transcript) if m.get("_result")]
+    old = set(results[:-KEEP_FULL])
+    out = []
+    for i, m in enumerate(transcript):
+        c = m["content"]
+        if i in old and len(c) > TRIM_TO:
+            c = c[:TRIM_TO] + "\n[older result trimmed; cite its evidence id or repeat a narrower query]"
+        out.append({"role": m["role"], "content": c})
+    return out
+
+
 def run_loop(*, llm, hub, store, hid: str, system: str, user: str, final_action: str, max_calls: int,
              max_results: int, actor: str, why_prefix: str) -> tuple[dict | None, list[str], int]:
     tools = available_tools(hub)
@@ -42,7 +59,8 @@ def run_loop(*, llm, hub, store, hid: str, system: str, user: str, final_action:
         last = calls >= max_calls
         if last:
             transcript.append({"role": "user", "content": f"No more calls. Reply with the {final_action} now."})
-        res = llm.for_role("analyst").chat([{"role": "system", "content": system}, {"role": "user", "content": user}, *transcript], max_tokens=1500)
+        res = llm.for_role("analyst").chat([{"role": "system", "content": system}, {"role": "user", "content": user},
+                                           *_prompt(transcript)], max_tokens=1500)
         if res.error:
             return {"action": final_action, "error": res.error[:300]}, made, calls
         act = action_object(res.text) or {}
@@ -52,7 +70,7 @@ def run_loop(*, llm, hub, store, hid: str, system: str, user: str, final_action:
             transcript.append({"role": "user", "content": f"No more tool calls are possible. Reply with the "
                                f"{final_action} JSON object only, based on what you already found."})
             res = llm.for_role("analyst").chat([{"role": "system", "content": system}, {"role": "user", "content": user},
-                                               *transcript], max_tokens=1500)
+                                               *_prompt(transcript)], max_tokens=1500)
             if res.error:
                 return {"action": final_action, "error": res.error[:300]}, made, calls
             act = action_object(res.text) or {}
@@ -105,5 +123,6 @@ def run_loop(*, llm, hub, store, hid: str, system: str, user: str, final_action:
         left = max_calls - calls
         budget = (f"\n({left} tool call(s) left; after that you must give the {final_action}.)" if 0 < left <= 5
                   else f"\n(No tool calls left: give the {final_action} now.)" if left <= 0 else "")
-        transcript.append({"role": "user", "content": f"E{n} result of {conn}.{tool}:\n{content[:12000]}{budget}"})
+        transcript.append({"role": "user", "content": f"E{n} result of {conn}.{tool}:\n{content[:12000]}{budget}",
+                           "_result": True})
     return None, made, calls

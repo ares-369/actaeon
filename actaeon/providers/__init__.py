@@ -62,7 +62,7 @@ _COOLDOWN: dict[tuple[str, str], float] = {}   # (provider, model) -> skip until
 COOLDOWN_SEC = 3600
 SHORT_COOLDOWN_SEC = 60
 # Short rate limits (shared-capacity 429s, overload) usually clear in seconds: retry with backoff first.
-RETRY_DELAYS = (5.0, 15.0, 30.0, 60.0)
+RETRY_DELAYS = (5.0, 15.0, 30.0, 60.0, 120.0)   # shared-capacity limits can last minutes
 
 
 _LAST_CALL: dict[str, float] = {}

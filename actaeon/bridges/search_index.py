@@ -14,7 +14,7 @@ import re
 from typing import Any
 from urllib.parse import quote
 
-from .common import baseline_window, cap, check_status, session_from_env, time_window
+from .common import baseline_window, cap, check_status, compact_hits, session_from_env, time_window
 from .server import McpServer, ToolInputError
 
 _INDEX_RE = re.compile(r"^[a-z0-9][a-z0-9._*-]{0,254}$")
@@ -27,11 +27,12 @@ TIME_SCHEMA = {
 class SearchIndexBridge:
     def __init__(self, url: str, indices: list[str], time_field: str = "@timestamp", max_days: int = 30,
                  max_size: int = 500, verify_tls: bool = True, ca_bundle: str = "", timeout: float = 30,
-                 session=None, snapshot: bool = False):
+                 session=None, snapshot: bool = False, compact: bool = True):
         self.url = url.rstrip("/")
         self.indices = indices or ["*"]
         # Snapshot indices (inventory / current-state) have no per-event time; searches are not time-bounded.
         self.snapshot = snapshot
+        self.compact = compact
         self.time_field = "" if snapshot else time_field
         self.max_days, self.max_size, self.timeout = max_days, max_size, timeout
         self.http = session or session_from_env("BRIDGE", verify_tls, ca_bundle)
@@ -136,9 +137,14 @@ class SearchIndexBridge:
         hits = res.get("hits") or {}
         total = hits.get("total")
         total = total.get("value") if isinstance(total, dict) else total
-        return {"index": idx, "total": total, "returned": len(hits.get("hits") or []),
-                "hits": [{"_index": h.get("_index"), "_id": h.get("_id"), **(h.get("_source") or {})}
-                         for h in hits.get("hits") or []]}
+        raw = [{"_index": h.get("_index"), "_id": h.get("_id"), **(h.get("_source") or {})}
+               for h in hits.get("hits") or []]
+        out = {"index": idx, "total": total, "returned": len(raw)}
+        if self.compact:
+            out.update(compact_hits(raw))    # shared fields once, each hit only what differs
+        else:
+            out["hits"] = raw
+        return out
 
     def count(self, args: dict) -> dict:
         idx = self._index(args.get("index"))
@@ -222,6 +228,8 @@ class SearchIndexBridge:
 
 
 def add_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--raw-hits", action="store_true",
+                   help="return hits as stored instead of compacted (shared fields shown once)")
     p.add_argument("--snapshot", action="store_true",
                    help="current-state/inventory indices with no event time; searches are not time-bounded")
     p.add_argument("--url", required=True, help="base URL of the search index API")
@@ -235,4 +243,5 @@ def add_args(p: argparse.ArgumentParser) -> None:
 
 def run(a: argparse.Namespace) -> None:
     SearchIndexBridge(a.url, a.index, a.time_field, a.max_days, a.max_size,
-                      verify_tls=not a.insecure, ca_bundle=a.ca_bundle, snapshot=a.snapshot).build().serve()
+                      verify_tls=not a.insecure, ca_bundle=a.ca_bundle, snapshot=a.snapshot,
+                      compact=not a.raw_hits).build().serve()

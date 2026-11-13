@@ -32,7 +32,7 @@ from .validator import ValidationError, validate_call
 TECHNIQUE = re.compile(r"^T\d{4}(?:\.\d{3})?$")
 from ..connectors.spec import DATA_ROLES  # noqa: E402
 
-KEEP_FULL = 4          # newest results kept in full in the prompt
+KEEP_FULL = 3          # newest results kept in full in the prompt
 TRIM_TO = 1500
 
 

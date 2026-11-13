@@ -92,7 +92,7 @@ autopilot:
 hunt:
   max_steps: 25
   max_runtime_sec: 900
-  max_result_bytes: 200000   # per tool result shown to the model
+  max_result_bytes: 20000    # per tool result shown to the model (search hits are compacted)
   max_results: 200           # cap on size/limit arguments of any tool
   prompt_mode: full          # full | compact (shorter prompts for cheaper models)
   handoff: [inconclusive, logs_missing, unverified_threat, error, known_good_threat]   # hand these to an analyst

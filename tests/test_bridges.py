@@ -291,7 +291,7 @@ def test_snapshot_mode_no_time_bounds():
     body = b.http.calls[0][2]["json"]
     assert "sort" not in body                                   # snapshot: no time sort
     assert all("range" not in str(f) for f in body["query"]["bool"].get("filter", []))   # no time range
-    assert out["total"] == 2 and out["hits"][0]["process"]["name"] == "bash"
+    assert out["total"] == 2 and out["hits"][0]["process.name"] == "bash"
     with pytest.raises(ToolInputError):
         b.first_seen({"index": "inventory-processes*", "field": "process.name"})
 
@@ -314,3 +314,23 @@ def test_bridge_now_pins_relative_times(monkeypatch):
     assert parse_time("", default="now").isoformat() == "2026-11-13T09:00:00+00:00"
     monkeypatch.delenv("BRIDGE_NOW")
     assert parse_time("now", default="now").year >= 2026
+
+
+def test_compact_hits_shares_common_fields_and_loses_nothing():
+    from actaeon.bridges.common import compact_hits
+    hits = [{"_index": "a", "_id": str(i), "agent": {"name": "web1", "ip": "10.0.0.5"}, "rule": {"id": "5710", "level": 5},
+             "data": {"srcip": f"203.0.113.{i}", "empty": ""}, "full_log": "x" * 900} for i in range(3)]
+    out = compact_hits(hits)
+    assert out["common"]["agent.name"] == "web1" and out["common"]["rule.id"] == "5710"
+    assert [h["data.srcip"] for h in out["hits"]] == ["203.0.113.0", "203.0.113.1", "203.0.113.2"]
+    assert "data.empty" not in out["common"] and "_id" not in out["hits"][0]
+    assert out["common"]["full_log"].endswith("(+300 chars)")
+    import json
+    assert len(json.dumps(out)) < len(json.dumps(hits)) / 2
+
+
+def test_triage_sees_common_fields():
+    from actaeon.hunt.triage import events_from
+    body = '{"common": {"event.action": "blocked", "host.name": "a"}, "hits": [{"destination.ip": "203.0.113.9"}]}'
+    ev = events_from(body)
+    assert ev == [{"event.action": "blocked", "host.name": "a", "destination.ip": "203.0.113.9"}]

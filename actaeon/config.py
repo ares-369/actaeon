@@ -72,7 +72,7 @@ class AuthConfig:
 class HuntLimits:
     max_steps: int = 25            # tool calls per hunt
     max_runtime_sec: int = 900
-    max_result_bytes: int = 200_000  # per tool result fed back to the model
+    max_result_bytes: int = 20_000   # per tool result fed back to the model (search hits are compacted)
     max_results: int = 200         # cap on size/limit arguments
 
 
@@ -151,7 +151,7 @@ def load_config() -> Config:
     hunt = HuntLimits(
         max_steps=max(1, int(h.get("max_steps", 25))),
         max_runtime_sec=max(10, int(h.get("max_runtime_sec", 900))),
-        max_result_bytes=max(1024, int(h.get("max_result_bytes", 200_000))),
+        max_result_bytes=max(1024, int(h.get("max_result_bytes", 20_000))),
         max_results=max(1, int(h.get("max_results", 200))),
     )
 

@@ -98,3 +98,43 @@ def check_status(r: requests.Response) -> None:
         raise PermissionError(f"HTTP {r.status_code}: the source refused the bridge's credentials")
     if r.status_code >= 400:
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
+
+
+def _flatten(d, prefix: str = "") -> dict:
+    out: dict = {}
+    for k, v in (d or {}).items():
+        key = f"{prefix}{k}"
+        if isinstance(v, dict):
+            out.update(_flatten(v, key + "."))
+        else:
+            out[key] = v
+    return out
+
+
+def _empty(v) -> bool:
+    return v is None or v == "" or v == [] or v == {}
+
+
+def _cut(v, limit: int):
+    if isinstance(v, str) and len(v) > limit:
+        return v[:limit] + f"...(+{len(v) - limit} chars)"
+    return v
+
+
+def compact_hits(hits: list[dict], *, max_value: int = 600, drop: tuple[str, ...] = ("_id", "_index")) -> dict:
+    """Make search hits cheaper to read without losing information the model needs.
+
+    Hits are flattened to dotted field names (the names queries use), empty values are dropped,
+    very long values are cut, and every field with the same value in all hits is moved to
+    ``common`` and shown once. Each hit keeps only what differs.
+    """
+    rows = [{k: _cut(v, max_value) for k, v in _flatten(h).items() if not _empty(v) and k not in drop}
+            for h in hits]
+    if len(rows) < 2:
+        return {"common": {}, "hits": rows}
+    keys = set(rows[0])
+    for r in rows[1:]:
+        keys &= set(r)
+    common = {k: rows[0][k] for k in sorted(keys) if all(r[k] == rows[0][k] for r in rows[1:])}
+    return {"common": common, "hits": [{k: v for k, v in r.items() if k not in common} for r in rows]}
+

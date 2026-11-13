@@ -66,7 +66,12 @@ def score(results: list[dict]) -> dict:
             "tokens_out": sum(r.get("tokens_out") or 0 for r in results),
             "cost_usd": (round(sum(r["cost_usd"] for r in results), 4)
                          if results and all(r.get("cost_usd") is not None for r in results) else None),
-            "seconds": sum(r.get("seconds") or 0 for r in results)}
+            "seconds": sum(r.get("seconds") or 0 for r in results),
+            "infra_errors": sum(1 for r in results if r.get("status") == "error"),
+            "reruns": sum((r.get("attempts") or 1) - 1 for r in results)}
+
+
+_INFRA = __import__("re").compile(r"(?i)429|resource_exhausted|quota|rate.?limit|timed? ?out|timeout|connection|overloaded|unavailable")
 
 
 def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None, workers: int = 1) -> dict:
@@ -79,13 +84,20 @@ def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None, w
 
     def one(c):
         t0 = time.monotonic()
-        h = run_hunt(cfg, c["hypothesis"], origin=f"bench:{c['id']}", max_steps=max_steps)
+        for attempt in range(3):
+            h = run_hunt(cfg, c["hypothesis"], origin=f"bench:{c['id']}", max_steps=max_steps)
+            # A hunt that died on the model service (rate limit, timeout) says nothing about Actaeon's
+            # judgement: run it again instead of scoring it, and record that it happened.
+            if h.get("status") != "error" or not _INFRA.search(h.get("error") or ""):
+                break
+            time.sleep(60 * (attempt + 1))
         v = h.get("verdict") or {}
         r = {"id": c["id"], "expect": c["expect"], "outcome": h.get("outcome"), "status": h.get("status"),
              "correct": h.get("outcome") in c["expect"], "confidence": v.get("confidence"),
              "calls": sum(1 for s in h.get("steps") or [] if s["kind"] == "call"),
              "blocked": sum(1 for s in h.get("steps") or [] if s["kind"] == "blocked"),
-             "seconds": round(time.monotonic() - t0), "hunt_id": h.get("id"), "error": h.get("error")}
+             "seconds": round(time.monotonic() - t0), "hunt_id": h.get("id"), "error": h.get("error"),
+             "attempts": attempt + 1}
         u = (h.get("models") or {}).get("usage") or {}
         r.update(tokens_in=u.get("tokens_in", 0), tokens_out=u.get("tokens_out", 0), cost_usd=u.get("cost_usd"))
         if on_case:

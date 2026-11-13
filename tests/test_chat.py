@@ -116,3 +116,11 @@ def test_tool_loop_asks_again_after_invalid_json(home):
     final, _m, calls = run_loop(llm=L(), hub=hub, store=service.store_for(cfg), hid=h["id"], system="s", user="u",
                                 final_action="answer", max_calls=5, max_results=50, actor="t", why_prefix="")
     assert final == {"action": "answer", "text": "fine"} and calls == 0
+
+
+def test_tool_loop_trims_older_results():
+    from actaeon.hunt.toolloop import KEEP_FULL, _prompt
+    t = [{"role": "user", "content": f"E{i} result:\n" + "x" * 5000, "_result": True} for i in range(6)]
+    p = _prompt(t)
+    assert all(len(m["content"]) < 1000 for m in p[:-KEEP_FULL]) and all(len(m["content"]) > 5000 for m in p[-KEEP_FULL:])
+    assert all("_result" not in m for m in p)

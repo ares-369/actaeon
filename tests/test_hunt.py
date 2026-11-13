@@ -234,7 +234,8 @@ def test_old_results_trimmed(tmp_path):
     _, llm = run(tmp_path, acts, hub=hub, limits=HuntLimits(max_steps=10))
     prompt = llm.roles["analyst"].seen[-1]
     trimmed = [m for m in prompt if "older result trimmed" in m["content"]]
-    assert len(trimmed) == 2
+    from actaeon.hunt.engine import KEEP_FULL
+    assert len(trimmed) == 6 - KEEP_FULL
 
 
 # ---- service / API ----
