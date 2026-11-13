@@ -157,7 +157,11 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     def intel_advisories():
         st = intel_store()
         if request.method == "GET":
-            return jsonify(st.advisories())
+            try:
+                limit = max(1, min(500, int(request.args.get("limit", 50))))
+            except ValueError:
+                limit = 50
+            return jsonify(st.advisories(limit=limit))
         b = request.get_json(silent=True) or {}
         if not str(b.get("text", "")).strip():
             return jsonify({"error": "text is required"}), 400
