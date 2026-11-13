@@ -240,7 +240,9 @@ def start_hunt(jobs, cfg, hypothesis: str, *, actor: str = "", origin: str = "ma
                        max_steps=max_steps, checkpoint=ctl.checkpoint, llm=llm, hub=hub)
         return {"hunt_id": hid, "outcome": res.get("outcome"), "status": res.get("status")}
 
-    job_id = jobs.submit("hunt", {"hunt_id": hid}, work, deduplicate=False)
+    job_id = jobs.submit("hunt", {"hunt_id": hid}, work, deduplicate=False, task=None if (llm or hub) else "hunt",
+                         params={"hunt_id": hid, "hypothesis": hypothesis, "actor": actor, "origin": origin,
+                                 "context": context, "max_steps": max_steps})
     store.update(hid, job_id=job_id)
     return hid
 
@@ -287,8 +289,16 @@ def run_sweep(cfg, *, full: bool = False, hub=None, actor: str = "scheduler", ll
     return send_outputs(cfg, res, hub=hub)
 
 
-def start_job(jobs, kind: str, meta: dict, fn) -> str:
-    return jobs.submit(kind, meta, lambda ctl: {"hunt_id": fn().get("id")}, deduplicate=True)
+def start_job(jobs, kind: str, meta: dict, fn, *, task: str | None = None, params: dict | None = None) -> str:
+    """``fn`` runs here in local mode; ``task``/``params`` (actaeon/tasks.py) let a worker run it in queue mode."""
+    return jobs.submit(kind, meta, lambda ctl: {"hunt_id": fn().get("id")}, deduplicate=True, task=task,
+                       params=params)
+
+
+def actor_sweep(cfg, slug: str, *, actor: str = "campaign", llm=None, hub=None) -> dict:
+    settings = (cfg.intel or {}).get("sweep") or {}
+    sw = Sweep(_hub(cfg, hub), intel_for(cfg), store_for(cfg), settings, max_results=cfg.hunt.max_results, llm=llm)
+    return send_outputs(cfg, sw.run(actor=actor, tag=f"actor:{slug}", origin=f"actor:{slug}"), hub=hub)
 
 
 def run_web_intel(cfg, *, jobs=None, llm=None, hub=None, only: str | None = None) -> dict:
@@ -337,14 +347,11 @@ def actor_campaign(cfg, jobs, key: str, *, actor: str = "", llm=None, hub=None) 
     if not prof:
         raise ValueError("no such actor")
     out = {"actor": prof["name"], "sweep_job": None, "hunt_id": None}
-    settings = (cfg.intel or {}).get("sweep") or {}
     if prof["indicators"]:
-        def sweep_fn():
-            sw = Sweep(_hub(cfg, hub), intel_for(cfg), store_for(cfg), settings, max_results=cfg.hunt.max_results,
-                       llm=llm)
-            return send_outputs(cfg, sw.run(actor=actor or "campaign", tag=f"actor:{prof['slug']}",
-                                            origin=f"actor:{prof['slug']}"), hub=hub)
-        out["sweep_job"] = start_job(jobs, "actor-sweep", {"actor": prof["slug"]}, sweep_fn)
+        out["sweep_job"] = start_job(
+            jobs, "actor-sweep", {"actor": prof["slug"]},
+            lambda: actor_sweep(cfg, prof["slug"], actor=actor or "campaign", llm=llm, hub=hub),
+            task=None if (llm or hub) else "actor-sweep", params={"slug": prof["slug"], "actor": actor or "campaign"})
     from .attack_names import name as tname
     techs = ", ".join(f"{t} {tname(t)}".strip() for t in prof["techniques"][:15]) or "none recorded"
     tools = ", ".join(prof["tools"][:15]) or "none recorded"

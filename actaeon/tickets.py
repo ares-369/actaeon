@@ -93,15 +93,24 @@ def handle_reply(cfg, jobs, *, text: str, author: str = "", hunt_id: str | None 
     if h["status"] in ("queued", "running"):
         raise ReplyError("the hunt is still running; reply /resume if it is paused, or ask when it has finished", 409)
 
-    def work(ctl):
-        from .hunt.chat import ask
-        res = ask(cfg, h["id"], text, author=who, llm=llm, hub=hub)
-        note(f"Actaeon: {res['answer']}" + (f" (evidence {', '.join(res['evidence'])})" if res["evidence"] else ""))
-        from .outputs import dispatch
-        fresh = hs.store_for(cfg).get(h["id"]) or h
-        res["outputs"] = dispatch(cfg, fresh, hub=hub, event="reply",
-                                  extra={"reply": text, "reply_author": author or "", "answer": res["answer"]})
-        return res
-
-    jid = jobs.submit("ticket-reply", {"hunt_id": h["id"]}, work)
+    jid = jobs.submit("ticket-reply", {"hunt_id": h["id"]},
+                      lambda ctl: answer(cfg, h["id"], text, who=who, author=author, llm=llm, hub=hub),
+                      task=None if (llm or hub) else "ticket-reply",
+                      params={"hunt_id": h["id"], "text": text, "who": who, "author": author})
     return {"action": "ask", "ok": True, "hunt_id": h["id"], "job_id": jid}
+
+
+def answer(cfg, hunt_id: str, text: str, *, who: str, author: str = "", llm=None, hub=None) -> dict:
+    """Answer a ticket reply like the hunt chat, comment the answer on the lead, and send it to reply outputs."""
+    from .hunt import service as hs
+    from .hunt.chat import ask
+    from .outputs import dispatch
+    res = ask(cfg, hunt_id, text, author=who, llm=llm, hub=hub)
+    lead = hs.leads_for(cfg).by_hunt(hunt_id)
+    if lead:
+        msg = f"Actaeon: {res['answer']}" + (f" (evidence {', '.join(res['evidence'])})" if res["evidence"] else "")
+        hs.leads_for(cfg).comment(lead["id"], "actaeon", msg[:MAX_TEXT])
+    fresh = hs.store_for(cfg).get(hunt_id) or {"id": hunt_id}
+    res["outputs"] = dispatch(cfg, fresh, hub=hub, event="reply",
+                              extra={"reply": text, "reply_author": author or "", "answer": res["answer"]})
+    return res

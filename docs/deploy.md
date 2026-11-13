@@ -42,6 +42,32 @@ Build with only the extras you need: `docker build --build-arg EXTRAS="gemini,ex
 Deny everything else. Stdio connectors run inside the container, so their
 targets count as Actaeon's outbound traffic.
 
+## Separate workers (queue mode)
+
+By default the web server runs hunts on its own threads. For heavier use, let it only
+record jobs and run them in worker processes:
+
+```yaml
+jobs:
+  mode: queue
+  stale_after_sec: 600     # a running job with no heartbeat for this long is marked interrupted
+```
+
+```bash
+actaeon serve                                  # UI and API; queues jobs
+actaeon worker --concurrency 3                 # run as many workers as you like
+actaeon worker --concurrency 1 --scheduler     # one of them (or the server) runs the schedules
+```
+
+- A worker runs each job as the person who started it (their role, groups and data-source access).
+- Stop and pause in the UI reach the worker through the database.
+- On SIGTERM a worker takes no new jobs and finishes the ones it has.
+- Only one process schedules at a time: the first to hold `<data>/scheduler.lock`.
+- All processes must use the same data folder on the same machine (SQLite). Several machines need
+  a shared database, which is planned (PostgreSQL), not built.
+
+With compose, uncomment the `worker` service in `docker-compose.yml`.
+
 ## Without Docker
 
 ```bash

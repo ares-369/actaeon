@@ -13,7 +13,8 @@ the hunt to a person instead of guessing.
   edition, no licence key and no telemetry.
 
 > **Status: beta (0.1.0b1).** It has been tested in one home lab and on public and synthetic
-> benchmarks, but not yet in production. It runs as one process on one machine. Read
+> benchmarks, but not yet in production. It runs on one machine (SQLite), with optional separate
+> worker processes. Read
 > [known limitations](docs/known-limitations.md) before relying on it.
 
 ![actaeon demo: scripted offline run against synthetic data](docs/demo.gif)
@@ -165,8 +166,8 @@ not in this repository.
 
 - **Not a SIEM or SOAR.** It sits beside them as a read-only investigator, and takes no response
   actions.
-- **Not clustered.** It is one process with SQLite storage. There are no separate workers and no
-  high availability yet.
+- **Not clustered.** Storage is SQLite on one machine. Hunts can run in separate worker processes
+  there, but several machines and high availability need PostgreSQL support, which is planned.
 - **Measured with one model only.** Small local models were not good enough to hunt in testing.
 - **Not proven in production yet.**
 

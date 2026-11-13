@@ -108,6 +108,12 @@ hunt:
 tickets:
   token_env: ""              # env var holding a bearer token the ticket system sends (valid on that path only)
 
+# Background jobs. local: the server runs them. queue: `actaeon worker` processes run them (docs/deploy.md).
+jobs:
+  mode: local                # local | queue
+  threads: 3                 # jobs at once inside the server (local mode)
+  stale_after_sec: 600       # queue mode: a running job with no worker heartbeat for this long is interrupted
+
 # Hunt memory (analyst notes added to related hunts).
 memory:
   benign_note_days: 90       # notes made from a benign / false-positive call stop being used after this; 0 = never

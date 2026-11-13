@@ -35,6 +35,18 @@ class Access:
     connectors: frozenset[str] | None = None     # None: every connector
     restricted_names: frozenset[str] = field(default_factory=frozenset)
 
+    def to_dict(self) -> dict:
+        return {"user": self.user, "role": self.role, "groups": list(self.groups),
+                "connectors": None if self.connectors is None else sorted(self.connectors),
+                "restricted_names": sorted(self.restricted_names)}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Access:
+        c = d.get("connectors")
+        return cls(user=str(d.get("user", "")), role=str(d.get("role", "viewer")), groups=tuple(d.get("groups") or ()),
+                   connectors=None if c is None else frozenset(c),
+                   restricted_names=frozenset(d.get("restricted_names") or ()))
+
     def public(self) -> dict:
         return {"user": self.user, "role": self.role, "groups": list(self.groups),
                 "connectors": None if self.connectors is None else sorted(self.connectors)}

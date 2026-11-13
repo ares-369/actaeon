@@ -67,10 +67,14 @@ Actaeon is in beta (0.1.0b1). These are the limits we know about.
 
 ## Operations
 
-- Single process: hunts run on a thread pool inside the web server, with SQLite
-  storage. No clustering or high availability.
-- Hunts that are running when the server restarts are marked stopped.
-- The scheduler runs inside the server; with several server processes,
-  schedules would run more than once.
+- One machine: storage is SQLite. With `jobs.mode: queue`, hunts run in separate
+  `actaeon worker` processes, so the web server stays responsive and workers can be
+  restarted or added, but every process must share one data folder on one machine.
+  Several machines (and high availability) need a shared database; PostgreSQL support
+  is planned, not built.
+- A hunt that is running when its process stops is marked stopped or interrupted; it
+  does not resume where it was.
+- Only one process schedules at a time (a lock file in the data folder); if it stops,
+  another server or `worker --scheduler` takes over at its next tick.
 - Hit counts for replays are read from common keys (`total`, `count`, `matches`,
   ...). Other result shapes fall back to "changed since last time".

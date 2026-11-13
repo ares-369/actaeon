@@ -126,12 +126,16 @@ def build(cfg, jobs, *, role_of=lambda: "admin", llm=None, hub=None) -> McpServe
         if not hs.library_for(cfg).get(sid):
             raise ToolInputError("no saved hunt with that id")
         return {"job_id": hs.start_job(jobs, "replay", {"saved_id": sid},
-                                       lambda: hs.run_replay(cfg, sid, jobs=jobs, actor="mcp", hub=hub, llm=llm))}
+                                       lambda: hs.run_replay(cfg, sid, jobs=jobs, actor="mcp", hub=hub, llm=llm),
+                                       task=None if (hub or llm) else "replay",
+                                       params={"saved_id": sid, "actor": "mcp"})}
     add("run_replay", "Replay a saved hunt now (no model). Results appear as a new hunt.",
         {"id": {"type": "integer"}}, run_replay, required=["id"], ann=WORK)
     add("run_sweep", "Search logs for new or changed intel indicators now (no model).", {"full": {"type": "boolean"}},
         lambda a: {"job_id": hs.start_job(jobs, "sweep", {"sweep": True, "full": bool(a.get("full"))},
-                                          lambda: hs.run_sweep(cfg, full=bool(a.get("full")), actor="mcp", hub=hub))},
+                                          lambda: hs.run_sweep(cfg, full=bool(a.get("full")), actor="mcp", hub=hub),
+                                          task=None if hub else "sweep",
+                                          params={"full": bool(a.get("full")), "actor": "mcp"})},
         ann=WORK)
 
     def cov(a):
@@ -160,4 +164,4 @@ def run(_a: Any = None) -> None:
     from .jobs import JobManager
     cfg = get_config()
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
-    build(cfg, JobManager(cfg.data_dir / "actaeon.sqlite")).serve()
+    build(cfg, JobManager.from_config(cfg)).serve()

@@ -561,6 +561,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_lib.add_argument("--every", type=int, default=0, help="replay interval in minutes (0 = manual)")
     p_lib.add_argument("--escalate", action="store_true", help="start a full hunt when a replay finds matches")
     sub.add_parser("mcp", help="serve Actaeon itself as an MCP server on stdio")
+    p_w = sub.add_parser("worker", help="run queued jobs (needs jobs.mode: queue)")
+    p_w.add_argument("--concurrency", type=int, default=2, help="jobs at once (default 2)")
+    p_w.add_argument("--scheduler", action="store_true", help="also run the scheduler (one process gets the lock)")
     p_demo = sub.add_parser("demo", help="set up a demo with labelled sample data (and optionally run a hunt)")
     p_demo.add_argument("--dir", default="", help="demo home (default ~/.actaeon-demo)")
     p_demo.add_argument("--offline", action="store_true", help="use a scripted run instead of a model (not AI)")
@@ -760,6 +763,14 @@ def cli_main(argv: list[str] | None = None) -> None:
         if a.action == "login":
             sys.exit(cmd_login(a.name, a.manual))
         sys.exit(cmd_connectors(a.action, a.name))
+    if a.cmd == "worker":
+        from .worker import main as worker_main
+        try:
+            worker_main(concurrency=a.concurrency, scheduler=a.scheduler)
+        except ValueError as exc:
+            print(f"error: {exc}")
+            sys.exit(2)
+        return
     if a.cmd == "sigma":
         sys.exit(cmd_sigma(a))
     if a.cmd == "audit":

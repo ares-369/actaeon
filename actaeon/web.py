@@ -25,7 +25,7 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # type: ignore[method-assign]
     init_auth(app, cfg)
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
-    jobs = JobManager(cfg.data_dir / "actaeon.sqlite")
+    jobs = JobManager.from_config(cfg)
     app.extensions["actaeon_jobs"] = jobs
 
     @app.after_request
@@ -310,7 +310,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             return jsonify({"ok": lib.delete(sid)})
         if action == "run":
             jid = hs.start_job(jobs, "replay", {"saved_id": sid},
-                               lambda: hs.run_replay(c, sid, jobs=jobs, actor=_actor() or "manual"))
+                               lambda: hs.run_replay(c, sid, jobs=jobs, actor=_actor() or "manual"),
+                               task="replay", params={"saved_id": sid, "actor": _actor() or "manual"})
             return jsonify({"job_id": jid}), 202
         return jsonify({"error": "unknown action"}), 400
 
@@ -318,7 +319,7 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     def intel_web_pull():
         c = get_config()
         jid = hs.start_job(jobs, "web-intel", {"web": True},
-                           lambda: hs.run_web_intel(c, jobs=jobs))
+                           lambda: hs.run_web_intel(c, jobs=jobs), task="web-intel", params={})
         return jsonify({"job_id": jid}), 202
 
     @app.route("/api/autopilot", methods=["POST"])
@@ -331,7 +332,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             except RuntimeError as exc:
                 return jsonify({"error": str(exc)[:300]}), 502
             return jsonify(r)
-        jid = hs.start_job(jobs, "autopilot", {"autopilot": True}, lambda: hs.run_autopilot(c, jobs))
+        jid = hs.start_job(jobs, "autopilot", {"autopilot": True}, lambda: hs.run_autopilot(c, jobs),
+                           task="autopilot", params={})
         return jsonify({"job_id": jid}), 202
 
     @app.route("/api/intel/sweep", methods=["POST"])
@@ -339,7 +341,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         c = get_config()
         full = bool((request.get_json(silent=True) or {}).get("full"))
         jid = hs.start_job(jobs, "sweep", {"sweep": True, "full": full},
-                           lambda: hs.run_sweep(c, full=full, actor=_actor() or "manual"))
+                           lambda: hs.run_sweep(c, full=full, actor=_actor() or "manual"),
+                           task="sweep", params={"full": full, "actor": _actor() or "manual"})
         return jsonify({"job_id": jid}), 202
 
     @app.route("/api/memory/notes", methods=["GET", "POST"])
@@ -438,7 +441,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             cid = conv.create(_actor() or "unknown", msg)
         who = _actor() or "unknown"
         jid = jobs.submit("ask", {"conv": cid, "t": time.time()},
-                          lambda ctl: ask(c, msg, user=who, conv_id=cid), deduplicate=False)
+                          lambda ctl: ask(c, msg, user=who, conv_id=cid), deduplicate=False,
+                          task="ask", params={"message": msg, "user": who, "conv_id": cid})
         return jsonify({"conversation_id": cid, "job_id": jid}), 202
 
     @app.route("/api/assistant/<int:cid>")
@@ -604,7 +608,7 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             return jsonify({"error": "the hunt is still running" if msg.strip() else "message is required"}), 400
         who = _actor()
         jid = jobs.submit("chat", {"hunt_id": hid, "t": time.time()}, lambda ctl: ask(c, hid, msg, author=who),
-                          deduplicate=False)
+                          deduplicate=False, task="chat", params={"hunt_id": hid, "message": msg, "author": who})
         return jsonify({"job_id": jid}), 202
 
     @app.route("/api/hunts/<hid>/detection", methods=["GET", "POST"])

@@ -26,7 +26,7 @@ def test_actor_campaign(home, monkeypatch):
     service.intel_for(cfg).save_actor("Sample Bear", tools=["LoaderX"], indicators_text=REPORT)
     started, jobs_started = [], []
     monkeypatch.setattr(service, "start_hunt", lambda jobs, cfg, hyp, **kw: started.append((hyp, kw)) or "h1")
-    monkeypatch.setattr(service, "start_job", lambda jobs, kind, meta, fn: jobs_started.append((kind, fn)) or "j1")
+    monkeypatch.setattr(service, "start_job", lambda jobs, kind, meta, fn, **kw: jobs_started.append((kind, fn)) or "j1")
     r = service.actor_campaign(cfg, object(), "sample bear")
     assert r == {"actor": "Sample Bear", "sweep_job": "j1", "hunt_id": "h1"}
     hyp, kw = started[0]

@@ -24,6 +24,12 @@
   assistant conversations, detection drafts) and are not sent to outputs unless an output opts in.
   See docs/access.md.
 
+### Running at scale
+- `jobs.mode: queue` and `actaeon worker`: the web server records jobs as named tasks and worker
+  processes run them, as the person who started each one. Stop and pause work across processes,
+  stale jobs are marked interrupted, and a lock file keeps a single scheduler. One machine (SQLite)
+  for now.
+
 ### Detection
 - Sigma drafts are converted with pySigma (optional `actaeon[sigma]` plus your platform's backend) into
   each connector's query language, set per connector with a `sigma:` block, and the converted query is

@@ -24,3 +24,25 @@ services:
       - no-new-privileges:true
     mem_limit: 2g
     pids_limit: 256
+
+  # Queue mode (jobs.mode: queue in config.yaml): hunts run here instead of in the web server.
+  # Scale with: docker compose up -d --scale worker=3
+  # worker:
+  #   image: actaeon:local
+  #   command: ["actaeon", "worker", "--concurrency", "2"]
+  #   healthcheck:
+  #     disable: true            # the image's check probes the web port, which a worker does not open
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./actaeon-data:/data
+  #   env_file:
+  #     - path: ./actaeon-data/.env
+  #       required: false
+  #   read_only: true
+  #   tmpfs:
+  #     - /tmp
+  #   cap_drop: [ALL]
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   mem_limit: 2g
+  #   pids_limit: 256
