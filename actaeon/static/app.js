@@ -51,6 +51,12 @@ async function api(url, body, method) {
 }
 // Actions always POST, even with no body (api() with no body is a GET).
 const post = (url, body) => api(url, body || {}, "POST");
+const usageText = (hu) => {
+  const u = hu.models && hu.models.usage;
+  if (!u || !u.calls) return "";
+  const cost = u.cost_usd !== null && u.cost_usd !== undefined ? ", about " + "$" + u.cost_usd.toFixed(4) : "";
+  return `  model: ${u.calls} calls, ${u.tokens_in + u.tokens_out} tokens${cost}`;
+};
 const when = (s) => (s || "").replace("T", " ").slice(0, 16);
 
 let poll = null;
@@ -297,7 +303,7 @@ function renderHunt(hu) {
     h("div", { class: "row" }, badge(hu.status), badge(hu.outcome),
       hu.lead ? h("a", { href: "#lead/" + hu.lead.id }, h("span", { class: "badge" }, icon("briefcase-outline"), ` lead #${hu.lead.id} ${hu.lead.status}${hu.lead.assignee ? " - " + hu.lead.assignee : ""}`)) : null,
       h("span", { class: "muted small" },
-      `started ${when(hu.created)}  origin ${hu.origin}  ${hu.actor ? "by " + hu.actor : ""}`)),
+      `started ${when(hu.created)}  origin ${hu.origin}  ${hu.actor ? "by " + hu.actor : ""}` + usageText(hu))),
     h("div", { class: "row" },
       running && h("button", { "data-need": "op", class: "ghost", onclick: act("pause") }, icon("pause"), "Pause"),
       running && h("button", { "data-need": "op", class: "ghost", onclick: act("resume") }, icon("play"), "Resume"),

@@ -547,7 +547,8 @@ def cli_main(argv: list[str] | None = None) -> None:
         def show(r):
             mark = "PASS" if r["correct"] else "FAIL"
             print(f"{mark} {r['id']:18} got {r['outcome']!s:22} want {'/'.join(r['expect']):30} "
-                  f"conf {r['confidence']} calls {r['calls']} blocked {r['blocked']} {r['seconds']}s", flush=True)
+                  f"conf {r['confidence']} calls {r['calls']} blocked {r['blocked']} {r['seconds']}s "
+                  f"tok {r.get('tokens_in', 0)}/{r.get('tokens_out', 0)}", flush=True)
         out = run_bench(get_config(), cases, max_steps=a.max_steps, on_case=show)
         print(out["score"])
         print(f"saved {out['file']}")

@@ -20,11 +20,14 @@ The SDK (``google-genai``) is only imported when this provider is used.
 from __future__ import annotations
 
 import os
+import threading
 from typing import Any
 
 from .base import ACTION_TOOLS, LLMProvider, LLMResult, Message, action_json, is_tool_loop_system
 
 AUTH_MODES = ("auto", "api_key", "vertex", "vertex_api_key")
+
+_USAGE = threading.local()   # per-thread token totals for one chat() call (it may retry)
 
 
 class GeminiProvider(LLMProvider):
@@ -79,7 +82,25 @@ class GeminiProvider(LLMProvider):
                 scopes=["https://www.googleapis.com/auth/cloud-platform"])
         return genai.Client(vertexai=True, project=self.project, location=self.location, credentials=creds, **kw)
 
+    def _gen(self, **kw):
+        resp = self._client.models.generate_content(**kw)
+        u = getattr(resp, "usage_metadata", None)
+        acc = getattr(_USAGE, "acc", None)
+        if u is not None and acc is not None:
+            acc[0] += int(getattr(u, "prompt_token_count", 0) or 0)
+            acc[1] += int(getattr(u, "candidates_token_count", 0) or 0) + int(getattr(u, "thoughts_token_count", 0) or 0)
+        return resp
+
     def chat(self, messages: list[Message], *, model=None, temperature=0.2, max_tokens=900) -> LLMResult:
+        _USAGE.acc = [0, 0]
+        try:
+            res = self._chat(messages, model=model, temperature=temperature, max_tokens=max_tokens)
+            res.tokens_in, res.tokens_out = _USAGE.acc
+            return res
+        finally:
+            _USAGE.acc = None
+
+    def _chat(self, messages: list[Message], *, model=None, temperature=0.2, max_tokens=900) -> LLMResult:
         use_model = model or self.default_model
         try:
             from google.genai import types
@@ -107,18 +128,18 @@ class GeminiProvider(LLMProvider):
                     types.FunctionDeclaration(**t) for t in ACTION_TOOLS
                 ])]
             try:
-                resp = self._client.models.generate_content(
+                resp = self._gen(
                     model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
             except Exception:
                 if not native:
                     raise
                 cfg_kw.pop("tools", None)  # model without function calling: fall back to the JSON protocol
-                resp = self._client.models.generate_content(
+                resp = self._gen(
                     model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
             if native and "MALFORMED_FUNCTION_CALL" in str(_finish_reason(resp)):
                 # The model produced a broken tool call: ask again without tools (JSON action protocol).
                 cfg_kw.pop("tools", None)
-                resp = self._client.models.generate_content(
+                resp = self._gen(
                     model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
             fcs = getattr(resp, "function_calls", None) or []
             if fcs:
@@ -131,7 +152,7 @@ class GeminiProvider(LLMProvider):
             if not text and not getattr(resp, "function_calls", None) and "STOP" in str(_finish_reason(resp)) \
                     and not getattr(getattr(resp, "prompt_feedback", None), "block_reason", None):
                 # An empty reply that "finished normally" happens now and then: ask once more.
-                resp = self._client.models.generate_content(
+                resp = self._gen(
                     model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
                 fcs = getattr(resp, "function_calls", None) or []
                 if fcs:

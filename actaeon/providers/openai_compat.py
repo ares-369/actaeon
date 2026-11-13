@@ -65,6 +65,8 @@ class OpenAICompatProvider(LLMProvider):
                     raise
                 kw.pop("tools", None)  # many local models reject tools: fall back to the JSON protocol
                 resp = client.chat.completions.create(**kw)
+            u = getattr(resp, "usage", None)
+            tok = {"tokens_in": int(getattr(u, "prompt_tokens", 0) or 0), "tokens_out": int(getattr(u, "completion_tokens", 0) or 0)}
             msg = resp.choices[0].message
             tcs = getattr(msg, "tool_calls", None) or []
             if tcs:
@@ -73,8 +75,8 @@ class OpenAICompatProvider(LLMProvider):
                     args = json.loads(fn.arguments) if isinstance(fn.arguments, str) else (fn.arguments or {})
                 except ValueError:
                     args = {}
-                return LLMResult(text=action_json(fn.name, args), model=use_model)
-            return LLMResult(text=(msg.content or "").strip(), model=use_model)
+                return LLMResult(text=action_json(fn.name, args), model=use_model, **tok)
+            return LLMResult(text=(msg.content or "").strip(), model=use_model, **tok)
         except Exception as exc:
             return LLMResult(text="", model=use_model, error=f"{self.name} error: {exc}")
 

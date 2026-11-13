@@ -130,6 +130,13 @@ class PrivacyLLM:
         b = self.llm.for_role(role)
         return _MaskedBound(b, self.masker) if getattr(b.provider, "name", "") in self.mask_for else b
 
+    @property
+    def usage(self) -> dict:
+        return getattr(self.llm, "usage", {})
+
+    def usage_summary(self) -> dict:
+        return self.llm.usage_summary() if hasattr(self.llm, "usage_summary") else {}
+
     def summary(self) -> dict[str, Any]:
         return {"masked_values": len(self.back_map()), "by_type": dict(self.masker.counts)}
 

@@ -84,6 +84,15 @@ class BoundModel:
     provider: LLMProvider
     model: str
     fallbacks: list = None   # list[BoundModel] tried in order when this one fails
+    meter: dict = None       # shared usage totals: "provider/model" -> {calls, tokens_in, tokens_out}
+
+    def _count(self, b, res) -> None:
+        if self.meter is None:
+            return
+        m = self.meter.setdefault(f"{b.provider.name}/{b.model}", {"calls": 0, "tokens_in": 0, "tokens_out": 0})
+        m["calls"] += 1
+        m["tokens_in"] += int(getattr(res, "tokens_in", 0) or 0)
+        m["tokens_out"] += int(getattr(res, "tokens_out", 0) or 0)
 
     def chat(self, messages: list[Message], **kw) -> LLMResult:
         chain = [self, *(self.fallbacks or [])]
@@ -98,11 +107,13 @@ class BoundModel:
                 continue
             _pace(b.provider)
             res = b.provider.chat(messages, model=b.model, **kw)
+            self._count(b, res)
             for delay in RETRY_DELAYS:
                 if not res.error or not _QUOTA.search(res.error) or _HARD_QUOTA.search(res.error):
                     break
                 _time.sleep(delay)
                 res = b.provider.chat(messages, model=b.model, **kw)
+                self._count(b, res)
             if not res.error:
                 if b is not self:
                     res.model = f"{b.model} (fallback)"
@@ -120,6 +131,28 @@ class LLM:
     def __init__(self, cfg: Config | None = None):
         self.cfg = cfg or get_config()
         self._cache: dict[str, LLMProvider] = {}
+        self.usage: dict[str, dict] = {}   # totals for everything asked through this LLM
+
+    def usage_summary(self) -> dict:
+        """Calls and tokens per model, plus an estimated cost when ``llm.prices`` lists the model
+        (USD per million tokens: {model: {in: x, out: y}})."""
+        prices = ((self.cfg.raw or {}).get("llm") or {}).get("prices") or {}
+        out, total_cost, priced = {}, 0.0, True
+        for key, u in self.usage.items():
+            row = dict(u)
+            p = prices.get(key.split("/", 1)[-1]) or prices.get(key)
+            if isinstance(p, dict):
+                row["cost_usd"] = round(u["tokens_in"] / 1e6 * float(p.get("in", 0))
+                                        + u["tokens_out"] / 1e6 * float(p.get("out", 0)), 5)
+                total_cost += row["cost_usd"]
+            else:
+                priced = False
+            out[key] = row
+        return {"models": out,
+                "calls": sum(u["calls"] for u in self.usage.values()),
+                "tokens_in": sum(u["tokens_in"] for u in self.usage.values()),
+                "tokens_out": sum(u["tokens_out"] for u in self.usage.values()),
+                "cost_usd": round(total_cost, 5) if out and priced else None}
 
     def provider(self, name: str) -> LLMProvider:
         if name not in self._cache:
@@ -130,7 +163,7 @@ class LLM:
 
     def _bind(self, rc: dict) -> BoundModel:
         prov = self.provider(rc.get("provider", "ollama"))
-        return BoundModel(provider=prov, model=rc.get("model") or prov.default_model)
+        return BoundModel(provider=prov, model=rc.get("model") or prov.default_model, meter=self.usage)
 
     def for_role(self, role: str) -> BoundModel:
         """The role's model, with its optional ``fallback`` list (provider/model pairs) tried on errors."""

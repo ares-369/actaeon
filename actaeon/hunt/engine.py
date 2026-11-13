@@ -175,7 +175,9 @@ class HuntEngine:
             verdict = self._finalize({"outcome": "inconclusive", "summary": "The hunt failed before a verdict."}, None)
             status, err = "error", f"{type(exc).__name__}: {exc}"[:1000]
         self.store.add_step(hid, self._next(), "verdict", note=json.dumps(verdict))
-        self.store.update(hid, status=status, outcome=verdict["outcome"], verdict=verdict, error=err,
+        if models is not None and hasattr(self.llm, "usage_summary"):
+            models = {**models, "usage": self.llm.usage_summary(), "seconds": round(self._clock() - self._t0, 1)}
+        self.store.update(hid, status=status, outcome=verdict["outcome"], verdict=verdict, error=err, models=models,
                           steps_used=sum(1 for e in self.evidence.values()),
                           finished=time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()))
         self._emit({"type": "verdict", "hunt_id": hid, "verdict": verdict, "status": status})

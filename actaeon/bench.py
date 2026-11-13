@@ -61,7 +61,12 @@ def score(results: list[dict]) -> dict:
     return {"cases": len(results), "correct": correct, "accuracy": round(correct / max(1, len(results)), 2),
             "threat_precision": round(tp / (tp + fp), 2) if tp + fp else None,
             "threat_recall": round(tp / (tp + fn), 2) if tp + fn else None,
-            "true_positives": tp, "false_positives": fp, "false_negatives": fn}
+            "true_positives": tp, "false_positives": fp, "false_negatives": fn,
+            "tokens_in": sum(r.get("tokens_in") or 0 for r in results),
+            "tokens_out": sum(r.get("tokens_out") or 0 for r in results),
+            "cost_usd": (round(sum(r["cost_usd"] for r in results), 4)
+                         if results and all(r.get("cost_usd") is not None for r in results) else None),
+            "seconds": sum(r.get("seconds") or 0 for r in results)}
 
 
 def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None) -> dict:
@@ -76,6 +81,8 @@ def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None) -
              "calls": sum(1 for s in h.get("steps") or [] if s["kind"] == "call"),
              "blocked": sum(1 for s in h.get("steps") or [] if s["kind"] == "blocked"),
              "seconds": round(time.monotonic() - t0), "hunt_id": h.get("id"), "error": h.get("error")}
+        u = (h.get("models") or {}).get("usage") or {}
+        r.update(tokens_in=u.get("tokens_in", 0), tokens_out=u.get("tokens_out", 0), cost_usd=u.get("cost_usd"))
         results.append(r)
         if on_case:
             on_case(r)

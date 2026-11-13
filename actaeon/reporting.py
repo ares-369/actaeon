@@ -70,7 +70,12 @@ def hunt_doc(h: dict, *, lead: dict | None = None) -> dict:
             ("Finished", h.get("finished") or "-"), ("Status", h["status"]), ("Origin", h.get("origin", "")),
             ("Started by", h.get("actor") or "-")]
     if h.get("models"):
-        meta.append(("Models", ", ".join(f"{r}: {m['provider']}/{m['model']}" for r, m in h["models"].items())))
+        meta.append(("Models", ", ".join(f"{r}: {m['provider']}/{m['model']}" for r, m in h["models"].items()
+                                         if isinstance(m, dict) and "provider" in m)))
+        u = h["models"].get("usage") or {}
+        if u.get("calls"):
+            meta.append(("Model use", f"{u['calls']} calls, {u['tokens_in']:,} tokens in, {u['tokens_out']:,} out"
+                         + (f", about ${u['cost_usd']:.4f}" if u.get("cost_usd") is not None else "")))
     if lead:
         meta.append(("Lead", f"#{lead['id']} {lead['status']} {lead.get('resolution') or ''}".strip()))
     return {"title": f"Hunt report: {h['hypothesis'][:120]}", "blocks": [("kv", meta), *_hunt_blocks(h)]}

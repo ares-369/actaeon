@@ -30,7 +30,12 @@ def markdown(h: dict, *, narrative: str = "", max_evidence_chars: int = 3000) ->
            f"- Hunt id: `{h['id']}`", f"- Started: {h['created']}  Finished: {h.get('finished') or '-'}",
            f"- Status: {h['status']}  Origin: {h.get('origin', '')}  By: {h.get('actor') or '-'}"]
     if h.get("models"):
-        out.append("- Models: " + ", ".join(f"{r} = {m['provider']}/{m['model']}" for r, m in h["models"].items()))
+        out.append("- Models: " + ", ".join(f"{r} = {m['provider']}/{m['model']}" for r, m in h["models"].items()
+                                            if isinstance(m, dict) and "provider" in m))
+        u = h["models"].get("usage") or {}
+        if u.get("calls"):
+            cost = f", about ${u['cost_usd']:.4f}" if u.get("cost_usd") is not None else ""
+            out.append(f"- Model use: {u['calls']} call(s), {u['tokens_in']:,} tokens in, {u['tokens_out']:,} out{cost}")
     out += ["", f"## Verdict: {OUTCOME_TEXT.get(v.get('outcome'), v.get('outcome', '-'))} "
                 f"(confidence {v.get('confidence', 0)})", "", v.get("summary", "") or "-", ""]
     if v.get("findings"):

@@ -33,9 +33,11 @@ class OllamaProvider(LLMProvider):
                 timeout=120,
             )
             r.raise_for_status()
-            content = r.json().get("message", {}).get("content", "") or ""
+            data = r.json()
+            content = data.get("message", {}).get("content", "") or ""
             content = _THINK_RE.sub("", content).strip()
-            return LLMResult(text=content or "(empty response)", model=use_model)
+            return LLMResult(text=content or "(empty response)", model=use_model,
+                             tokens_in=int(data.get("prompt_eval_count") or 0), tokens_out=int(data.get("eval_count") or 0))
         except Exception as exc:
             return LLMResult(text="", model=use_model, error=f"Ollama error: {exc}")
 

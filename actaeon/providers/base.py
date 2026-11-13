@@ -78,6 +78,8 @@ class LLMResult:
     tool_calls: list[ToolCall] = field(default_factory=list)
     model: str = ""
     error: str | None = None
+    tokens_in: int = 0
+    tokens_out: int = 0
 
 
 class LLMProvider(ABC):

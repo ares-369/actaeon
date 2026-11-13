@@ -108,3 +108,24 @@ def test_fallback_config(home):
     import pytest
     with pytest.raises(ValueError):
         config.preview_llm_update({"analyst": {"provider": "ollama", "fallback": [{"provider": "zzz"}]}})
+
+
+def test_usage_meter_and_cost(home):
+    from actaeon.providers import LLM
+    from actaeon.providers.base import LLMProvider, LLMResult
+    write_cfg(home, lambda d: d["llm"].update(prices={"m1": {"in": 1.0, "out": 4.0}}))
+    llm = LLM(config.get_config(reload=True))
+
+    class P(LLMProvider):
+        name = "p"
+
+        def chat(self, messages, *, model=None, **kw):
+            return LLMResult(text="ok", model=model, tokens_in=1000, tokens_out=500)
+    llm._cache["ollama"] = P({})
+    b = llm.for_role("analyst")
+    b.model = "m1"
+    b.chat([])
+    b.chat([])
+    u = llm.usage_summary()
+    assert u["calls"] == 2 and u["tokens_in"] == 2000 and u["tokens_out"] == 1000
+    assert u["cost_usd"] == round(2000 / 1e6 * 1 + 1000 / 1e6 * 4, 5)

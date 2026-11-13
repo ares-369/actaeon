@@ -55,3 +55,17 @@ Prompts to cloud providers are masked by default. See [privacy.md](privacy.md).
 ## Native tool calling
 
 Claude, Gemini and OpenAI-compatible providers offer the hunt actions as native tools. If the model or gateway rejects tools, Actaeon retries the same request without them and uses the JSON action protocol. Set `native_tools: false` on a provider to always use the JSON protocol.
+
+## Usage and cost
+
+Every hunt records model calls and tokens (in and out) per model; the hunt page, the
+reports and `actaeon bench` show them. To see an estimated cost, list your prices in
+USD per million tokens:
+
+```yaml
+llm:
+  prices:
+    "<model name>": { in: 0.30, out: 2.50 }
+```
+
+Prices are yours to keep current; Actaeon does not look them up.
