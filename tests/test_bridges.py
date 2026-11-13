@@ -280,3 +280,17 @@ def test_connector_test_reads_the_source(tmp_path, monkeypatch):
     finally:
         hub.close()
         srv.shutdown()
+
+
+def test_snapshot_mode_no_time_bounds():
+    b = SearchIndexBridge("https://idx.example", ["inventory-*"], session=FakeSession(
+        {"_search": {"hits": {"total": {"value": 2}, "hits": [{"_index": "inventory-processes-x",
+                                                               "_id": "a", "_source": {"process": {"name": "bash"}}}]}}}),
+        snapshot=True)
+    out = b.search({"index": "inventory-processes*", "query": "process.name:bash"})
+    body = b.http.calls[0][2]["json"]
+    assert "sort" not in body                                   # snapshot: no time sort
+    assert all("range" not in str(f) for f in body["query"]["bool"].get("filter", []))   # no time range
+    assert out["total"] == 2 and out["hits"][0]["process"]["name"] == "bash"
+    with pytest.raises(ToolInputError):
+        b.first_seen({"index": "inventory-processes*", "field": "process.name"})

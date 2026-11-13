@@ -27,10 +27,12 @@ TIME_SCHEMA = {
 class SearchIndexBridge:
     def __init__(self, url: str, indices: list[str], time_field: str = "@timestamp", max_days: int = 30,
                  max_size: int = 500, verify_tls: bool = True, ca_bundle: str = "", timeout: float = 30,
-                 session=None):
+                 session=None, snapshot: bool = False):
         self.url = url.rstrip("/")
         self.indices = indices or ["*"]
-        self.time_field = time_field
+        # Snapshot indices (inventory / current-state) have no per-event time; searches are not time-bounded.
+        self.snapshot = snapshot
+        self.time_field = "" if snapshot else time_field
         self.max_days, self.max_size, self.timeout = max_days, max_size, timeout
         self.http = session or session_from_env("BRIDGE", verify_tls, ca_bundle)
 
@@ -58,7 +60,7 @@ class SearchIndexBridge:
                 SearchIndexBridge._no_scripts(v)
 
     def _query(self, args: dict, window=None) -> dict:
-        start, end = window or time_window(args, self.max_days)
+        start, end = (None, None) if self.snapshot else (window or time_window(args, self.max_days))
         must: list[dict] = []
         q = str(args.get("query", "") or "").strip()
         if q:
@@ -74,6 +76,8 @@ class SearchIndexBridge:
                 raise ToolInputError("dsl must be a JSON object (a query clause)")
             self._no_scripts(dsl)
             must.append(dsl)
+        if self.snapshot:
+            return {"bool": {"must": must or [{"match_all": {}}]}}
         rng = {"range": {self.time_field: {"gte": start.isoformat(), "lte": end.isoformat()}}}
         return {"bool": {"must": must or [{"match_all": {}}], "filter": [rng]}}
 
@@ -117,8 +121,9 @@ class SearchIndexBridge:
     def search(self, args: dict) -> dict:
         idx = self._index(args.get("index"))
         size = cap(args.get("size"), 50, self.max_size)
-        body: dict[str, Any] = {"query": self._query(args), "size": size, "track_total_hits": True,
-                                "sort": [{self.time_field: {"order": "desc" if args.get("order") != "asc" else "asc"}}]}
+        body: dict[str, Any] = {"query": self._query(args), "size": size, "track_total_hits": True}
+        if not self.snapshot:
+            body["sort"] = [{self.time_field: {"order": "desc" if args.get("order") != "asc" else "asc"}}]
         fields = args.get("fields")
         if fields:
             if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
@@ -154,6 +159,8 @@ class SearchIndexBridge:
 
     def first_seen(self, args: dict) -> dict:
         """Values of a field seen in the recent window but never in the baseline before it."""
+        if self.snapshot:
+            raise ToolInputError("first_seen needs an event time; this is a snapshot (current-state) source")
         idx = self._index(args.get("index"))
         field = str(args.get("field", "") or "")
         if not re.fullmatch(r"[A-Za-z0-9_.@-]{1,200}", field):
@@ -177,10 +184,12 @@ class SearchIndexBridge:
                 "note": "only the 500 most common recent values are compared" if len(vals) >= 500 else ""}
 
     def build(self) -> McpServer:
+        bound = ("Every result is current-state inventory (no event time); searches are not time-bounded and "
+                 if self.snapshot else
+                 f"bounded by time on field {self.time_field} (max {self.max_days} days) and ")
         srv = McpServer("actaeon-search-index", instructions=(
-            f"Read-only search index bridge. Queries use query_string (Lucene) syntax. Every search is "
-            f"bounded by time on field {self.time_field} (max {self.max_days} days) and capped at "
-            f"{self.max_size} hits. Call get_fields first to learn field names."))
+            "Read-only search index bridge. Queries use query_string (Lucene) syntax. Every search is "
+            + bound + f"capped at {self.max_size} hits. Call get_fields first to learn field names."))
         idx = {"index": {"type": "string", "description": f"index name or pattern within {self.indices}"}}
         q = {"query": {"type": "string", "description": "query_string (Lucene) query; empty = all"},
              "dsl": {"type": "object", "description": "optional JSON query clause, ANDed with query"}}
@@ -206,6 +215,8 @@ class SearchIndexBridge:
 
 
 def add_args(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--snapshot", action="store_true",
+                   help="current-state/inventory indices with no event time; searches are not time-bounded")
     p.add_argument("--url", required=True, help="base URL of the search index API")
     p.add_argument("--index", action="append", default=[], help="allowed index pattern (repeatable)")
     p.add_argument("--time-field", default="@timestamp")
@@ -217,4 +228,4 @@ def add_args(p: argparse.ArgumentParser) -> None:
 
 def run(a: argparse.Namespace) -> None:
     SearchIndexBridge(a.url, a.index, a.time_field, a.max_days, a.max_size,
-                      verify_tls=not a.insecure, ca_bundle=a.ca_bundle).build().serve()
+                      verify_tls=not a.insecure, ca_bundle=a.ca_bundle, snapshot=a.snapshot).build().serve()

@@ -98,3 +98,22 @@ an authorizer that denies anything but reads. MySQL and PostgreSQL sessions are 
 read-only transactions with a statement timeout. Rows are capped and long values cut.
 `--table` (repeatable) limits which tables can be read. MySQL needs `pymysql` and
 PostgreSQL `psycopg`; neither is installed by default. Use a read-only account anyway.
+
+### Snapshot (inventory) mode
+
+Add `--snapshot` to the search-index bridge for current-state indices that have no per-event
+timestamp (host inventory: running processes, listening ports, local users, installed packages).
+Searches are not time-bounded; `first_seen` is unavailable. Everything else (query, count,
+top_values, get_fields, index allowlist, caps) works the same. Example (host inventory indices):
+
+```yaml
+  - name: inventory
+    roles: [endpoint, asset, identity]
+    transport: stdio
+    command: actaeon
+    args: [bridge, search-index, --snapshot, --url, "https://indexer:9200",
+           --index, "inventory-processes-*", --index, "inventory-ports-*"]
+```
+
+This gives a hunter visibility into where dropped implants, backdoor ports, persistence and
+new accounts appear, even when no alert fired.
