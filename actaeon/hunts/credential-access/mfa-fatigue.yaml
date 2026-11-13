@@ -1,0 +1,6 @@
+id: mfa-fatigue
+name: MFA fatigue
+hypothesis: "One account received many MFA prompts in a short time, followed by an approval, in the last 7 days."
+attack: [T1621]
+roles: [identity, log_search]
+author: Actaeon project

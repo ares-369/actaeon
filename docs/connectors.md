@@ -103,11 +103,30 @@ only. This lowers prompt-injection risk; it does not remove it.
   counted but not checked. Cutting rows off the end does not break the chain:
   note the `head` hash somewhere else if that matters to you.
 
+## Checking a connector
+
+`actaeon connectors check [name]` tests whether a connector is fit for hunting, beyond "it
+answers":
+
+| Level | Examples |
+|---|---|
+| FAIL | cannot connect, no tools, every tool blocked by policy, input schemas that are not objects |
+| WARN | allowed tools not marked `readOnlyHint`, a search tool with no time argument or result cap, missing descriptions, `allow_write` on, plain http to a remote host, TLS checks off, a very long timeout, no query notes |
+| OK | everything else that was checked |
+
+It exits 1 on any FAIL, so it can run in CI. It cannot prove the account on the source is
+read-only: use a read-only account as well.
+
+To write your own connector, start from
+[templates/connector_template.py](templates/connector_template.py): one file, no dependencies,
+a read-only search tool with a time range and a result cap, ready for `connectors check`.
+
 ## Commands
 
 ```bash
 actaeon connectors             # list
 actaeon connectors test        # connect and count allowed tools
+actaeon connectors check logs  # contract check: read-only hints, time ranges, caps, TLS
 actaeon connectors tools logs  # show every tool and whether it is allowed
 ```
 

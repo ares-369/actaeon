@@ -1,0 +1,6 @@
+id: process-injection-indicators
+name: Process injection indicators
+hypothesis: "A process opened another process with write or thread-creation rights where the source is not a security or system tool, in the last 7 days."
+attack: [T1055]
+roles: [endpoint, log_search]
+author: Actaeon project

@@ -1,0 +1,6 @@
+id: unix-shell-from-a-web-server
+name: Unix shell from a web server
+hypothesis: "A web server or application server process started a shell or a network tool on a Linux host in the last 7 days."
+attack: [T1059.004, T1505.003]
+roles: [endpoint, log_search]
+author: Actaeon project

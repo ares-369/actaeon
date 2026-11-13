@@ -1,0 +1,6 @@
+id: unusual-dns
+name: Unusual DNS
+hypothesis: "A host made many DNS queries with long or random-looking subdomains to one domain in the last 24 hours."
+attack: [T1071.004, T1048]
+roles: [network, log_search]
+author: Actaeon project

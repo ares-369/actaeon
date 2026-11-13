@@ -1,0 +1,6 @@
+id: impossible-travel
+name: Impossible travel
+hypothesis: "One account signed in from two distant locations within a time too short to travel between them in the last 7 days."
+attack: [T1078]
+roles: [identity, log_search]
+author: Actaeon project

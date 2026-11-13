@@ -1,0 +1,6 @@
+id: directory-replication-from-a-non-controller
+name: Directory replication from a non-controller
+hypothesis: "A directory replication request (DCSync) came from a host or account that is not a domain controller in the last 30 days."
+attack: [T1003.006]
+roles: [identity, log_search]
+author: Actaeon project

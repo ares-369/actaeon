@@ -1,0 +1,6 @@
+id: linux-log-or-history-tampering
+name: Linux log or history tampering
+hypothesis: "Shell history was cleared or disabled, or a system log file was truncated or deleted, in the last 7 days."
+attack: [T1685.006, T1070.003]
+roles: [endpoint, log_search]
+author: Actaeon project

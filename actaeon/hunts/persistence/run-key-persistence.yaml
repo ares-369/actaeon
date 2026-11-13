@@ -1,0 +1,6 @@
+id: run-key-persistence
+name: Run key persistence
+hypothesis: "A registry Run or RunOnce value was added pointing at a user-writable or temporary path in the last 7 days."
+attack: [T1547.001]
+roles: [endpoint, log_search]
+author: Actaeon project

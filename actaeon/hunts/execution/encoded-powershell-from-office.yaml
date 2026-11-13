@@ -1,0 +1,6 @@
+id: encoded-powershell-from-office
+name: Encoded PowerShell from Office
+hypothesis: "An Office application started PowerShell with an encoded or hidden command line in the last 7 days."
+attack: [T1059.001, T1204.002]
+roles: [endpoint, log_search]
+author: Actaeon project

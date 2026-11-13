@@ -1,0 +1,6 @@
+id: kerberoasting
+name: Kerberoasting
+hypothesis: "One account requested service tickets for many different service accounts with weak encryption in a short window in the last 7 days."
+attack: [T1558.003]
+roles: [identity, log_search]
+author: Actaeon project

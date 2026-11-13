@@ -54,16 +54,17 @@ See [docs/demo.md](docs/demo.md).
 
 | Area | What you get |
 |---|---|
-| Hunting | Hypothesis hunts, saved hunts with scheduled replays, a starter library of hypotheses, advisory-driven hunts, threat-actor and campaign hunts, an intel sweep over the indicator ledger |
-| Sources | Any MCP server, plus built-in bridges for search indices, read-only SQL, STIX/TAXII 2.1 and any REST/OpenAPI service. Each connector gets query notes and examples in its own query language |
-| Intel | A local indicator and advisory store with first/last-seen tracking. Paste IOCs, import files, PDFs or URLs, or pull feeds |
+| Hunting | Hypothesis hunts, saved hunts with scheduled replays, advisory-driven hunts, threat-actor and campaign hunts, an intel sweep over the indicator ledger |
+| Hunt library | 65 ATT&CK-mapped hypotheses as one YAML file per hunt, a validator, and your own private packs alongside ([hunt packs](docs/hunt-packs.md)) |
+| Sources | Any MCP server, plus built-in bridges for search indices, read-only SQL, STIX/TAXII 2.1 and any REST/OpenAPI service. Each connector gets query notes and examples in its own query language. `actaeon connectors check` tests a connector, and a one-file template helps you write your own |
+| Intel | A local indicator and advisory store with first/last-seen tracking. Paste IOCs, import files, PDFs or URLs, or pull feeds. Export as STIX 2.1, or push a hunt's indicators to a TAXII 2.1 collection |
 | Analyst work | Leads with assignment, status, resolution and history; chat on a finished hunt; feedback on findings; a timeline view |
 | Detection | Draft rules from a hunt (Sigma, plus native queries) with a backtest of how often they would have fired |
 | Outputs | Email, Excel, webhook, or a write tool you explicitly allow (such as opening a case). A reply in the ticket can continue the hunt |
 | Reports | Markdown, CSV, PDF and Word, plus an ATT&CK coverage view |
 | Access | `basic`, `local`, OIDC single sign-on or a trusted proxy, with viewer, operator and admin roles. All of these are free |
 | Interfaces | Web UI, CLI, REST API, and Actaeon itself as an MCP server |
-| Running it | pip, Docker / compose (non-root, read-only filesystem) or systemd. Runs fully offline with local models |
+| Running it | pip, Docker / compose (non-root, read-only filesystem) or systemd. Runs with no internet access, with local models ([air-gapped](docs/air-gapped.md)) |
 
 ## Safety model
 
@@ -97,7 +98,8 @@ Details: [docs/threat-model.md](docs/threat-model.md), [docs/connectors.md](docs
 
 These came from one model on small samples, and the cases were written by someone who knew the
 answers. Read them as "it checks and clears correctly", not as proof that it finds every attacker.
-Run the same tests yourself with `actaeon bench`. Details, failures included, are in
+Run them yourself, with any model, with `actaeon bench --model <provider/model>`. Results from
+other models are welcome. Details, failures included, are in
 [docs/benchmarks.md](docs/benchmarks.md) and [docs/field-test-2026-11.md](docs/field-test-2026-11.md).
 
 ## Install
@@ -146,6 +148,7 @@ not in this repository.
 |---|---|
 | Hunting, limits, verdicts, chat | [docs/hunting.md](docs/hunting.md) |
 | Saved hunts, schedules, sweeps, memory | [docs/library.md](docs/library.md) |
+| Hunt packs (writing and sharing hypotheses) | [docs/hunt-packs.md](docs/hunt-packs.md) |
 | Connectors and bridges | [docs/connectors.md](docs/connectors.md), [docs/bridges.md](docs/bridges.md) |
 | Intel store and feeds | [docs/intel.md](docs/intel.md) |
 | Autonomy: web intel and autopilot | [docs/autonomy.md](docs/autonomy.md) |
@@ -153,7 +156,7 @@ not in this repository.
 | Models and providers | [docs/models.md](docs/models.md) |
 | Privacy masking | [docs/privacy.md](docs/privacy.md) |
 | Organisation setup | [docs/company-setup.md](docs/company-setup.md) |
-| Deployment | [docs/deploy.md](docs/deploy.md) |
+| Deployment, air-gapped networks | [docs/deploy.md](docs/deploy.md), [docs/air-gapped.md](docs/air-gapped.md) |
 | Actaeon as an MCP server | [docs/mcp-server.md](docs/mcp-server.md) |
 | Benchmarks | [docs/benchmarks.md](docs/benchmarks.md) |
 | Threat model, limitations | [docs/threat-model.md](docs/threat-model.md), [docs/known-limitations.md](docs/known-limitations.md) |
@@ -169,8 +172,8 @@ not in this repository.
 
 ## Contributing
 
-Bug reports, hunt hypotheses, connector notes and benchmark runs with other models are all
-welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) for how to report
+Bug reports, hunt hypotheses ([hunt packs](docs/hunt-packs.md)), connectors and benchmark runs
+with other models are all welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) for how to report
 a vulnerability.
 
 ```bash

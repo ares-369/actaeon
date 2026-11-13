@@ -1,0 +1,6 @@
+id: data-staged-on-a-network-share
+name: Data staged on a network share
+hypothesis: "Many files from different folders were copied to one network share or local staging folder by one account in the last 7 days."
+attack: [T1074]
+roles: [endpoint, log_search]
+author: Actaeon project

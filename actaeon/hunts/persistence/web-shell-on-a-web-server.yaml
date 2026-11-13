@@ -1,0 +1,6 @@
+id: web-shell-on-a-web-server
+name: Web shell on a web server
+hypothesis: "A new script file appeared in a web server's content folder and was then requested from outside in the last 7 days."
+attack: [T1505.003]
+roles: [endpoint, network, log_search]
+author: Actaeon project

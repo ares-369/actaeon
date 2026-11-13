@@ -1,0 +1,6 @@
+id: office-macro-writing-executables
+name: Office macro writing executables
+hypothesis: "An Office application wrote an executable, script or DLL to disk in the last 7 days."
+attack: [T1204.002, T1137]
+roles: [endpoint, log_search]
+author: Actaeon project

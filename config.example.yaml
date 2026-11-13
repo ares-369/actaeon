@@ -95,6 +95,7 @@ hunt:
   max_result_bytes: 20000    # per tool result shown to the model (search hits are compacted)
   max_results: 200           # cap on size/limit arguments of any tool
   max_query_sec: 120         # one tool call, retries included (also never past max_runtime_sec); 0 = no cap
+  library_dirs: []           # extra hunt-pack folders (one YAML per hunt, see docs/hunt-packs.md)
   max_tokens: 0              # model tokens (in + out) per hunt; when reached the hunt must give its verdict. 0 = no cap
   prompt_mode: full          # full | compact (shorter prompts for cheaper models)
   handoff: [inconclusive, logs_missing, unverified_threat, error, known_good_threat, injection]   # hand these to an analyst

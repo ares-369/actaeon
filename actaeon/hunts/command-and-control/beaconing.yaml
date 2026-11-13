@@ -1,0 +1,6 @@
+id: beaconing
+name: Beaconing
+hypothesis: "A host made regular, evenly spaced connections to one rare external destination over the last 24 hours."
+attack: [T1071.001]
+roles: [network, log_search]
+author: Actaeon project

@@ -1,0 +1,6 @@
+id: as-rep-roasting
+name: AS-REP roasting
+hypothesis: "Kerberos pre-authentication was not required for ticket requests on several accounts from one source in the last 7 days."
+attack: [T1558.004]
+roles: [identity, log_search]
+author: Actaeon project

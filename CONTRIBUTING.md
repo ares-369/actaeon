@@ -17,3 +17,12 @@ Guidelines:
 - No product or vendor names in code, UI or docs; describe roles and protocols.
 - Add tests with each change, and keep the UI free of `innerHTML`.
 - Keep the tone modest: state what was tested and what was not.
+
+Easy ways to help:
+
+- **Hunts:** add a hypothesis to the hunt pack ([docs/hunt-packs.md](docs/hunt-packs.md)).
+- **Benchmark runs:** run `actaeon bench --model <provider/model> --markdown` and send the row with
+  the JSON report ([docs/benchmarks.md](docs/benchmarks.md)).
+- **Connectors:** start from [docs/templates/connector_template.py](docs/templates/connector_template.py)
+  and check it with `actaeon connectors check`. Put product-specific connectors in their own
+  repository; this one stays product-neutral.

@@ -119,7 +119,7 @@ def build(cfg, jobs, *, role_of=lambda: "admin", llm=None, hub=None) -> McpServe
 
     add("list_saved_hunts", "Saved hunts in the library and their last replay.", {},
         lambda a: {"saved": hs.library_for(cfg).list()})
-    add("list_starters", "Built-in starter hypotheses with ATT&CK IDs.", {}, lambda a: {"starters": starters()})
+    add("list_starters", "Built-in starter hypotheses with ATT&CK IDs.", {}, lambda a: {"starters": starters(cfg)})
 
     def run_replay(a):
         sid = int(a.get("id", 0))

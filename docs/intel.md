@@ -67,6 +67,22 @@ actaeon intel list --type domain
 actaeon intel stats
 ```
 
+## Export as STIX 2.1
+
+```bash
+actaeon intel export -o intel.stix.json                  # everything active
+actaeon intel export --tag campaign-x --min-confidence 70 --since 2026-11-01
+```
+
+Also `GET /api/intel/export.stix` (same filters as query parameters), the **Export all as STIX
+2.1** link in the Intel view, and a **STIX** button on each hunt (`GET /api/hunts/<id>/stix`):
+the indicators named in its findings, its ATT&CK techniques and a `report` object that ties them
+together. Indicators become `indicator` objects with STIX patterns; CVEs become `vulnerability`
+and technique IDs `attack-pattern` objects. Object ids come from the content, so exporting the
+same indicator again gives the same id. The producer is an `identity` named after
+`actaeon.instance_name`. To push a hunt's bundle to a TAXII 2.1 collection automatically, use the
+`taxii` output ([outputs.md](outputs.md)).
+
 ## Feeds
 
 ```yaml

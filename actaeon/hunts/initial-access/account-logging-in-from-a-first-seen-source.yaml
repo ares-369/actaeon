@@ -1,0 +1,6 @@
+id: account-logging-in-from-a-first-seen-source
+name: Account logging in from a first-seen source
+hypothesis: "An account signed in successfully from a source IP or device it never used in the previous 30 days."
+attack: [T1078]
+roles: [identity, log_search]
+author: Actaeon project

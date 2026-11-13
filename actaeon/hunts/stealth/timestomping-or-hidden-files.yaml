@@ -1,0 +1,6 @@
+id: timestomping-or-hidden-files
+name: Timestomping or hidden files
+hypothesis: "File timestamps were changed to an older date, or files were marked hidden/system, in a user or temp folder in the last 7 days."
+attack: [T1070.006, T1564.001]
+roles: [endpoint, log_search]
+author: Actaeon project

@@ -1,0 +1,6 @@
+id: archive-created-before-transfer
+name: Archive created before transfer
+hypothesis: "A large archive (zip, rar, 7z) was created in a temp or user folder and an outbound transfer followed within an hour, in the last 7 days."
+attack: [T1560.001, T1041]
+roles: [endpoint, network, log_search]
+author: Actaeon project

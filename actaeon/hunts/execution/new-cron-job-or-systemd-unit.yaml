@@ -1,0 +1,6 @@
+id: new-cron-job-or-systemd-unit
+name: New cron job or systemd unit
+hypothesis: "A cron entry, systemd unit or timer was created or changed on a Linux host outside package installs in the last 7 days."
+attack: [T1053.003, T1543.002]
+roles: [endpoint, log_search]
+author: Actaeon project

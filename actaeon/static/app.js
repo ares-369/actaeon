@@ -323,7 +323,8 @@ function renderHunt(hu) {
       h("a", { href: `/api/hunts/${hu.id}/report.docx` }, h("button", { class: "ghost" }, icon("file-word-box"), "Word")),
       h("a", { href: `/api/hunts/${hu.id}/report.md` }, h("button", { class: "ghost" }, icon("file-document"), "Markdown")),
       h("a", { href: `/api/hunts/${hu.id}/export.json` }, h("button", { class: "ghost" }, icon("code-json"), "JSON")),
-      h("a", { href: `/api/hunts/${hu.id}/export.csv` }, h("button", { class: "ghost" }, icon("file-delimited"), "CSV"))),
+      h("a", { href: `/api/hunts/${hu.id}/export.csv` }, h("button", { class: "ghost" }, icon("file-delimited"), "CSV")),
+      h("a", { href: `/api/hunts/${hu.id}/stix`, title: "Indicators, techniques and a report as a STIX 2.1 bundle" }, h("button", { class: "ghost" }, icon("export-variant"), "STIX"))),
     hu.error && h("p", { class: "warn" }, hu.error));
   const out = [head];
   if (hu.verdict) {
@@ -514,7 +515,8 @@ async function intel() {
   const out = h("pre", { class: "hidden" });
   const show = (x) => { out.textContent = typeof x === "string" ? x : JSON.stringify(x, null, 1); out.classList.remove("hidden"); };
   main.append(section("Add intel", "shield-plus",
-    h("p", { class: "muted small" }, `${st.indicators} indicators, ${st.advisories} advisories. Review the preview: extraction is pattern-based.`),
+    h("p", { class: "muted small" }, `${st.indicators} indicators, ${st.advisories} advisories. Review the preview: extraction is pattern-based. `,
+      h("a", { href: "/api/intel/export.stix" }, "Export all as STIX 2.1")),
     title, text, h("div", { class: "row" }, conf, tags,
       h("button", { "data-need": "op", class: "ghost", onclick: async () => show((await api("/api/intel/indicators", { text: text.value, preview: true })).found) }, icon("eye"), "Preview"),
       h("button", { "data-need": "op", onclick: async () => {

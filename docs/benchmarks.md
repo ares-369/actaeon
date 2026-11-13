@@ -38,6 +38,29 @@ Then run:
 actaeon bench --cases my-cases.yaml
 ```
 
+## Comparing models
+
+Run the same cases with another model, without editing `config.yaml`:
+
+```bash
+actaeon bench --model ollama/qwen3:32b --markdown                 # every role on one model
+actaeon bench --model openai_compatible/<model> --role-model analyst=anthropic/<model>
+```
+
+`--model` and `--role-model` turn off fallbacks, so the score belongs to the model you named.
+`--markdown` prints a row for the table below. The JSON report records the Actaeon version, the
+models of each role, tokens, cost (when `llm.prices` lists the model) and time per case.
+
+### Results per model (send yours)
+
+Built-in demo cases unless noted. Add a row in a pull request with the JSON report attached; say
+which cases you ran and anything you changed. A run on your own data is welcome too, described in
+words when the cases are private.
+
+| Model | Cases | Correct | Threat precision | Threat recall | False positives | Time / case | Tokens / case | Cost / case | Date | Version |
+|---|---|---|---|---|---|---|---|---|---|---|
+| fast cloud model (all roles) | built-in demo cases | 7/8 | 1.00 | 1.00 | 0 | 1-7 min | n/a | n/a | 2026-11-13 | 0.1.0-dev |
+
 ## Notes on interpreting scores
 
 - Results depend heavily on the model assigned to the `analyst` role and on the

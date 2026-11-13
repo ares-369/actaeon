@@ -1,0 +1,6 @@
+id: phishing-attachment-to-process
+name: Phishing attachment to process
+hypothesis: "A user opened an email attachment that then started a script host or command shell in the last 7 days."
+attack: [T1566.001, T1204.002]
+roles: [email, endpoint, log_search]
+author: Actaeon project

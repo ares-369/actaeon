@@ -1,0 +1,6 @@
+id: firewall-rule-added-or-disabled
+name: Firewall rule added or disabled
+hypothesis: "A host firewall rule was added that allows inbound access, or the firewall was turned off, in the last 7 days."
+attack: [T1686]
+roles: [endpoint, log_search]
+author: Actaeon project

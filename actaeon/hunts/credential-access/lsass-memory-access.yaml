@@ -1,0 +1,6 @@
+id: lsass-memory-access
+name: LSASS memory access
+hypothesis: "A process that is not a known security or system tool opened LSASS memory in the last 7 days."
+attack: [T1003.001]
+roles: [endpoint, log_search]
+author: Actaeon project

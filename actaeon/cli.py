@@ -84,7 +84,14 @@ def cmd_connectors(action: str, name: str | None) -> int:
         if n not in hub.specs:
             print(f"unknown connector {n}")
             return 1
-        if action == "test":
+        if action == "check":
+            from .connectors.contract import check
+            res = check(hub, n)
+            print(f"== {n}")
+            for r in res:
+                print(f"  {r['level']:4}  {r['check']}" + (f": {r['detail']}" if r["detail"] else ""))
+            rc |= 1 if any(r["level"] == "FAIL" for r in res) else 0
+        elif action == "test":
             r = hub.test(n)
             print(f"{n}: " + (f"ok, {r['allowed']}/{r['tools']} tools allowed, {r['ms']} ms" if r["ok"]
                               else f"FAILED: {r['error']}"))
@@ -173,6 +180,17 @@ def cmd_intel(a) -> int:
         if jobs and out["hunts"]:
             print(f"started {len(out['hunts'])} hunt(s); waiting for them to finish...")
             jobs.pool.shutdown(wait=True)
+    elif a.action == "export":
+        from .intel.stix import export_store
+        b = export_store(store, tag=a.tag[0] if a.tag else None, min_confidence=a.min_confidence,
+                         changed_since=a.since or None, producer_name=a.producer)
+        text = _json.dumps(b, indent=1)
+        if a.output:
+            Path(a.output).write_text(text)
+            print(f"wrote {len(b['objects'])} STIX objects to {a.output}")
+        else:
+            print(text)
+        return 0
     elif a.action == "lookup":
         out = store.lookup(a.value)
     elif a.action == "list":
@@ -294,7 +312,7 @@ def cmd_phase5(a) -> int:
         return 0
     lib = hs.library_for(cfg)
     if a.action == "starters":
-        for s in starters():
+        for s in starters(cfg):
             print(f"- {s['name']} [{', '.join(s['attack'])}]\n    {s['hypothesis']}")
         return 0
     if a.action == "list":
@@ -388,6 +406,30 @@ def cmd_models_test() -> int:
     return rc
 
 
+def cmd_validate_pack(path: str | None) -> int:
+    """Check hunt-pack YAML files (a folder or one file; default: the built-in pack)."""
+    from pathlib import Path
+
+    import yaml
+
+    from .hunt.packs import PackError, builtin_dir, load_dir, validate
+    target = Path(path) if path else builtin_dir()
+    if not target.exists():
+        print(f"FAIL {target} does not exist")
+        return 1
+    try:
+        if target.is_file():
+            validate(yaml.safe_load(target.read_text(encoding="utf-8")), filename=target.name)
+            n = 1
+        else:
+            n = len(load_dir(target))
+    except (PackError, yaml.YAMLError, OSError) as exc:
+        print(f"FAIL {exc}")
+        return 1
+    print(f"OK {n} hunt(s) in {target}")
+    return 0
+
+
 def cli_main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="actaeon", description="Open-source AI threat hunter (MCP connectors).")
     sub = ap.add_subparsers(dest="cmd")
@@ -404,7 +446,7 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_models.add_argument("action", nargs="?", choices=["show", "test"], default="show")
     sub.add_parser("hash-password", help="print a password hash for auth.password_hash")
     p_con = sub.add_parser("connectors", help="list, test or show tools of MCP connectors")
-    p_con.add_argument("action", choices=["list", "test", "tools", "login"], nargs="?", default="list")
+    p_con.add_argument("action", choices=["list", "test", "check", "tools", "login"], nargs="?", default="list")
     p_con.add_argument("name", nargs="?")
     p_con.add_argument("--manual", action="store_true", help="login: paste the redirect URL instead of a local listener")
     p_aud = sub.add_parser("audit", help="check the audit log's hash chain")
@@ -441,6 +483,12 @@ def cli_main(argv: list[str] | None = None) -> None:
     x.add_argument("--value-field", default="")
     x.add_argument("--list-key", default="")
     x.add_argument("--extract", action="store_true")
+    x = isub.add_parser("export", help="export indicators as a STIX 2.1 bundle")
+    x.add_argument("--tag", action="append", default=[], help="only indicators with this tag")
+    x.add_argument("--min-confidence", type=int, default=0)
+    x.add_argument("--since", default="", help="only indicators changed since this ISO time")
+    x.add_argument("--producer", default="Actaeon", help="name of the producing identity")
+    x.add_argument("-o", "--output", default="", help="write to a file instead of stdout")
     x = isub.add_parser("pull", help="pull configured feeds (intel.feeds)")
     x.add_argument("name", nargs="?")
     x = isub.add_parser("actor", help="threat actor profiles: actor list | actor add NAME ... | actor show NAME")
@@ -468,8 +516,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_h.add_argument("--json", action="store_true")
     p_h.add_argument("--advisory", type=int, metavar="ID", help="hunt the activity in a stored advisory")
     p_h.add_argument("--actor", metavar="NAME", help="campaign: sweep an actor's indicators and hunt its techniques")
-    p_lib = sub.add_parser("library", help="saved hunts: list, save a finished hunt, replay, starters")
-    p_lib.add_argument("action", choices=["list", "save", "run", "starters", "delete"])
+    p_lib = sub.add_parser("library", help="saved hunts: list, save a finished hunt, replay, starters; "
+                                           "validate hunt-pack files")
+    p_lib.add_argument("action", choices=["list", "save", "run", "starters", "delete", "validate"])
     p_lib.add_argument("id", nargs="?")
     p_lib.add_argument("--name", default="")
     p_lib.add_argument("--every", type=int, default=0, help="replay interval in minutes (0 = manual)")
@@ -489,6 +538,11 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_b.add_argument("--only", action="append", default=[], help="case id to run (repeatable)")
     p_b.add_argument("--max-steps", type=int, default=None)
     p_b.add_argument("--workers", type=int, default=1, help="cases run in parallel (default 1)")
+    p_b.add_argument("--model", default="", help="provider/model for every role, e.g. ollama/qwen3:32b "
+                                                 "(no fallbacks, so the score is that model's)")
+    p_b.add_argument("--role-model", action="append", default=[], metavar="ROLE=PROVIDER/MODEL",
+                     help="override one role, e.g. analyst=anthropic/<model> (repeatable)")
+    p_b.add_argument("--markdown", action="store_true", help="also print a results-table row for docs/benchmarks.md")
     p_out = sub.add_parser("outputs", help="list outputs, or send a sample result to one: outputs test NAME")
     p_out.add_argument("action", nargs="?", choices=["list", "test"], default="list")
     p_out.add_argument("name", nargs="?")
@@ -577,8 +631,16 @@ def cli_main(argv: list[str] | None = None) -> None:
             print(f"{mark} {r['id']:18} got {r['outcome']!s:22} want {'/'.join(r['expect']):30} "
                   f"conf {r['confidence']} calls {r['calls']} blocked {r['blocked']} {r['seconds']}s "
                   f"tok {r.get('tokens_in', 0)}/{r.get('tokens_out', 0)}", flush=True)
-        out = run_bench(get_config(), cases, max_steps=a.max_steps, on_case=show, workers=max(1, a.workers))
+        try:
+            out = run_bench(get_config(), cases, max_steps=a.max_steps, on_case=show, workers=max(1, a.workers),
+                            model=a.model, role_models=a.role_model)
+        except ValueError as exc:
+            print(f"error: {exc}")
+            sys.exit(2)
         print(out["score"])
+        if a.markdown:
+            from .bench import markdown_row
+            print(markdown_row(out))
         print(f"saved {out['file']}")
         return
     if a.cmd == "outputs":
@@ -653,6 +715,8 @@ def cli_main(argv: list[str] | None = None) -> None:
         from .decode import decode
         print(_json.dumps(decode(a.text if a.text else sys.stdin.read()), indent=2))
         return
+    if a.cmd == "library" and a.action == "validate":
+        sys.exit(cmd_validate_pack(a.id))
     if a.cmd in ("library", "sweep", "note"):
         sys.exit(cmd_phase5(a))
     if a.cmd == "connectors":

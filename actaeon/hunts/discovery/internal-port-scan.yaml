@@ -1,0 +1,6 @@
+id: internal-port-scan
+name: Internal port scan
+hypothesis: "One internal host connected to many hosts or ports with mostly failed connections in a short window in the last 24 hours."
+attack: [T1046]
+roles: [network, log_search]
+author: Actaeon project

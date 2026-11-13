@@ -1,0 +1,6 @@
+id: upload-to-cloud-storage
+name: Upload to cloud storage
+hypothesis: "A host uploaded an unusually large amount of data to a cloud storage or file-sharing service in the last 7 days."
+attack: [T1567.002]
+roles: [network, cloud, log_search]
+author: Actaeon project

@@ -1,0 +1,6 @@
+id: uac-bypass-pattern
+name: UAC bypass pattern
+hypothesis: "An auto-elevating Windows binary started an unexpected child process, or an HKCU class/shell registry key was written just before one ran, in the last 7 days."
+attack: [T1548.002]
+roles: [endpoint, log_search]
+author: Actaeon project

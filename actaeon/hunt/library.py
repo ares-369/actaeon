@@ -15,10 +15,7 @@ import json
 import sqlite3
 import threading
 from datetime import datetime, timezone
-from importlib import resources
 from pathlib import Path
-
-import yaml
 
 from ..connectors.hub import ToolCallError
 from .signals import fingerprint, hits
@@ -30,10 +27,10 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def starters() -> list[dict]:
-    """Built-in starter hypotheses (no queries; the model writes those for your data)."""
-    text = resources.files("actaeon.hunt").joinpath("starters.yaml").read_text()
-    return yaml.safe_load(text) or []
+def starters(cfg=None) -> list[dict]:
+    """Hunt-pack hypotheses (no queries; the model writes those for your data). See hunt/packs.py."""
+    from .packs import load_all
+    return load_all(cfg)
 
 
 class Library:

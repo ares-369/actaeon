@@ -1,0 +1,6 @@
+id: cloud-access-key-used-from-a-new-location
+name: Cloud access key used from a new location
+hypothesis: "A cloud access key or service principal was used from an IP range or region it never used in the previous 30 days."
+attack: [T1078.004]
+roles: [cloud, log_search]
+author: Actaeon project

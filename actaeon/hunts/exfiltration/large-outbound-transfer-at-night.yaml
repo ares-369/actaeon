@@ -1,0 +1,6 @@
+id: large-outbound-transfer-at-night
+name: Large outbound transfer at night
+hypothesis: "A host sent far more data to one external destination outside working hours than it does normally, in the last 7 days."
+attack: [T1048, T1029]
+roles: [network, log_search]
+author: Actaeon project

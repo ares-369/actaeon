@@ -1,0 +1,6 @@
+id: service-stop-spree
+name: Service stop spree
+hypothesis: "One process or account stopped many services (databases, backups, security) within a short time in the last 7 days."
+attack: [T1489]
+roles: [endpoint, log_search]
+author: Actaeon project

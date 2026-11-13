@@ -1,0 +1,6 @@
+id: remote-service-execution
+name: Remote service execution
+hypothesis: "A service was created remotely on a host, or an admin share was used to copy and run a binary, in the last 7 days."
+attack: [T1021.002, T1569.002]
+roles: [endpoint, log_search, network]
+author: Actaeon project

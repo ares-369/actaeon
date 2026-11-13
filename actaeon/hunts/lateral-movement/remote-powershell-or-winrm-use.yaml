@@ -1,0 +1,6 @@
+id: remote-powershell-or-winrm-use
+name: Remote PowerShell or WinRM use
+hypothesis: "WinRM or remote PowerShell sessions were opened between workstations, or by an account that does not normally use them, in the last 7 days."
+attack: [T1021.006]
+roles: [endpoint, network, log_search]
+author: Actaeon project

@@ -22,6 +22,12 @@
         when: [threat, needs_review]
         url: "https://hooks.example.org/actaeon"
         headers: {Authorization: "Bearer ${HOOK_TOKEN}"}
+      - name: share-intel
+        type: taxii                        # push the hunt's STIX 2.1 bundle to a TAXII 2.1 collection
+        when: [threat]
+        url: "https://tip.example.org/taxii2/api1/collections/<collection-id>/objects/"
+        headers: {Authorization: "Bearer ${TIP_TOKEN}"}
+        min_confidence: 70                 # optional: only hunts at or above this confidence
       - name: open-case
         type: mcp_tool                     # e.g. a case-management tool on a connector
         when: [threat]
@@ -49,7 +55,7 @@ from typing import Any
 
 import requests
 
-TYPES = ("email", "excel", "webhook", "mcp_tool")
+TYPES = ("email", "excel", "webhook", "mcp_tool", "taxii")
 EVENTS = ("threat", "needs_review", "benign", "no_results", "logs_missing", "inconclusive", "all", "reply")
 _XLSX_LOCK = threading.Lock()
 HEADERS = ["Time (UTC)", "Hunt id", "Origin", "Hypothesis", "Outcome", "Confidence", "Needs review", "Summary",
@@ -69,7 +75,7 @@ def validate(outputs: list) -> None:
         if bad:
             raise ValueError(f"outputs.{n}: unknown 'when' values {sorted(bad)}; use {EVENTS}")
         need = {"email": ("smtp_host", "from", "to"), "excel": ("path",), "webhook": ("url",),
-                "mcp_tool": ("connector", "tool")}[o["type"]]
+                "mcp_tool": ("connector", "tool"), "taxii": ("url",)}[o["type"]]
         missing = [k for k in need if not o.get(k)]
         if missing:
             raise ValueError(f"outputs.{n}: missing {', '.join(missing)}")
@@ -201,6 +207,27 @@ def send_webhook(o: dict, f: dict, session=None) -> str:
     return f"HTTP {r.status_code}"
 
 
+def send_taxii(o: dict, h: dict, cfg=None, session=None) -> str:
+    """POST the hunt's STIX 2.1 objects to a TAXII 2.1 collection (objects endpoint)."""
+    from .connectors.spec import expand_env
+    from .intel.stix import hunt_bundle
+    v = h.get("verdict") or {}
+    if int(v.get("confidence") or 0) < int(o.get("min_confidence", 0) or 0):
+        return "skipped: below min_confidence"
+    producer = str(((getattr(cfg, "raw", None) or {}).get("actaeon") or {}).get("instance_name") or "Actaeon")
+    objs = hunt_bundle(h, producer_name=producer)["objects"]
+    if len(objs) < 2:
+        return "skipped: no indicators or techniques to share"
+    ctype = "application/taxii+json;version=2.1"
+    headers = {"Content-Type": ctype, "Accept": ctype,
+               **{str(k): expand_env(str(v)) for k, v in (o.get("headers") or {}).items()}}
+    r = (session or requests).post(str(o["url"]), data=json.dumps({"objects": objs}), headers=headers, timeout=30,
+                                   verify=bool(o.get("verify_tls", True)))
+    if r.status_code >= 400:
+        raise RuntimeError(f"HTTP {r.status_code}")
+    return f"HTTP {r.status_code}, {len(objs)} STIX objects"
+
+
 def call_tool(o: dict, f: dict, hub) -> str:
     args = _fill(o.get("arguments") or {}, f)
     out = hub.call(str(o["connector"]), str(o["tool"]), args, actor="outputs", hunt_id=f["hunt_id"])
@@ -240,6 +267,8 @@ def dispatch(cfg, h: dict, *, hub=None, only: str | None = None, smtp_cls=None, 
                 detail = append_excel(o, f)
             elif t == "webhook":
                 detail = send_webhook(o, f, session=session)
+            elif t == "taxii":
+                detail = send_taxii(o, h, cfg, session=session)
             else:
                 if hub is None:
                     from .connectors import get_hub

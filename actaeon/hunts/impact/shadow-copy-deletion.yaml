@@ -1,0 +1,6 @@
+id: shadow-copy-deletion
+name: Shadow copy deletion
+hypothesis: "Volume shadow copies or backup catalogs were deleted, or recovery was disabled, in the last 7 days."
+attack: [T1490]
+roles: [endpoint, log_search]
+author: Actaeon project

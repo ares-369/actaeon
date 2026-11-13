@@ -1,0 +1,6 @@
+id: first-seen-process-on-servers
+name: First-seen process on servers
+hypothesis: "A process name ran on a server in the last 24 hours that never ran on any server in the 14 days before."
+attack: [T1204, T1059]
+roles: [endpoint, log_search]
+author: Actaeon project

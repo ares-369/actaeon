@@ -1,0 +1,6 @@
+id: security-tool-tampering
+name: Security tool tampering
+hypothesis: "A security agent or logging service was stopped, uninstalled or had its settings changed in the last 7 days."
+attack: [T1685]
+roles: [endpoint, log_search]
+author: Actaeon project

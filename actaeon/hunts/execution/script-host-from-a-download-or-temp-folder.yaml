@@ -1,0 +1,6 @@
+id: script-host-from-a-download-or-temp-folder
+name: Script host from a download or temp folder
+hypothesis: "wscript, cscript or mshta ran a script from a downloads, temp or browser cache folder in the last 7 days."
+attack: [T1059.005, T1059.007]
+roles: [endpoint, log_search]
+author: Actaeon project

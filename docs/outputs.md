@@ -63,6 +63,23 @@ it. The connector must have `allow_write: true` and list `create_case` exactly i
 Template fields: `{title} {summary} {hypothesis} {outcome} {confidence} {severity}
 {findings} {indicators} {queries} {attack} {link} {hunt_id} {origin} {time}`.
 
+## Sharing indicators (TAXII 2.1)
+
+```yaml
+outputs:
+  - name: share-intel
+    type: taxii
+    when: [threat]
+    url: "https://tip.example.org/taxii2/api1/collections/<collection-id>/objects/"
+    headers: {Authorization: "Bearer ${TIP_TOKEN}"}
+    min_confidence: 70          # optional
+```
+
+Posts the hunt's STIX 2.1 bundle (indicators from the findings, ATT&CK techniques, a report) to
+the collection's objects endpoint. Hunts with nothing to share are skipped. Any platform that
+accepts TAXII 2.1 writes can receive it; check what your platform does with `indicator` objects
+before turning this on, because it may start alerting on them.
+
 ## Replies from the ticket
 
 A ticket opened by an output carries the hunt id (`{hunt_id}`). When the analyst

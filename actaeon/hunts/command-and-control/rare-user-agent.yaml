@@ -1,0 +1,6 @@
+id: rare-user-agent
+name: Rare user agent
+hypothesis: "A user agent string seen on fewer than three hosts in the last 7 days made outbound web requests."
+attack: [T1071.001]
+roles: [network, log_search]
+author: Actaeon project

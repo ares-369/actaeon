@@ -1,0 +1,6 @@
+id: registry-hive-or-ntds-copy
+name: Registry hive or NTDS copy
+hypothesis: "The SAM, SYSTEM or SECURITY hive, or the directory database, was saved or copied (reg save, shadow copy, ntdsutil) in the last 30 days."
+attack: [T1003.002, T1003.003]
+roles: [endpoint, log_search]
+author: Actaeon project

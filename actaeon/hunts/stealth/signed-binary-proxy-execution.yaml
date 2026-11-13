@@ -1,0 +1,6 @@
+id: signed-binary-proxy-execution
+name: Signed binary proxy execution
+hypothesis: "rundll32, regsvr32 or mshta loaded a script or DLL from a remote location or a user-writable path in the last 7 days."
+attack: [T1218.011, T1218.010, T1218.005]
+roles: [endpoint, log_search]
+author: Actaeon project

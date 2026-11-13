@@ -1,0 +1,6 @@
+id: rdp-from-an-unusual-source
+name: RDP from an unusual source
+hypothesis: "A remote desktop sign-in came from a workstation or account that does not normally use RDP to that host in the last 7 days."
+attack: [T1021.001]
+roles: [identity, endpoint, log_search]
+author: Actaeon project

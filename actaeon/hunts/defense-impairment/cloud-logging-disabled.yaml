@@ -1,0 +1,6 @@
+id: cloud-logging-disabled
+name: Cloud logging disabled
+hypothesis: "A cloud audit trail, log export or diagnostic setting was stopped, deleted or narrowed in the last 30 days."
+attack: [T1685]
+roles: [cloud, log_search]
+author: Actaeon project

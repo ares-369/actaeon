@@ -1,0 +1,6 @@
+id: mass-file-changes
+name: Mass file changes
+hypothesis: "One process renamed or rewrote a very large number of files in a short time in the last 24 hours."
+attack: [T1486]
+roles: [endpoint, log_search]
+author: Actaeon project

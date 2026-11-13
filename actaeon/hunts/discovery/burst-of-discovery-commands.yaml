@@ -1,0 +1,6 @@
+id: burst-of-discovery-commands
+name: Burst of discovery commands
+hypothesis: "One user or process ran several discovery commands (whoami, net group, nltest, systeminfo, ipconfig) within a few minutes in the last 7 days."
+attack: [T1087, T1069, T1082, T1016]
+roles: [endpoint, log_search]
+author: Actaeon project

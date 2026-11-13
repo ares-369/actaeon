@@ -1,0 +1,6 @@
+id: consent-to-an-unfamiliar-application
+name: Consent to an unfamiliar application
+hypothesis: "A user or admin granted an application broad mail, file or directory permissions in the last 30 days."
+attack: [T1528]
+roles: [identity, cloud, log_search]
+author: Actaeon project

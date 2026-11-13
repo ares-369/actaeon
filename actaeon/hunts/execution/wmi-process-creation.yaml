@@ -1,0 +1,6 @@
+id: wmi-process-creation
+name: WMI process creation
+hypothesis: "A process was started through WMI (WmiPrvSE as parent) that is a shell, script host or LOLBin in the last 7 days."
+attack: [T1047]
+roles: [endpoint, log_search]
+author: Actaeon project

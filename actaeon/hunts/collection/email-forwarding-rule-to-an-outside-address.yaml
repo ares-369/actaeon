@@ -1,0 +1,6 @@
+id: email-forwarding-rule-to-an-outside-address
+name: Email forwarding rule to an outside address
+hypothesis: "A mailbox rule was created that forwards or redirects mail to an external address in the last 30 days."
+attack: [T1114.003]
+roles: [email, log_search]
+author: Actaeon project

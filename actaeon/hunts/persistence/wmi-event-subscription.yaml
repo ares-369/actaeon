@@ -1,0 +1,6 @@
+id: wmi-event-subscription
+name: WMI event subscription
+hypothesis: "A permanent WMI event filter, consumer or binding was created in the last 30 days."
+attack: [T1546.003]
+roles: [endpoint, log_search]
+author: Actaeon project

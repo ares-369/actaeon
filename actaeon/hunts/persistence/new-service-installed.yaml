@@ -1,0 +1,6 @@
+id: new-service-installed
+name: New service installed
+hypothesis: "A service name was installed in the last 7 days that was never seen in the baseline before it, especially with a binary in a user-writable path."
+attack: [T1543.003]
+roles: [endpoint, log_search]
+author: Actaeon project

@@ -1,0 +1,6 @@
+id: storage-made-public
+name: Storage made public
+hypothesis: "A cloud storage bucket or container was made publicly readable, or a public share link was created for sensitive data, in the last 30 days."
+attack: [T1530]
+roles: [cloud, log_search]
+author: Actaeon project

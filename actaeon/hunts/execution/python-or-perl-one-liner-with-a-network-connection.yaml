@@ -1,0 +1,6 @@
+id: python-or-perl-one-liner-with-a-network-connection
+name: Python or Perl one-liner with a network connection
+hypothesis: "An interpreter ran an inline command (-c or -e) that opened a socket or downloaded content in the last 7 days."
+attack: [T1059.006]
+roles: [endpoint, log_search]
+author: Actaeon project

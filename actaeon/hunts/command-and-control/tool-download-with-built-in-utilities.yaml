@@ -1,0 +1,6 @@
+id: tool-download-with-built-in-utilities
+name: Tool download with built-in utilities
+hypothesis: "certutil, bitsadmin or a script host downloaded a file from the internet in the last 7 days."
+attack: [T1105]
+roles: [endpoint, log_search, network]
+author: Actaeon project

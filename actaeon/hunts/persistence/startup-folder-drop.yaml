@@ -1,0 +1,6 @@
+id: startup-folder-drop
+name: Startup folder drop
+hypothesis: "A file was written to a user or all-users Startup folder in the last 7 days."
+attack: [T1547.001]
+roles: [endpoint, log_search]
+author: Actaeon project

@@ -1,0 +1,6 @@
+id: image-file-execution-options-hijack
+name: Image file execution options hijack
+hypothesis: "A Debugger or GlobalFlag value was set under Image File Execution Options in the last 30 days."
+attack: [T1546.012]
+roles: [endpoint, log_search]
+author: Actaeon project

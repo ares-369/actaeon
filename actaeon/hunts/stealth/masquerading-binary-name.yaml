@@ -1,0 +1,6 @@
+id: masquerading-binary-name
+name: Masquerading binary name
+hypothesis: "A binary with a system process name (svchost, lsass, csrss, services) ran from a path other than the system folders in the last 7 days."
+attack: [T1036.005]
+roles: [endpoint, log_search]
+author: Actaeon project

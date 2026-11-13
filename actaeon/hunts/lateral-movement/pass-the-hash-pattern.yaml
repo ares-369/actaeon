@@ -1,0 +1,6 @@
+id: pass-the-hash-pattern
+name: Pass-the-hash pattern
+hypothesis: "NTLM network sign-ins with the same account came from several hosts in a short time, without an interactive sign-in first, in the last 7 days."
+attack: [T1550.002]
+roles: [identity, log_search]
+author: Actaeon project

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 from flask import Flask, jsonify, render_template, request
@@ -274,7 +275,7 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         c = get_config()
         lib = hs.library_for(c)
         if request.method == "GET":
-            return jsonify({"saved": lib.list(), "starters": starters()})
+            return jsonify({"saved": lib.list(), "starters": starters(c)})
         b = request.get_json(silent=True) or {}
         h = store_for(c).get(str(b.get("hunt_id", "")))
         if not h:
@@ -453,6 +454,25 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             return jsonify({"error": str(exc)}), 501
         return app.response_class(data, mimetype=MIMES[fmt],
                                   headers={"Content-Disposition": f'attachment; filename="{name}.{fmt}"'})
+
+    @app.route("/api/hunts/<hid>/stix")
+    def hunt_stix(hid):
+        from .intel.stix import hunt_bundle
+        b = hunt_bundle(_hunt_or_404(hid), producer_name=_producer())
+        return app.response_class(json.dumps(b, indent=1), mimetype="application/stix+json;version=2.1",
+                                  headers={"Content-Disposition": f'attachment; filename="hunt-{hid}.stix.json"'})
+
+    @app.route("/api/intel/export.stix")
+    def intel_export_stix():
+        from .intel.stix import export_store
+        a = request.args
+        b = export_store(intel_store(), producer_name=_producer(), tag=a.get("tag") or None,
+                         min_confidence=int(a.get("min_confidence", 0) or 0), changed_since=a.get("since") or None)
+        return app.response_class(json.dumps(b, indent=1), mimetype="application/stix+json;version=2.1",
+                                  headers={"Content-Disposition": 'attachment; filename="actaeon-intel.stix.json"'})
+
+    def _producer() -> str:
+        return str(((get_config().raw or {}).get("actaeon") or {}).get("instance_name") or "Actaeon")[:100]
 
     @app.route("/api/hunts/<hid>/report.<fmt>")
     def hunt_report_any(hid, fmt):

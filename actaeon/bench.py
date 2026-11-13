@@ -43,6 +43,10 @@ DEMO_CASES = [
 ]
 
 
+def cases_label(cases: list[dict]) -> str:
+    return "built-in demo cases" if cases and all(c in DEMO_CASES for c in cases) else "custom cases"
+
+
 def load_cases(path: str | None) -> list[dict]:
     if not path:
         return DEMO_CASES
@@ -74,18 +78,58 @@ def score(results: list[dict]) -> dict:
 _INFRA = __import__("re").compile(r"(?i)429|resource_exhausted|quota|rate.?limit|timed? ?out|timeout|connection|overloaded|unavailable")
 
 
-def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None, workers: int = 1) -> dict:
-    """Run every case as a real hunt and score it. ``workers`` > 1 runs cases in parallel."""
+def parse_model(spec: str) -> dict:
+    """'provider/model' -> {provider, model}. The model part may itself contain '/'."""
+    from .config import PROVIDERS
+    prov, _, model = str(spec).partition("/")
+    if prov not in PROVIDERS or not model:
+        raise ValueError(f"model must be provider/model with provider one of {PROVIDERS}, got {spec!r}")
+    return {"provider": prov, "model": model}
+
+
+def with_models(cfg, model: str = "", role_models: list[str] | None = None):
+    """A copy of ``cfg`` whose roles use the given models, with no fallbacks (so the score is that model's).
+
+    model: 'provider/model' for every role; role_models: ['analyst=provider/model', ...] for single roles."""
+    import copy
+    import dataclasses
+    if not model and not role_models:
+        return cfg
+    llm = copy.deepcopy(cfg.llm)
+    roles = llm.setdefault("roles", {})
+    for r in ("planner", "analyst", "reporter"):
+        if model:
+            roles[r] = parse_model(model)
+    for item in role_models or []:
+        role, _, spec = str(item).partition("=")
+        if role not in ("planner", "analyst", "reporter"):
+            raise ValueError(f"role must be planner, analyst or reporter, got {role!r}")
+        roles[role] = parse_model(spec)
+    for r in roles.values():
+        if isinstance(r, dict):
+            r.pop("fallback", None)
+    raw = copy.deepcopy(cfg.raw or {})
+    raw["llm"] = llm
+    return dataclasses.replace(cfg, llm=llm, raw=raw)
+
+
+def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None, workers: int = 1,
+        model: str = "", role_models: list[str] | None = None) -> dict:
+    """Run every case as a real hunt and score it. ``workers`` > 1 runs cases in parallel.
+    ``model`` / ``role_models``: run with these models instead of the configured ones (see with_models)."""
     import threading
     from concurrent.futures import ThreadPoolExecutor
 
     from .hunt.service import run_hunt
+    from .providers import LLM
+    cfg = with_models(cfg, model, role_models)
+    llm = LLM(cfg) if (model or role_models) else None
     lock = threading.Lock()
 
     def one(c):
         t0 = time.monotonic()
         for attempt in range(3):
-            h = run_hunt(cfg, c["hypothesis"], origin=f"bench:{c['id']}", max_steps=max_steps)
+            h = run_hunt(cfg, c["hypothesis"], origin=f"bench:{c['id']}", max_steps=max_steps, llm=llm)
             # A hunt that died on the model service (rate limit, timeout) says nothing about Actaeon's
             # judgement: run it again instead of scoring it, and record that it happened.
             if h.get("status") != "error" or not _INFRA.search(h.get("error") or ""):
@@ -111,10 +155,26 @@ def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None, w
     else:
         results = [one(c) for c in cases]
     models = {r: {"provider": cfg.role_cfg(r).get("provider"), "model": cfg.role_cfg(r).get("model")}
-              for r in ("planner", "analyst")}
-    out = {"when": datetime.now(timezone.utc).isoformat(timespec="seconds"), "models": models,
-           "score": score(results), "results": results}
+              for r in ("planner", "analyst", "reporter")}
+    from . import __version__
+    out = {"when": datetime.now(timezone.utc).isoformat(timespec="seconds"), "actaeon": __version__,
+           "models": models, "cases_file": cases_label(cases), "score": score(results), "results": results}
     p = cfg.data_dir / f"bench-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.json"
     p.write_text(json.dumps(out, indent=1))
     out["file"] = str(p)
     return out
+
+
+def markdown_row(out: dict) -> str:
+    """One row for the per-model results table in docs/benchmarks.md."""
+    s, m = out["score"], out["models"]
+    roles = {f"{v.get('provider')}/{v.get('model')}" for v in m.values()}
+    who = next(iter(roles)) if len(roles) == 1 else "; ".join(f"{k}: {v.get('provider')}/{v.get('model')}"
+                                                             for k, v in m.items())
+    def pct(x):
+        return "n/a" if x is None else f"{x:.2f}"
+    cost = "n/a" if s.get("cost_usd") is None else f"${s['cost_usd'] / max(1, s['cases']):.3f}"
+    return (f"| {who} | {out.get('cases_file', '')} | {s['correct']}/{s['cases']} | {pct(s['threat_precision'])} | "
+            f"{pct(s['threat_recall'])} | {s['false_positives']} | {round(s['seconds'] / max(1, s['cases']))} s | "
+            f"{round((s['tokens_in'] + s['tokens_out']) / max(1, s['cases']) / 1000)}k | {cost} | "
+            f"{out['when'][:10]} | {out.get('actaeon', '')} |")

@@ -1,0 +1,6 @@
+id: new-scheduled-task-by-an-unusual-parent
+name: New scheduled task by an unusual parent
+hypothesis: "A scheduled task was created by a script host, Office application or user-writable path in the last 7 days."
+attack: [T1053.005]
+roles: [endpoint, log_search]
+author: Actaeon project

@@ -1,0 +1,6 @@
+id: rare-parent-child-process-pair
+name: Rare parent-child process pair
+hypothesis: "A parent and child process pair appeared on only one or two hosts in the last 7 days and involves a shell or script host."
+attack: [T1059]
+roles: [endpoint, log_search]
+author: Actaeon project

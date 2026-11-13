@@ -1,0 +1,6 @@
+id: ssh-lateral-movement
+name: SSH lateral movement
+hypothesis: "An internal host made SSH connections to several other internal hosts it does not normally reach in the last 7 days."
+attack: [T1021.004]
+roles: [network, endpoint, log_search]
+author: Actaeon project

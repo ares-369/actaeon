@@ -1,0 +1,6 @@
+id: ssh-authorized-keys-change
+name: SSH authorized_keys change
+hypothesis: "An authorized_keys file was modified for any account in the last 7 days."
+attack: [T1098.004]
+roles: [endpoint, log_search]
+author: Actaeon project

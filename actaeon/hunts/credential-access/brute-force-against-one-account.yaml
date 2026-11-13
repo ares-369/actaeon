@@ -1,0 +1,6 @@
+id: brute-force-against-one-account
+name: Brute force against one account
+hypothesis: "One account had many failed sign-ins from several sources followed by a success in the last 24 hours."
+attack: [T1110.001]
+roles: [identity, log_search]
+author: Actaeon project

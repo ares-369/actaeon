@@ -1,0 +1,6 @@
+id: new-privileged-account
+name: New privileged account
+hypothesis: "An account was created or added to a privileged group outside a change window in the last 7 days."
+attack: [T1136, T1098]
+roles: [identity, log_search]
+author: Actaeon project

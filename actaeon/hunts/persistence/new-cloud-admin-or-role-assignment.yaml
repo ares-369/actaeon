@@ -1,0 +1,6 @@
+id: new-cloud-admin-or-role-assignment
+name: New cloud admin or role assignment
+hypothesis: "An identity was given an owner, admin or broad role on a subscription, project or account in the last 7 days."
+attack: [T1098.003]
+roles: [cloud, identity, log_search]
+author: Actaeon project

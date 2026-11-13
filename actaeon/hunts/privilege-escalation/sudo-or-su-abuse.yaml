@@ -1,0 +1,6 @@
+id: sudo-or-su-abuse
+name: Sudo or su abuse
+hypothesis: "An account ran sudo or su to root that does not normally do so, or many sudo failures came from one account, in the last 7 days."
+attack: [T1548.003]
+roles: [endpoint, log_search]
+author: Actaeon project

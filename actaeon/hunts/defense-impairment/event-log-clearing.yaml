@@ -1,0 +1,6 @@
+id: event-log-clearing
+name: Event log clearing
+hypothesis: "A Windows event log was cleared on any host in the last 30 days."
+attack: [T1685.005]
+roles: [endpoint, log_search]
+author: Actaeon project

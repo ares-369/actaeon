@@ -1,0 +1,6 @@
+id: first-seen-external-destination
+name: First-seen external destination
+hypothesis: "A host contacted an external IP or domain in the last 24 hours that no host contacted in the 14 days before, and kept contacting it."
+attack: [T1071]
+roles: [network, log_search]
+author: Actaeon project

@@ -16,6 +16,18 @@
 - The audit log is hash-chained; `actaeon audit verify` and `GET /api/audit/verify` find changed
   or removed rows.
 
+### Open standards and community
+- Hunt packs: the 65 starter hypotheses are now one YAML file per hunt under `actaeon/hunts/<tactic>/`,
+  with a schema, `actaeon library validate`, and `hunt.library_dirs` for private packs.
+- STIX 2.1 export of the intel store (`actaeon intel export`, `/api/intel/export.stix`) and of a hunt
+  (indicators, techniques and a report; **STIX** button). New `taxii` output pushes a hunt's bundle to a
+  TAXII 2.1 collection.
+- `actaeon connectors check`: a contract check for hunting connectors (read-only hints, time ranges,
+  result caps, descriptions, TLS, timeouts), and a one-file connector template that passes it.
+- `actaeon bench --model provider/model` and `--role-model`, with `--markdown` for the per-model results
+  table in docs/benchmarks.md.
+- Air-gapped guide, and a test that runs the offline demo and the UI with outbound connections refused.
+
 ### Workflow
 - Ticket replies: `POST /api/tickets/reply` turns an analyst's answer in a ticket into a question
   for Actaeon, a follow-up hunt (`/hunt ...`) or a resume (`/resume`). Answers go back through
