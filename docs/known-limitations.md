@@ -31,6 +31,10 @@ Actaeon is in beta (0.1.0b1). These are the limits we know about.
   costs more tokens.
 - A hunt uses roughly 400k to 500k input tokens with the fast cloud model (about 25 tool calls).
 
+- Host inventory is the last scan the agent sent. A machine that is switched off (a laptop, a
+  dual-boot system) keeps months-old inventory and vulnerability data, and hunts cannot tell how old it
+  is. Note such hosts in `environment.notes`, and remove agents of machines that no longer exist.
+
 ## Safety layers and their gaps
 
 - Read-only enforcement is layered: the connector policy (deny/allow lists,
