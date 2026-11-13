@@ -11,10 +11,13 @@ files, pull feeds) into a built-in store that hunts read like any other intel so
 The hunt engine asks for a role, never a specific product. Tools are
 read-only by default, and every tool call is written to an audit log.
 
-> Status: pre-alpha. Built so far: foundation (config, model providers, auth, job engine,
-> web server), the connector hub, generic bridges, a local intel store, the hunt engine, and the hunt library
-> with replays, intel sweeps and memory, and a web UI with reports and a coverage view.
-> See [docs/connectors.md](docs/connectors.md) and [docs/bridges.md](docs/bridges.md) and [docs/intel.md](docs/intel.md) and [docs/hunting.md](docs/hunting.md) and [docs/library.md](docs/library.md).
+> Status: early (0.1.0-dev, not released). All planned parts are built: connector hub,
+> bridges (search index, SQL, STIX/TAXII, OpenAPI, web), local intel store, hunt engine with
+> verification, hunt library with replays and intel sweeps, leads, reports, coverage, an MCP
+> server and a demo. It has been scored on a small synthetic suite and on a sample of the
+> public ExCyTIn-Bench (see [docs/benchmarks.md](docs/benchmarks.md)); it has not yet been
+> run against a production environment. Start with [docs/connectors.md](docs/connectors.md),
+> [docs/hunting.md](docs/hunting.md) and [docs/known-limitations.md](docs/known-limitations.md).
 
 ## Try it
 

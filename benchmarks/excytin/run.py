@@ -158,6 +158,7 @@ def main() -> None:
     ap.add_argument("--max-calls", type=int, default=25)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="excytin-results.json")
+    ap.add_argument("--resume", action="store_true", help="keep results already in --out and skip those questions")
     a = ap.parse_args()
 
     from actaeon.config import get_config
@@ -166,6 +167,9 @@ def main() -> None:
     llm = get_llm()
     rng = random.Random(a.seed)
     results = []
+    if a.resume and Path(a.out).exists():
+        results = json.loads(Path(a.out).read_text()).get("results", [])
+    done = {(r["incident"], r["index"]) for r in results}
     files = sorted(Path(a.questions).glob("incident_*_qa*.json"))
     for f in files:
         inc = "_".join(f.name.split("_")[:2])
@@ -175,11 +179,13 @@ def main() -> None:
         if not db.exists():
             print(f"{inc}: no database, skipped", file=sys.stderr)
             continue
-        qs = json.load(open(f, encoding="utf-8"))
+        qs = json.loads(f.read_text(encoding="utf-8"))
         idx = list(range(len(qs)))
         if a.per_incident:
             idx = sorted(rng.sample(idx, min(a.per_incident, len(idx))))
         for i in idx:
+            if (inc, i) in done:
+                continue
             q = qs[i]
             r = answer_one(cfg, llm, db, q, a.max_calls)
             r.update(judge(llm, q, r["answer"]))

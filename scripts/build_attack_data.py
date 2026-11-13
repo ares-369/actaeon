@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-bundle = json.load(open(sys.argv[1], encoding="utf-8"))
+bundle = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 objs = bundle["objects"]
 by_id = {o["id"]: o for o in objs}
 version = next((o.get("x_mitre_version") for o in objs if o.get("type") == "x-mitre-collection"), "")

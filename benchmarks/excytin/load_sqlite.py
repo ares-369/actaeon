@@ -37,7 +37,7 @@ def load(folder: Path, out: Path) -> None:
     db.execute("PRAGMA journal_mode=OFF")
     db.execute("PRAGMA synchronous=OFF")
     for name, parts, meta in tables(folder):
-        cols = list(json.load(open(meta, encoding="utf-8"))) if meta.exists() else None
+        cols = list(json.loads(meta.read_text(encoding="utf-8"))) if meta.exists() else None
         rows = 0
         for i, part in enumerate(parts):
             with open(part, encoding="utf-8-sig", newline="") as fh:
@@ -47,7 +47,8 @@ def load(folder: Path, out: Path) -> None:
                     continue
                 if i == 0:
                     cols = header if not cols or len(cols) != len(header) else cols
-                    db.execute(f'CREATE TABLE "{name}" ({", ".join(f"""\"{c}\" TEXT""" for c in cols)})')
+                    coldefs = ", ".join('"' + c.replace('"', "") + '" TEXT' for c in cols)
+                    db.execute(f'CREATE TABLE "{name}" ({coldefs})')
                 n = len(cols)
                 batch = []
                 for row in r:
