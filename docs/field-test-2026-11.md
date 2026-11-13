@@ -98,6 +98,13 @@ Per incident, mean reward ranged from 0.14 to 0.88. The paper reports roughly 26
 strong models, but the judge model and the sample differ, so this is indicative only, not a
 leaderboard entry. Reproduce with `benchmarks/excytin/` (see its docstrings).
 
+## 3b. Follow-up: a repeatable lab benchmark
+
+The same week of data was later frozen and turned into 11 labelled cases (planted attacks, real intel,
+and real activity that must not be called a threat). After adding analyst handoff, a known-good list and
+missing-data detection, Actaeon scored 11 of 11 with no false positives. See benchmarks.md and
+`benchmarks/lab/`.
+
 ## 4. Bugs found only by testing on real data
 
 All fixed, with tests:
@@ -109,6 +116,9 @@ All fixed, with tests:
 - Empty replies that "finished normally" ended hunts; they are now retried.
 - Short rate limits locked a model out for an hour; they are now retried with backoff.
 - Inventory sources still advertised time arguments, which the query validator then demanded.
+- Two hunts sharing one connector process could lose each other's replies.
+- Each hunt's token count was the server's running total, not its own.
+- A loopback address from a news article was stored as an indicator.
 
 ## 5. What this test does not show
 

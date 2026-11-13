@@ -82,10 +82,17 @@ threat (the owner's own services, an agent outage that was planned maintenance, 
 change, two hunts whose data does not exist here, and two real known-exploited CVEs that are installed
 but were not exploited).
 
-| Run | Correct | Threats found | False positives | Notes |
+| Run | Correct | Threats found | False positives | Input tokens per hunt |
 |---|---|---|---|---|
-| Before analyst handoff, known-good list and missing-data fix | (same hunts in the field test) | 1 of 1 | 2 | Windows hunts wrongly "no results" |
-| After | 11 / 11 | 4 / 4 | 0 | Windows hunts "logs missing", handed to an analyst as low-severity leads |
+| Field test hunts, before handoff, known-good list and missing-data fix | - | - | 2 of 2 "threats" were the owner's own activity | - |
+| Lab run 2, after those fixes | 10 / 11 | 3 / 4 | 0 | 533k |
+| Lab run 4, after compact results and trimmed history | **11 / 11** | **4 / 4** | **0** | **438k (-18%)** |
+
+One label was corrected after review: the frozen week also held an earlier test that planted a root
+crontab entry, so finding it is the right answer for the cron/systemd case (run 2 had called it benign).
+In both runs the two Windows hunts correctly ended as "logs missing" and were handed to an analyst as
+low-severity leads. A run where the cloud model's shared capacity ran out (most hunts failed on rate
+limits) is not counted; `actaeon bench` now reruns cases that die on service errors and reports them.
 
 Small and written by someone who knows the answers, so read it as "it checks and clears correctly" rather
 than proof that it finds stealthy attackers. See `benchmarks/lab/` to build one on your own data.
