@@ -1,29 +1,79 @@
-"""Names for ATT&CK techniques Actaeon refers to itself (starters, prompts, docs).
+"""ATT&CK Enterprise lookups from the bundled dataset (hunt/attack_data.json).
 
-Not the full matrix: other IDs are shown without a name. Check IDs against the
-current ATT&CK release before relying on them.
+Built by scripts/build_attack_data.py from MITRE's STIX bundle. ATT&CK is a
+trademark of The MITRE Corporation and is used under MITRE's terms of use.
 """
 
-NAMES = {
-    "T1003": "OS Credential Dumping", "T1003.001": "LSASS Memory",
-    "T1021": "Remote Services", "T1021.002": "SMB/Windows Admin Shares",
-    "T1048": "Exfiltration Over Alternative Protocol",
-    "T1053": "Scheduled Task/Job", "T1053.005": "Scheduled Task",
-    "T1059": "Command and Scripting Interpreter", "T1059.001": "PowerShell", "T1059.003": "Windows Command Shell",
-    "T1070": "Indicator Removal", "T1070.001": "Clear Windows Event Logs",
-    "T1071": "Application Layer Protocol", "T1071.001": "Web Protocols", "T1071.004": "DNS",
-    "T1078": "Valid Accounts", "T1098": "Account Manipulation", "T1105": "Ingress Tool Transfer",
-    "T1110": "Brute Force", "T1110.003": "Password Spraying", "T1136": "Create Account",
-    "T1204": "User Execution", "T1204.002": "Malicious File",
-    "T1218": "System Binary Proxy Execution", "T1218.005": "Mshta", "T1218.010": "Regsvr32",
-    "T1218.011": "Rundll32", "T1486": "Data Encrypted for Impact",
-    "T1547": "Boot or Logon Autostart Execution", "T1547.001": "Registry Run Keys / Startup Folder",
-    "T1562": "Impair Defenses", "T1562.001": "Disable or Modify Tools",
-    "T1566": "Phishing", "T1566.001": "Spearphishing Attachment", "T1566.002": "Spearphishing Link",
-    "T1567": "Exfiltration Over Web Service", "T1567.002": "Exfiltration to Cloud Storage",
-    "T1569": "System Services", "T1569.002": "Service Execution",
-}
+from __future__ import annotations
+
+import json
+import re
+from functools import lru_cache
+from pathlib import Path
+
+TECHNIQUE = re.compile(r"^T\d{4}(?:\.\d{3})?$")
+
+
+@lru_cache(maxsize=1)
+def _data() -> dict:
+    p = Path(__file__).with_name("attack_data.json")
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"version": "", "techniques": {}, "retired": {}}
+
+
+def version() -> str:
+    return str(_data().get("version", ""))
+
+
+def info(tid: str) -> dict:
+    """{'n': name, 't': tactics, 'd': data components, 'p': platforms} or {}."""
+    return _data()["techniques"].get(tid, {})
+
+
+def current(tid: str) -> str:
+    """The current ID for a technique (follows a revoked ID to its replacement)."""
+    r = _data()["retired"].get(tid)
+    return (r or {}).get("by") or tid if isinstance(r, dict) else tid
 
 
 def name(tid: str) -> str:
-    return NAMES.get(tid) or NAMES.get(tid.split(".")[0], "")
+    t = info(tid) or info(current(tid))
+    if t:
+        return t["n"]
+    parent = info(tid.split(".")[0])
+    return parent.get("n", "")
+
+
+def tactics(tid: str) -> list[str]:
+    return list(info(tid).get("t") or info(tid.split(".")[0]).get("t") or [])
+
+
+def data_components(tid: str) -> list[str]:
+    return list(info(tid).get("d") or [])
+
+
+def check(ids) -> tuple[list[str], list[str]]:
+    """Split IDs into (valid current techniques, notes about the rest)."""
+    good, notes = [], []
+    for t in ids or []:
+        if not isinstance(t, str):
+            continue
+        t = t.strip().upper()
+        if not TECHNIQUE.match(t):
+            notes.append(f"{t!r} is not an ATT&CK technique ID")
+        elif t in _data()["techniques"]:
+            if t not in good:
+                good.append(t)
+        elif t in _data()["retired"]:
+            new = (_data()["retired"][t] or {}).get("by", "") if isinstance(_data()["retired"][t], dict) else ""
+            if new and new in _data()["techniques"]:
+                notes.append(f"{t} was replaced by {new} ({name(new)}) in ATT&CK {version()}")
+                if new not in good:
+                    good.append(new)
+            else:
+                notes.append(f"{t} is deprecated in ATT&CK {version()}")
+        else:
+            notes.append(f"{t} does not exist in ATT&CK {version()}")
+    return good, notes

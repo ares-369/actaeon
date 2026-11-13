@@ -14,7 +14,7 @@ import re
 from typing import Any
 from urllib.parse import quote
 
-from .common import cap, check_status, session_from_env, time_window
+from .common import baseline_window, cap, check_status, session_from_env, time_window
 from .server import McpServer, ToolInputError
 
 _INDEX_RE = re.compile(r"^[a-z0-9][a-z0-9._*-]{0,254}$")
@@ -57,8 +57,8 @@ class SearchIndexBridge:
             for v in obj:
                 SearchIndexBridge._no_scripts(v)
 
-    def _query(self, args: dict) -> dict:
-        start, end = time_window(args, self.max_days)
+    def _query(self, args: dict, window=None) -> dict:
+        start, end = window or time_window(args, self.max_days)
         must: list[dict] = []
         q = str(args.get("query", "") or "").strip()
         if q:
@@ -152,6 +152,30 @@ class SearchIndexBridge:
                 "buckets": [{"value": x.get("key"), "count": x.get("doc_count")} for x in b.get("buckets") or []],
                 "other_count": b.get("sum_other_doc_count")}
 
+    def first_seen(self, args: dict) -> dict:
+        """Values of a field seen in the recent window but never in the baseline before it."""
+        idx = self._index(args.get("index"))
+        field = str(args.get("field", "") or "")
+        if not re.fullmatch(r"[A-Za-z0-9_.@-]{1,200}", field):
+            raise ToolInputError("field is required and must be a plain field name")
+        b0, r0, r1 = baseline_window(args, self.max_days)
+        n = cap(args.get("size"), 50, 500)
+        path = f"{quote(idx, safe=',*')}/_search"
+        recent = self._post(path, {"query": self._query(args, (r0, r1)), "size": 0,
+                                   "aggs": {"v": {"terms": {"field": field, "size": 500}}}})
+        vals = {x.get("key"): x.get("doc_count") for x in ((recent.get("aggregations") or {}).get("v") or {}).get("buckets") or []}
+        if not vals:
+            return {"index": idx, "field": field, "new": [], "recent_values": 0}
+        q = self._query(args, (b0, r0))
+        q["bool"]["filter"].append({"terms": {field: list(vals)}})
+        old = self._post(path, {"query": q, "size": 0, "aggs": {"v": {"terms": {"field": field, "size": len(vals)}}}})
+        seen = {x.get("key") for x in ((old.get("aggregations") or {}).get("v") or {}).get("buckets") or []}
+        new = sorted(((v, c) for v, c in vals.items() if v not in seen), key=lambda kv: kv[1])[:n]
+        return {"index": idx, "field": field, "baseline": [b0.isoformat(), r0.isoformat()],
+                "recent": [r0.isoformat(), r1.isoformat()], "recent_values": len(vals),
+                "new": [{"value": v, "count": c} for v, c in new],
+                "note": "only the 500 most common recent values are compared" if len(vals) >= 500 else ""}
+
     def build(self) -> McpServer:
         srv = McpServer("actaeon-search-index", instructions=(
             f"Read-only search index bridge. Queries use query_string (Lucene) syntax. Every search is "
@@ -173,6 +197,11 @@ class SearchIndexBridge:
         srv.tool("top_values", "Most common (or with rare=true, rarest) values of a field. Useful for stacking.",
                  {"type": "object", "properties": {**idx, **q, **TIME_SCHEMA, "field": {"type": "string"},
                   "size": {"type": "integer"}, "rare": {"type": "boolean"}}, "required": ["index", "field"]})(self.top_values)
+        srv.tool("first_seen", "Values of a field that appear in the time window but never in the baseline_days "
+                 "before it (new processes, hosts, users, destinations). Good for baseline hunts.",
+                 {"type": "object", "properties": {**idx, **q, **TIME_SCHEMA, "field": {"type": "string"},
+                  "baseline_days": {"type": "number", "description": "days before the window to compare (default 14)"},
+                  "size": {"type": "integer"}}, "required": ["index", "field"]})(self.first_seen)
         return srv
 
 

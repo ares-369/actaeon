@@ -61,6 +61,20 @@ def time_window(args: dict, max_days: int) -> tuple[datetime, datetime]:
     return start, end
 
 
+def baseline_window(args: dict, max_days: int) -> tuple[datetime, datetime, datetime]:
+    """(baseline_start, recent_start, recent_end) for first-seen checks: the recent window comes from
+    time_from/time_to, the baseline is the ``baseline_days`` before it. Both together stay within max_days."""
+    start, end = time_window(args, max_days)
+    try:
+        days = float(args.get("baseline_days") or 14)
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError("baseline_days must be a number") from exc
+    days = max(1.0, days)
+    if (end - start) + timedelta(days=days) > timedelta(days=max_days):
+        raise ToolInputError(f"recent window plus baseline_days is longer than the {max_days}-day limit; shorten one")
+    return start - timedelta(days=days), start, end
+
+
 def cap(value, default: int, maximum: int) -> int:
     try:
         n = int(value if value is not None else default)

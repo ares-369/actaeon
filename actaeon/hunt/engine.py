@@ -23,6 +23,7 @@ from typing import Any
 
 from ..connectors import ROLES
 from ..connectors.hub import ToolCallError
+from .attack_names import check as attack_check
 from .jsonparse import action_object, first_object
 from .prompts import ANALYST_SYSTEM, PLANNER_SYSTEM, analyst_user, planner_user
 from .store import OUTCOMES, HuntStore
@@ -197,7 +198,7 @@ class HuntEngine:
             self.store.add_step(hid, self._next(), "plan", ok=False, note="planner reply was not JSON", result=text[:2000])
             return None
         plan = {"summary": _clip(plan.get("summary", ""), 400),
-                "attack": [t for t in plan.get("attack") or [] if isinstance(t, str) and TECHNIQUE.match(t)][:20],
+                "attack": attack_check(plan.get("attack"))[0][:20],
                 "steps": [{"role": str(s.get("role", "")), "goal": _clip(s.get("goal", ""), 300)}
                           for s in plan.get("steps") or [] if isinstance(s, dict)][:10],
                 "data_needed": [r for r in plan.get("data_needed") or [] if r in ROLES]}
@@ -349,7 +350,8 @@ class HuntEngine:
                 if learned:
                     known_fields[connector] = learned   # reuse the model's own call; no second fetch
             done_calls[key] = eid
-            self.evidence[eid] = {"ok": ok, "connector": connector, "tool": tool, "role": meta["role"], "args": args}
+            self.evidence[eid] = {"ok": ok, "connector": connector, "tool": tool, "role": meta["role"], "args": args,
+                                  "text": content[:400_000] if ok else ""}
             self.store.add_step(hid, n, "call", connector=connector, tool=tool, role=meta["role"], arguments=args,
                                 why=str(action.get("thought", "")), ok=ok, ms=ms, result=content,
                                 note="; ".join(notes))
@@ -409,6 +411,7 @@ class HuntEngine:
             (findings if valid else unsupported).append(item)
             if len(valid) < len(cited):
                 notes.append(f"dropped citation(s) {sorted(set(cited) - set(valid))} that are not successful results")
+        ungrounded = _ground(findings, getattr(self, "evidence", {}), notes)
         data_ok = getattr(self, "data_ok", 0)
         if outcome == "threat" and not findings:
             outcome = "inconclusive"
@@ -425,6 +428,9 @@ class HuntEngine:
             conf = 0
         if outcome != v.get("outcome"):
             conf = min(conf, 40)
+        if outcome == "threat" and findings and ungrounded == len(findings):
+            conf = min(conf, 50)
+            notes.append("every finding names values that are not in any evidence; confidence capped at 50")
         if outcome == "threat":
             cited = {e for f in findings for e in f["evidence"]}
             sources = {(self.evidence[e]["connector"], self.evidence[e]["tool"]) for e in cited if e in self.evidence}
@@ -434,16 +440,60 @@ class HuntEngine:
             elif len(sources) < 2:
                 conf = min(conf, 75)
                 notes.append("all evidence comes from one kind of query; confidence capped at 75")
+        attack_ids, attack_notes = attack_check(v.get("attack"))
+        notes.extend(attack_notes)
         return {
             "outcome": outcome,
             "confidence": conf,
             "summary": _clip(v.get("summary", ""), 1500),
             "findings": findings,
             "unsupported_claims": unsupported,
-            "attack": [t for t in v.get("attack") or [] if isinstance(t, str) and TECHNIQUE.match(t)][:30],
+            "attack": attack_ids[:30],
             "gaps": [_clip(g, 300) for g in v.get("gaps") or [] if isinstance(g, str)][:10],
             "next_steps": [_clip(g, 300) for g in v.get("next_steps") or [] if isinstance(g, str)][:10],
             "checks": notes,
             "evidence_ok": sorted(good, key=lambda e: int(e[1:])),
             "data_searches": {"succeeded": data_ok, "attempted": getattr(self, "data_attempted", 0)},
         }
+
+
+_QUOTED = re.compile(r"[\"'`\u2018\u2019\u201c\u201d]([^\"'`\u2018\u2019\u201c\u201d]{3,120})[\"'`\u2018\u2019\u201c\u201d]")
+_GROUND_TYPES = ("ipv4", "ipv6", "sha256", "sha1", "md5", "email", "url", "domain")
+
+
+def _norm(text: str) -> str:
+    return text.lower().replace("\\\\", "\\")
+
+
+def claim_values(claim: str) -> list[str]:
+    """Concrete values a claim names: indicators and quoted strings (hosts, task names, paths, accounts)."""
+    from ..intel.extract import extract, refang
+    found = extract(claim)
+    vals = [v for k in _GROUND_TYPES for v in found.get(k, [])]
+    # Quoted identifiers only (no spaces, or a path); quoted prose is not a value.
+    vals += [m.strip() for m in _QUOTED.findall(refang(claim))
+             if m.strip() and (" " not in m.strip() or "\\" in m or "/" in m)]
+    return list(dict.fromkeys(vals))
+
+
+def _ground(findings: list[dict], evidence: dict, notes: list[str]) -> int:
+    """Check that values named in each finding appear in the evidence. Marks findings in place
+    ('grounded', 'missing_values') and returns how many have values found in no evidence at all."""
+    all_text = _norm("\n".join(d.get("text", "") for d in evidence.values() if d.get("ok")))
+    bad = 0
+    for f in findings:
+        vals = claim_values(f["claim"])
+        if not vals:
+            continue
+        cited_text = _norm("\n".join(evidence[e].get("text", "") for e in f["evidence"] if e in evidence))
+        missing = [v for v in vals if _norm(v) not in all_text]
+        elsewhere = [v for v in vals if v not in missing and _norm(v) not in cited_text]
+        f["grounded"] = not missing
+        if missing:
+            f["missing_values"] = missing[:10]
+            notes.append(f"claim names value(s) not found in any evidence: {', '.join(missing[:5])}")
+            if len(missing) == len(vals):
+                bad += 1
+        if elsewhere:
+            notes.append(f"value(s) {', '.join(elsewhere[:5])} are in the evidence but not in the cited results")
+    return bad

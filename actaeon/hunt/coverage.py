@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from .attack_names import name
+from .attack_names import _data, data_components, name, tactics, version
 from .library import starters
 
 _RANK = {"threat": 5, "telemetry_found_benign": 4, "no_results": 3, "inconclusive": 2, "logs_missing": 1}
@@ -37,13 +37,33 @@ def build(store, library, hub_specs: dict) -> dict:
         best = max(outcomes, key=lambda o: _RANK.get(o, 0)) if outcomes else ""
         state = ("not hunted" if not d["hunts"] else "data missing" if set(outcomes) <= {"logs_missing", "none"}
                  else "hunted")
-        rows.append({"technique": t, "name": name(t), "hunts": d["hunts"], "last": d["last"], "outcomes": outcomes,
+        rows.append({"technique": t, "name": name(t), "tactics": tactics(t), "data": data_components(t),
+                     "hunts": d["hunts"], "last": d["last"], "outcomes": outcomes,
                      "worst": best, "saved": d["saved"], "scheduled": d["scheduled"], "starter": d["starter"],
                      "state": state})
     rows.sort(key=lambda r: r["technique"])
     roles_with = sorted({r for s in hub_specs.values() if s.enabled for r in s.roles})
     starter_roles = sorted({r for s in starters() for r in s.get("roles") or []})
-    return {"techniques": rows,
+    # Breadth against the whole matrix, per tactic (parent techniques and sub-techniques both count).
+    all_t = _data()["techniques"]
+    by_tactic: dict[str, dict] = defaultdict(lambda: {"total": 0, "hunted": 0, "seen": 0})
+    state_of = {r["technique"]: r["state"] for r in rows}
+    for tid, info in all_t.items():
+        for ta in info.get("t") or []:
+            b = by_tactic[ta]
+            b["total"] += 1
+            if tid in state_of:
+                b["seen"] += 1
+                b["hunted"] += state_of[tid] == "hunted"
+    # Log sources that would unlock techniques you have not been able to hunt yet.
+    need: dict[str, int] = defaultdict(int)
+    for r in rows:
+        if r["state"] != "hunted":
+            for comp in r["data"]:
+                need[comp] += 1
+    return {"techniques": rows, "attack_version": version(),
+            "tactics": dict(sorted(by_tactic.items())),
+            "log_sources_needed": sorted(need.items(), key=lambda kv: (-kv[1], kv[0]))[:12],
             "summary": {"techniques": len(rows), "hunted": sum(r["state"] == "hunted" for r in rows),
                         "data_missing": sum(r["state"] == "data missing" for r in rows),
                         "not_hunted": sum(r["state"] == "not hunted" for r in rows),

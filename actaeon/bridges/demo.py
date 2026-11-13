@@ -14,7 +14,7 @@ from collections import Counter
 from datetime import datetime
 
 from ..demo.data import LABEL, events
-from .common import cap, time_window
+from .common import baseline_window, cap, time_window
 from .search_index import TIME_SCHEMA
 from .server import McpServer, ToolInputError
 
@@ -108,11 +108,11 @@ class DemoBridge:
         self.flat = [_flat(e) for e in events()]
         self.max_days, self.max_size = max_days, max_size
 
-    def _select(self, a: dict) -> list[dict]:
+    def _select(self, a: dict, window=None) -> list[dict]:
         idx = str(a.get("index", ""))
         if not fnmatch.fnmatchcase(INDEX, idx or "x"):
             raise ToolInputError(f"index {idx!r} not found; the demo has one index: {INDEX}")
-        start, end = time_window(a, self.max_days)
+        start, end = window or time_window(a, self.max_days)
         match = _Q(str(a.get("query", "") or "")).parse()
         out = []
         for e in self.flat:
@@ -150,6 +150,17 @@ class DemoBridge:
         return {"index": INDEX, "field": field, "order": "rarest" if a.get("rare") else "most common",
                 "buckets": [{"value": v, "count": k} for v, k in items[:n]]}
 
+    def first_seen(self, a):
+        field = str(a.get("field", ""))
+        if not field:
+            raise ToolInputError("field is required")
+        b0, r0, r1 = baseline_window(a, self.max_days)
+        recent = Counter(str(e.get(field)) for e in self._select(a, (r0, r1)) if e.get(field) is not None)
+        old = {str(e.get(field)) for e in self._select(a, (b0, r0)) if e.get(field) is not None}
+        new = sorted(((v, c) for v, c in recent.items() if v not in old), key=lambda kv: (kv[1], kv[0]))
+        return {"index": INDEX, "field": field, "recent_values": len(recent),
+                "new": [{"value": v, "count": c} for v, c in new[:cap(a.get("size"), 50, 500)]]}
+
     def build(self) -> McpServer:
         srv = McpServer("actaeon-demo", instructions=(
             f"DEMO data source with synthetic events ({LABEL}). One index: {INDEX}. Time field @timestamp. "
@@ -168,6 +179,9 @@ class DemoBridge:
         srv.tool("top_values", "Most common (or rare=true, rarest) values of a field.",
                  {"type": "object", "properties": {**idx, **q, **TIME_SCHEMA, "field": {"type": "string"},
                   "size": {"type": "integer"}, "rare": {"type": "boolean"}}, "required": ["index", "field"]})(self.top_values)
+        srv.tool("first_seen", "Values of a field in the window that never appear in the baseline_days before it.",
+                 {"type": "object", "properties": {**idx, **q, **TIME_SCHEMA, "field": {"type": "string"},
+                  "baseline_days": {"type": "number"}, "size": {"type": "integer"}}, "required": ["index", "field"]})(self.first_seen)
         return srv
 
 

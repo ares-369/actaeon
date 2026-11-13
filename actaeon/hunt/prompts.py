@@ -35,6 +35,8 @@ Rules:
 - Missing data is not a clean result: if the data was not searchable, the outcome is logs_missing.
 - Before calling something a threat, corroborate it: pivot to a second query (same host, user or destination
   around that time) and look up indicators in intel. Lower your confidence when only one result supports it.
+- For "unusual", "new" or "rare" hypotheses, stack first: least common values (top_values with rare) or values
+  first seen against a baseline (first_seen), then look closer at the few outliers.
 - Prefer few, precise queries. Do not repeat a call you already made.
 {OUTCOME_HELP}
 {SYSTEM_RULE}"""

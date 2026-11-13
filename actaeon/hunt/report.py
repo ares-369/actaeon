@@ -35,7 +35,9 @@ def markdown(h: dict, *, narrative: str = "", max_evidence_chars: int = 3000) ->
                 f"(confidence {v.get('confidence', 0)})", "", v.get("summary", "") or "-", ""]
     if v.get("findings"):
         out.append("### Findings (each cites evidence below)")
-        out += [f"- {f['claim']} ({', '.join(f['evidence'])})" for f in v["findings"]]
+        out += [f"- {f['claim']} ({', '.join(f['evidence'])})"
+                + (f" - not in the evidence: {', '.join(f['missing_values'])}" if f.get("missing_values") else "")
+                for f in v["findings"]]
         out.append("")
     if v.get("unsupported_claims"):
         out.append("### Claims without evidence (not verified)")

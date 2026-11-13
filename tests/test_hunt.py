@@ -405,3 +405,16 @@ def test_native_shapes_in_text_are_accepted():
     c = action_object('{"action": "call_tool", "arguments": {"connector": "logs", "tool": "search", "arguments": {"q": 1}}}')
     assert c == {"action": "call", "connector": "logs", "tool": "search", "arguments": {"q": 1}}
     assert action_object('{"action": "call", "tool": "t"}') == {"action": "call", "tool": "t"}
+
+
+def test_claim_values_must_appear_in_evidence():
+    from actaeon.hunt.engine import _ground, claim_values
+    assert claim_values("Task 'OfficeUpdate' on host reached 203.0.113.66; analyst said 'looks bad here'") == \
+        ["203.0.113.66", "OfficeUpdate"]
+    ev = {"E1": {"ok": True, "text": '{"dst": "203.0.113.66"}'}, "E2": {"ok": True, "text": "task OfficeUpdate"}}
+    f = [{"claim": "Reached 203.0.113.66 and ran 'OfficeUpdate'", "evidence": ["E1"]},
+         {"claim": "Dropped 'evil.dll' from 198.51.100.9", "evidence": ["E1"]}]
+    notes = []
+    assert _ground(f, ev, notes) == 1
+    assert f[0]["grounded"] is True and f[1]["missing_values"] == ["198.51.100.9", "evil.dll"]
+    assert any("not in the cited results" in n for n in notes)

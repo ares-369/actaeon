@@ -12,7 +12,6 @@ Everything is a DRAFT for a detection engineer to review and test before deployi
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -78,9 +77,8 @@ def check_sigma(text: str, attack: list[str]) -> tuple[str, list[str]]:
 def draft(llm, h: dict) -> dict:
     v = h.get("verdict") or {}
     native = native_queries(h)
-    attack = [t for t in (v.get("attack") or []) + ((h.get("plan") or {}).get("attack") or [])
-              if re.fullmatch(r"T\d{4}(\.\d{3})?", t)]
-    attack = list(dict.fromkeys(attack))
+    from .attack_names import check
+    attack = check((v.get("attack") or []) + ((h.get("plan") or {}).get("attack") or []))[0]
     benign = [f"{f['claim']} ({f.get('comment', '')})" for f in h.get("feedback") or []
               if f.get("kind") in ("benign", "false_positive")]
     facts = {"hypothesis": h["hypothesis"], "outcome": h.get("outcome"), "summary": v.get("summary", ""),

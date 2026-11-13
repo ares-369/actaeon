@@ -318,6 +318,7 @@ function renderHunt(hu) {
       v.verification && v.verification.reason ? h("p", { class: "small muted" }, "Second look: " + v.verification.reason) : null,
       (v.findings || []).length ? [h("h3", {}, "Findings"), h("ul", {}, v.findings.map((f, i) =>
         h("li", {}, f.claim, " ", f.evidence.map((e) => h("a", { href: "#", onclick: (ev) => { ev.preventDefault(); const t = document.getElementById("step-" + e); if (t) { t.open = true; t.scrollIntoView(); } } }, `[${e}] `)),
+          (f.missing_values || []).length ? h("span", { class: "warn small" }, " not in the evidence: " + f.missing_values.join(", ")) : null,
           feedbackButtons(hu, i))))] : null,
       (hu.feedback || []).length ? [h("h3", {}, "Analyst feedback"), h("ul", {}, hu.feedback.map((f) =>
         h("li", { class: "small" }, `${f.kind.replace("_", " ")}: ${f.claim}`, f.comment ? ` (${f.comment})` : "", f.by ? ` by ${f.by}` : "")))] : null,
@@ -563,8 +564,16 @@ async function coverage() {
     h("p", { class: "muted small" }, "Built from your hunts, saved hunts and the starter list. 'Hunted' means at least one hunt searched data for it; it does not mean detection coverage."),
     h("div", { class: "grid" }, c.techniques.map((t) => h("div", { class: "cell " + t.state.replace(" ", "-"), title: JSON.stringify(t.outcomes) },
       h("div", { class: "tid" }, t.technique), h("div", { class: "small" }, t.name || ""),
+      h("div", { class: "small muted" }, (t.tactics || []).join(", ")),
       h("div", { class: "small muted" }, `${t.state}  ${t.hunts} hunt(s)${t.scheduled ? "  scheduled" : ""}`),
       t.last && h("div", { class: "small muted" }, "last " + when(t.last)))))));
+  main.append(section(`By tactic (ATT&CK ${c.attack_version || ""})`, "table",
+    h("p", { class: "muted small" }, "Techniques you have hunted out of every technique in that tactic."),
+    h("table", {}, h("tbody", {}, Object.entries(c.tactics || {}).map(([ta, b]) => h("tr", {},
+      h("td", {}, ta.replace(/-/g, " ")), h("td", {}, `${b.hunted} / ${b.total}`),
+      h("td", {}, h("meter", { min: 0, max: Math.max(1, b.total), value: b.hunted })))))),
+    (c.log_sources_needed || []).length ? h("div", {}, h("p", { class: "small" }, "Log sources behind techniques you could not hunt yet:"),
+      h("ul", {}, c.log_sources_needed.map(([n, k]) => h("li", { class: "small" }, `${n} (${k})`)))) : null));
   main.append(section("Data roles", "database-search",
     h("p", {}, "Connected: ", c.roles.connected.join(", ") || "none"),
     c.roles.missing.length ? h("p", { class: "warn" }, "Used by starter hunts but not connected: " + c.roles.missing.join(", ")) : null,

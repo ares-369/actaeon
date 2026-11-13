@@ -23,6 +23,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from ..connectors.untrusted import SYSTEM_RULE
+from .attack_names import check as attack_check
 from .attack_names import name as tname
 from .jsonparse import first_object
 
@@ -118,7 +119,7 @@ def propose(cfg, llm, *, n: int = 5) -> dict:
         elif any(_similar(hyp, r) >= 0.6 for r in recent + [o["hypothesis"] for o in ok]):
             why = "too similar to a recent hunt"
         entry = {"hypothesis": hyp, "why": str(item.get("why", ""))[:300], "roles": roles,
-                 "attack": [t for t in item.get("attack") or [] if isinstance(t, str) and TECH.match(t)][:8],
+                 "attack": attack_check(item.get("attack"))[0][:8],
                  "source": str(item.get("source", ""))[:60]}
         entry["attack_names"] = [tname(t) for t in entry["attack"]]
         (rejected if why else ok).append({**entry, **({"rejected": why} if why else {})})

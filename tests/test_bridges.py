@@ -103,6 +103,28 @@ def test_top_values_and_fields():
         b.top_values({"index": "events-1", "field": "a b"})
 
 
+def test_first_seen_compares_with_baseline():
+    def agg(kw):
+        terms = [f for f in kw["json"]["query"]["bool"]["filter"] if "terms" in f]
+        buckets = ([{"key": "old.exe", "doc_count": 40}] if terms else
+                   [{"key": "old.exe", "doc_count": 50}, {"key": "new.exe", "doc_count": 1}])
+        return {"aggregations": {"v": {"buckets": buckets}}}
+    b = si({"_search": agg})
+    out = b.first_seen({"index": "events-1", "field": "process.name", "time_from": "now-1d", "baseline_days": 7})
+    assert out["new"] == [{"value": "new.exe", "count": 1}] and out["recent_values"] == 2
+    base = b.http.calls[1][2]["json"]["query"]["bool"]["filter"]
+    assert base[1] == {"terms": {"process.name": ["old.exe", "new.exe"]}}
+    with pytest.raises(ToolInputError):
+        b.first_seen({"index": "events-1", "field": "process.name", "time_from": "now-20d", "baseline_days": 20})
+
+
+def test_demo_first_seen():
+    from actaeon.bridges.demo import DemoBridge
+    out = DemoBridge().first_seen({"index": "demo-events", "field": "process.name", "time_from": "now-2d",
+                                    "baseline_days": 10})
+    assert {"value": "schtasks.exe", "count": 1} in out["new"]
+
+
 def test_list_indices_filtered():
     b = si({"_cat/indices": [{"index": "events-1"}, {"index": "users"}, {"index": ".hidden"}]})
     assert [i["index"] for i in b.list_indices({})["indices"]] == ["events-1"]
@@ -222,7 +244,7 @@ def test_bridge_end_to_end(tmp_path, monkeypatch):
     hub = ConnectorHub([spec], AuditLog(tmp_path / "a.sqlite"), sleep=lambda s: None)
     try:
         r = hub.test("logs")
-        assert r["ok"] and r["allowed"] == r["tools"] == 5 and r["probe"] == "list_indices", r
+        assert r["ok"] and r["allowed"] == r["tools"] == 6 and r["probe"] == "list_indices", r
         out = hub.call("logs", "search", {"index": "events-2026", "query": "msg:hello"})
         assert "hello" in out["content"] and not out["is_error"]
         bad = hub.call("logs", "search", {"index": "users"})
