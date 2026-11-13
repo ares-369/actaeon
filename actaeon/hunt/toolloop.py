@@ -95,5 +95,8 @@ def run_loop(*, llm, hub, store, hid: str, system: str, user: str, final_action:
                        note=f"from {why_prefix}")
         if ok:
             made.append(f"E{n}")
-        transcript.append({"role": "user", "content": f"E{n} result of {conn}.{tool}:\n{content[:12000]}"})
+        left = max_calls - calls
+        budget = (f"\n({left} tool call(s) left; after that you must give the {final_action}.)" if 0 < left <= 5
+                  else f"\n(No tool calls left: give the {final_action} now.)" if left <= 0 else "")
+        transcript.append({"role": "user", "content": f"E{n} result of {conn}.{tool}:\n{content[:12000]}{budget}"})
     return None, made, calls
