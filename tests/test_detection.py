@@ -96,3 +96,29 @@ def test_demo_detection_end_to_end(tmp_path, monkeypatch):
             hubmod._HUB.close()
         c._CONFIG, hubmod._HUB = None, None
         get_llm(reload=True)
+
+
+def test_backtest_counts_per_day():
+    import json as _json
+
+    from actaeon.hunt.detection import backtest
+
+    class Hub:
+        def __init__(self):
+            self.calls = []
+
+        def tools(self, name):
+            return [{"name": "search", "allowed": True}, {"name": "count", "allowed": True}]
+
+        def call(self, conn, tool, args, **kw):
+            self.calls.append(args)
+            return {"content": _json.dumps({"count": 3 if len(self.calls) == 2 else 0})}
+    h = {"id": "h1", "verdict": {"findings": [{"claim": "x", "evidence": ["E2"]}]},
+         "steps": [{"kind": "call", "ok": True, "n": 2, "connector": "logs", "tool": "search",
+                    "arguments": {"index": "ev", "query": "process.name:x.exe", "time_from": "now-1d"},
+                    "result": _json.dumps({"total": 1, "hits": [{}]})}]}
+    hub = Hub()
+    r = backtest(hub, h, days=7)
+    q = r["queries"][0]
+    assert len(hub.calls) == 7 and "time_from" in hub.calls[0] and hub.calls[0]["query"] == "process.name:x.exe"
+    assert q["total"] == 3 and q["days_with_hits"] == 1 and q["verdict"] == "rare"

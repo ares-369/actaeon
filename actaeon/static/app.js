@@ -401,9 +401,20 @@ function detectionBox(hu) {
     (d.native || []).length ? [h("h3", {}, "Queries that found data (exactly as they ran)"),
       ...d.native.map((q) => h("div", {}, h("div", { class: "muted small" }, `${q.evidence}  ${q.connector}.${q.tool}  hits ${q.hits ?? "?"}`), h("pre", {}, q.query)))] : null);
   api(`/api/hunts/${hu.id}/detection`).then((ds) => { if (ds.length) show(ds[0]); });
+  const bt = h("div");
   return section("Detection draft", "shield-check-outline",
     h("button", { "data-need": "op", class: "ghost", onclick: async (e) => { e.target.disabled = true; try { show(await post(`/api/hunts/${hu.id}/detection`)); } finally { e.target.disabled = false; } } },
-      icon("file-code-outline"), "Draft a detection rule"), box);
+      icon("file-code-outline"), "Draft a detection rule"),
+    h("button", { "data-need": "op", class: "ghost", onclick: async (e) => {
+      e.target.disabled = true; fill(bt, h("p", { class: "muted small" }, "Counting matches day by day..."));
+      try {
+        const r = await post(`/api/hunts/${hu.id}/detection/backtest`, { days: 14 });
+        fill(bt, h("p", { class: "muted small" }, r.note), h("table", {}, h("tbody", {}, r.queries.map((q) => h("tr", {},
+          h("td", { class: "small" }, q.evidence, " ", h("code", {}, q.query)),
+          h("td", {}, q.error ? h("span", { class: "warn small" }, q.error) :
+            `${q.verdict}: ${q.total} in ${r.days} days, ${q.days_with_hits} day(s) with hits, max ${q.max_per_day}/day`))))));
+      } finally { e.target.disabled = false; }
+    } }, icon("chart-timeline-variant"), "Backtest 14 days"), bt, box);
 }
 
 function chatBox(hu) {

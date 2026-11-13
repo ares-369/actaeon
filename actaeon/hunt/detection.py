@@ -38,8 +38,8 @@ def native_queries(h: dict) -> list[dict]:
         if s["kind"] != "call" or not s["ok"] or not isinstance(s.get("arguments"), dict):
             continue
         q = s["arguments"].get("query")
-        if not isinstance(q, str) or not q.strip() or q in seen:
-            continue
+        if not isinstance(q, str) or not q.strip() or q in seen or q.strip() in ("*", "*:*"):
+            continue   # match-all queries are exploration, not detection logic
         n = hits(s.get("result") or "")
         if (n or 0) > 0 or f"E{s['n']}" in cited:
             seen.add(q)
@@ -130,3 +130,42 @@ class DetectionStore:
         with self._conn() as c:
             return [{**json.loads(r["body"]), "id": r["id"], "created": r["created"]}
                     for r in c.execute(q + " ORDER BY id DESC", a)]
+
+
+def backtest(hub, h: dict, days: int = 14) -> dict:
+    """Run each native query of a hunt as a day-by-day count over the last ``days`` days, to see how
+    often a rule built on it would have fired. Only connectors with a ``count`` tool are tested."""
+    from datetime import timedelta
+
+    from ..connectors.hub import ToolCallError
+    days = max(1, min(int(days), 30))
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    out = []
+    for q in native_queries(h)[:5]:
+        tools = {t["name"] for t in hub.tools(q["connector"]) if t.get("allowed")}
+        row = {"evidence": q["evidence"], "connector": q["connector"], "query": q["query"], "per_day": []}
+        if "count" not in tools:
+            row["error"] = "this connector has no count tool"
+            out.append(row)
+            continue
+        base = {k: v for k, v in q["arguments"].items() if k in ("index", "query", "dsl")}
+        for d in range(days, 0, -1):
+            t0, t1 = now - timedelta(days=d), now - timedelta(days=d - 1)
+            try:
+                r = hub.call(q["connector"], "count", {**base, "time_from": t0.isoformat(), "time_to": t1.isoformat()},
+                             actor="backtest", hunt_id=h["id"])
+                n = hits(r["content"]) if not r.get("is_error") else None
+            except ToolCallError as exc:
+                row["error"] = str(exc)[:200]
+                break
+            row["per_day"].append({"day": t0.date().isoformat(), "count": n})
+        vals = [x["count"] for x in row["per_day"] if isinstance(x["count"], int)]
+        if vals:
+            row.update(total=sum(vals), avg_per_day=round(sum(vals) / len(vals), 1), max_per_day=max(vals),
+                       days_with_hits=sum(1 for v in vals if v > 0),
+                       verdict=("quiet" if sum(vals) == 0 else
+                                "rare" if sum(1 for v in vals if v > 0) <= 2 and max(vals) <= 5 else
+                                "noisy" if sum(vals) / len(vals) > 20 else "moderate"))
+        out.append(row)
+    return {"hunt_id": h["id"], "days": days, "queries": out,
+            "note": "Counts of past events the query matches; a rule would fire about this often before tuning."}

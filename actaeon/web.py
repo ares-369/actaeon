@@ -576,6 +576,13 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         from .providers import get_llm
         return jsonify(ds.save(draft(hs.privacy_llm(c, get_llm()), h)))
 
+    @app.route("/api/hunts/<hid>/detection/backtest", methods=["POST"])
+    def hunt_backtest(hid):
+        from .hunt.detection import backtest
+        h = _hunt_or_404(hid)
+        days = int((request.get_json(silent=True) or {}).get("days", 14) or 14)
+        return jsonify(backtest(hub(), h, days))
+
     @app.route("/api/hunts/<hid>/timeline")
     def hunt_timeline(hid):
         from .hunt.timeline import build
