@@ -120,7 +120,7 @@ def judge(llm, q: dict, answer: str) -> dict:
     return out
 
 
-def answer_one(cfg, llm, db: Path, q: dict, max_calls: int) -> dict:
+def answer_one(cfg, llm, db: Path, q: dict, max_calls: int, notes: str = "") -> dict:
     from actaeon.connectors.audit import AuditLog
     from actaeon.connectors.hub import ConnectorHub
     from actaeon.connectors.spec import parse_connectors
@@ -140,7 +140,10 @@ def answer_one(cfg, llm, db: Path, q: dict, max_calls: int) -> dict:
                         f"args {json.dumps((t.get('inputSchema') or t.get('input_schema') or {}).get('properties', {}))}"
                         for t in tools)
     t0 = time.monotonic()
-    final, _made, calls = run_loop(llm=llm, hub=hub, store=store, hid=hid, system=ANSWER_SYSTEM.replace("{tools}", listing),
+    system = ANSWER_SYSTEM.replace("{tools}", listing)
+    if notes:
+        system += f"\n\nNotes about this data source (written by the team):\n{notes}"
+    final, _made, calls = run_loop(llm=llm, hub=hub, store=store, hid=hid, system=system,
                                    user=full_question(q), final_action="answer", max_calls=max_calls,
                                    max_results=100, actor="excytin", why_prefix="")
     final = final or {}
@@ -159,6 +162,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="excytin-results.json")
     ap.add_argument("--resume", action="store_true", help="keep results already in --out and skip those questions")
+    ap.add_argument("--notes", default="", help="query notes file describing the tables (as a deployment would write)")
     a = ap.parse_args()
 
     from actaeon.config import get_config
@@ -166,6 +170,7 @@ def main() -> None:
     cfg = get_config()
     llm = get_llm()
     rng = random.Random(a.seed)
+    notes = Path(a.notes).read_text(encoding="utf-8") if a.notes else ""
     results = []
     if a.resume and Path(a.out).exists():
         results = json.loads(Path(a.out).read_text()).get("results", [])
@@ -187,7 +192,7 @@ def main() -> None:
             if (inc, i) in done:
                 continue
             q = qs[i]
-            r = answer_one(cfg, llm, db, q, a.max_calls)
+            r = answer_one(cfg, llm, db, q, a.max_calls, notes)
             r.update(judge(llm, q, r["answer"]))
             r.update(incident=inc, index=i, golden=q["answer"])
             results.append(r)
