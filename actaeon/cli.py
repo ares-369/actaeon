@@ -484,6 +484,7 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_b.add_argument("--cases", default="", help="YAML file of cases (default: built-in demo cases)")
     p_b.add_argument("--only", action="append", default=[], help="case id to run (repeatable)")
     p_b.add_argument("--max-steps", type=int, default=None)
+    p_b.add_argument("--workers", type=int, default=1, help="cases run in parallel (default 1)")
     p_out = sub.add_parser("outputs", help="list outputs, or send a sample result to one: outputs test NAME")
     p_out.add_argument("action", nargs="?", choices=["list", "test"], default="list")
     p_out.add_argument("name", nargs="?")
@@ -571,7 +572,7 @@ def cli_main(argv: list[str] | None = None) -> None:
             print(f"{mark} {r['id']:18} got {r['outcome']!s:22} want {'/'.join(r['expect']):30} "
                   f"conf {r['confidence']} calls {r['calls']} blocked {r['blocked']} {r['seconds']}s "
                   f"tok {r.get('tokens_in', 0)}/{r.get('tokens_out', 0)}", flush=True)
-        out = run_bench(get_config(), cases, max_steps=a.max_steps, on_case=show)
+        out = run_bench(get_config(), cases, max_steps=a.max_steps, on_case=show, workers=max(1, a.workers))
         print(out["score"])
         print(f"saved {out['file']}")
         return

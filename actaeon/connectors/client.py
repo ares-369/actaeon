@@ -63,6 +63,9 @@ class McpClient:
         self.spec = spec
         self._id = 0
         self._lock = threading.Lock()
+        # One request at a time per stdio process: replies share one stream, so a second caller
+        # waiting at the same time could read (and drop) the first caller's reply.
+        self._io_lock = threading.Lock()
         self.server_info: dict[str, Any] = {}
         self._initialized = False
         # stdio
@@ -184,6 +187,10 @@ class McpClient:
         self._proc.stdin.flush()  # type: ignore[union-attr]
 
     def _stdio_roundtrip(self, msg: dict) -> dict:
+        with self._io_lock:
+            return self._stdio_roundtrip_locked(msg)
+
+    def _stdio_roundtrip_locked(self, msg: dict) -> dict:
         self._write(msg)
         deadline = time.monotonic() + self.spec.timeout_sec
         while True:

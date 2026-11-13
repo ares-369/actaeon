@@ -69,10 +69,15 @@ def score(results: list[dict]) -> dict:
             "seconds": sum(r.get("seconds") or 0 for r in results)}
 
 
-def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None) -> dict:
+def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None, workers: int = 1) -> dict:
+    """Run every case as a real hunt and score it. ``workers`` > 1 runs cases in parallel."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
     from .hunt.service import run_hunt
-    results = []
-    for c in cases:
+    lock = threading.Lock()
+
+    def one(c):
         t0 = time.monotonic()
         h = run_hunt(cfg, c["hypothesis"], origin=f"bench:{c['id']}", max_steps=max_steps)
         v = h.get("verdict") or {}
@@ -83,9 +88,16 @@ def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None) -
              "seconds": round(time.monotonic() - t0), "hunt_id": h.get("id"), "error": h.get("error")}
         u = (h.get("models") or {}).get("usage") or {}
         r.update(tokens_in=u.get("tokens_in", 0), tokens_out=u.get("tokens_out", 0), cost_usd=u.get("cost_usd"))
-        results.append(r)
         if on_case:
-            on_case(r)
+            with lock:
+                on_case(r)
+        return r
+
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            results = list(ex.map(one, cases))
+    else:
+        results = [one(c) for c in cases]
     models = {r: {"provider": cfg.role_cfg(r).get("provider"), "model": cfg.role_cfg(r).get("model")}
               for r in ("planner", "analyst")}
     out = {"when": datetime.now(timezone.utc).isoformat(timespec="seconds"), "models": models,

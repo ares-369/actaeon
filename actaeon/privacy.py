@@ -121,6 +121,7 @@ class PrivacyLLM:
     def __init__(self, llm, settings: dict | None = None):
         s = settings or {}
         self.llm = llm
+        self._usage: dict[str, dict] = {}   # per-wrapper meter: one wrapper per hunt
         self.mask_for = tuple(s.get("mask_for", CLOUD))
         self.masker = Masker(types=tuple(s.get("types", DEFAULT_TYPES)), terms=list(s.get("terms") or []),
                              patterns=list(s.get("patterns") or []),
@@ -128,14 +129,16 @@ class PrivacyLLM:
 
     def for_role(self, role: str):
         b = self.llm.for_role(role)
+        if hasattr(b, "meter"):
+            b.meter = self._usage          # count this wrapper's (one hunt's) calls only
         return _MaskedBound(b, self.masker) if getattr(b.provider, "name", "") in self.mask_for else b
 
     @property
     def usage(self) -> dict:
-        return getattr(self.llm, "usage", {})
+        return self._usage
 
     def usage_summary(self) -> dict:
-        return self.llm.usage_summary() if hasattr(self.llm, "usage_summary") else {}
+        return self.llm.usage_summary(self._usage) if hasattr(self.llm, "usage_summary") else {}
 
     def summary(self) -> dict[str, Any]:
         return {"masked_values": len(self.back_map()), "by_type": dict(self.masker.counts)}

@@ -158,12 +158,16 @@ def main() -> None:
     ap.add_argument("--questions", required=True)
     ap.add_argument("--incident", action="append", default=[])
     ap.add_argument("--per-incident", type=int, default=0, help="sample N questions per incident (0 = all)")
+    ap.add_argument("--quick", action="store_true", help="regression preset: 2 questions per incident (16), seed 0")
+    ap.add_argument("--workers", type=int, default=4, help="questions answered in parallel (default 4)")
     ap.add_argument("--max-calls", type=int, default=25)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="excytin-results.json")
     ap.add_argument("--resume", action="store_true", help="keep results already in --out and skip those questions")
     ap.add_argument("--notes", default="", help="query notes file describing the tables (as a deployment would write)")
     a = ap.parse_args()
+    if a.quick:
+        a.per_incident, a.seed = 2, 0
 
     from actaeon.config import get_config
     from actaeon.providers import get_llm
@@ -176,6 +180,7 @@ def main() -> None:
         results = json.loads(Path(a.out).read_text()).get("results", [])
     done = {(r["incident"], r["index"]) for r in results}
     files = sorted(Path(a.questions).glob("incident_*_qa*.json"))
+    todo = []
     for f in files:
         inc = "_".join(f.name.split("_")[:2])
         if a.incident and inc not in a.incident:
@@ -188,17 +193,26 @@ def main() -> None:
         idx = list(range(len(qs)))
         if a.per_incident:
             idx = sorted(rng.sample(idx, min(a.per_incident, len(idx))))
-        for i in idx:
-            if (inc, i) in done:
-                continue
-            q = qs[i]
-            r = answer_one(cfg, llm, db, q, a.max_calls, notes)
-            r.update(judge(llm, q, r["answer"]))
-            r.update(incident=inc, index=i, golden=q["answer"])
+        todo += [(inc, db, i, qs[i]) for i in idx if (inc, i) not in done]
+
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    lock = threading.Lock()
+
+    def one(item):
+        inc, db, i, q = item
+        r = answer_one(cfg, llm, db, q, a.max_calls, notes)
+        r.update(judge(llm, q, r["answer"]))
+        r.update(incident=inc, index=i, golden=q["answer"])
+        with lock:
             results.append(r)
             print(f"{inc} q{i:<3} reward {r['reward']:.2f} calls {r['calls']:>2} {r['seconds']:>6}s  "
                   f"golden {str(q['answer'])[:40]!r} got {r['answer'][:60]!r}", flush=True)
             Path(a.out).write_text(json.dumps({"results": results, "usage": llm.usage_summary()}, indent=1))
+        return r
+
+    with ThreadPoolExecutor(max_workers=max(1, a.workers)) as ex:
+        list(ex.map(one, todo))
     n = len(results)
     per_inc: dict[str, list[float]] = {}
     for r in results:

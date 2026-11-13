@@ -129,3 +129,22 @@ def test_usage_meter_and_cost(home):
     u = llm.usage_summary()
     assert u["calls"] == 2 and u["tokens_in"] == 2000 and u["tokens_out"] == 1000
     assert u["cost_usd"] == round(2000 / 1e6 * 1 + 1000 / 1e6 * 4, 5)
+
+
+def test_each_privacy_wrapper_meters_its_own_hunt(home):
+    from actaeon.privacy import PrivacyLLM
+    from actaeon.providers import LLM
+    from actaeon.providers.base import LLMProvider, LLMResult
+    llm = LLM(config.get_config(reload=True))
+
+    class P(LLMProvider):
+        name = "p"
+
+        def chat(self, messages, *, model=None, **kw):
+            return LLMResult(text="ok", model=model, tokens_in=100, tokens_out=10)
+    llm._cache["ollama"] = P({})
+    a, b = PrivacyLLM(llm, {"mask_for": []}), PrivacyLLM(llm, {"mask_for": []})
+    a.for_role("analyst").chat([])
+    a.for_role("analyst").chat([])
+    b.for_role("analyst").chat([])
+    assert a.usage_summary()["calls"] == 2 and b.usage_summary()["calls"] == 1

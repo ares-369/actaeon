@@ -9,6 +9,7 @@ so an Ollama-only deployment never imports a cloud SDK.
 from __future__ import annotations
 
 import re as _re
+import threading
 import time as _time
 from dataclasses import dataclass
 from typing import Any
@@ -67,16 +68,21 @@ RETRY_DELAYS = (5.0, 15.0, 30.0, 60.0)
 _LAST_CALL: dict[str, float] = {}
 
 
+_PACE_LOCK = threading.Lock()
+
+
 def _pace(provider: LLMProvider) -> None:
-    """Optional ``min_interval_sec`` per provider: spaces requests to stay under per-minute limits."""
+    """Optional ``min_interval_sec`` per provider: spaces requests to stay under per-minute limits.
+    Thread-safe: parallel hunts reserve the next free slot in turn."""
     gap = float((provider.cfg or {}).get("min_interval_sec") or 0)
     if gap <= 0:
         return
-    now = _time.monotonic()
-    nxt = _LAST_CALL.get(provider.name, 0) + gap
-    if nxt > now:
-        _time.sleep(nxt - now)
-    _LAST_CALL[provider.name] = _time.monotonic()
+    with _PACE_LOCK:
+        now = _time.monotonic()
+        slot = max(now, _LAST_CALL.get(provider.name, 0) + gap)
+        _LAST_CALL[provider.name] = slot
+    if slot > now:
+        _time.sleep(slot - now)
 
 
 @dataclass
@@ -133,12 +139,14 @@ class LLM:
         self._cache: dict[str, LLMProvider] = {}
         self.usage: dict[str, dict] = {}   # totals for everything asked through this LLM
 
-    def usage_summary(self) -> dict:
+    def usage_summary(self, usage: dict | None = None) -> dict:
         """Calls and tokens per model, plus an estimated cost when ``llm.prices`` lists the model
-        (USD per million tokens: {model: {in: x, out: y}})."""
+        (USD per million tokens: {model: {in: x, out: y}}). ``usage``: a meter to summarise instead of
+        this LLM's running total (each hunt keeps its own)."""
+        usage = self.usage if usage is None else usage
         prices = ((self.cfg.raw or {}).get("llm") or {}).get("prices") or {}
         out, total_cost, priced = {}, 0.0, True
-        for key, u in self.usage.items():
+        for key, u in usage.items():
             row = dict(u)
             p = prices.get(key.split("/", 1)[-1]) or prices.get(key)
             if isinstance(p, dict):
@@ -149,9 +157,9 @@ class LLM:
                 priced = False
             out[key] = row
         return {"models": out,
-                "calls": sum(u["calls"] for u in self.usage.values()),
-                "tokens_in": sum(u["tokens_in"] for u in self.usage.values()),
-                "tokens_out": sum(u["tokens_out"] for u in self.usage.values()),
+                "calls": sum(u["calls"] for u in usage.values()),
+                "tokens_in": sum(u["tokens_in"] for u in usage.values()),
+                "tokens_out": sum(u["tokens_out"] for u in usage.values()),
                 "cost_usd": round(total_cost, 5) if out and priced else None}
 
     def provider(self, name: str) -> LLMProvider:

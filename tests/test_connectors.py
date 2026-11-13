@@ -230,3 +230,16 @@ def test_http_bad_token(tmp_path, http_url, monkeypatch):
                               "auth": {"type": "bearer", "token_env": "TOK"}}])[0]
     r = make_hub(tmp_path, spec).test("remote")
     assert not r["ok"] and "authentication" in r["error"]
+
+
+def test_stdio_connector_is_safe_under_concurrent_calls(tmp_path):
+    """Parallel hunts share one stdio process; every caller must get its own reply."""
+    from concurrent.futures import ThreadPoolExecutor
+    hub = make_hub(tmp_path, stdio_spec(rate_per_min=1_000_000, timeout_sec=5))   # no pacing: calls really overlap
+    try:
+        hub.test("fake")
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            outs = list(ex.map(lambda i: hub.call("fake", "search_events", {"q": f"q{i}"}, hunt_id=f"h{i}"), range(24)))
+        assert len(outs) == 24 and all("UNTRUSTED-DATA" in o["content"] for o in outs)
+    finally:
+        hub.close()
