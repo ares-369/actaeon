@@ -37,8 +37,8 @@ def run_loop(*, llm, hub, store, hid: str, system: str, user: str, final_action:
     n = max([s["n"] for s in h.get("steps") or []] + [0])
     transcript: list[dict] = []
     made: list[str] = []
-    calls = 0
-    for _ in range(max_calls + 3):
+    calls = bad_replies = 0
+    for _ in range(max_calls + 6):
         last = calls >= max_calls
         if last:
             transcript.append({"role": "user", "content": f"No more calls. Reply with the {final_action} now."})
@@ -56,6 +56,13 @@ def run_loop(*, llm, hub, store, hid: str, system: str, user: str, final_action:
             if res.error:
                 return {"action": final_action, "error": res.error[:300]}, made, calls
             act = action_object(res.text) or {}
+        if not act.get("action") and not last and bad_replies < 2:
+            # Not a valid JSON action (often a stray sentence inside the object): ask again.
+            bad_replies += 1
+            transcript.append({"role": "assistant", "content": (res.text or "")[:2000]})
+            transcript.append({"role": "user", "content": "That was not one valid JSON object. Reply with ONE JSON "
+                               f"object only: a call, or the {final_action}."})
+            continue
         if act.get("action") == final_action or last or act.get("action") != "call":
             if act.get("action") != final_action:
                 act = {"action": final_action, "text": res.text[:4000], "unstructured": True}

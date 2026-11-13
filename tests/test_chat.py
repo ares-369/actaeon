@@ -96,3 +96,23 @@ def test_tool_loop_last_turn_gets_one_more_chance(home):
     final, _made, calls = run_loop(llm=llm, hub=hub, store=service.store_for(cfg), hid=h["id"], system="s", user="u",
                                    final_action="answer", max_calls=1, max_results=50, actor="t", why_prefix="")
     assert calls == 1 and final == {"action": "answer", "text": "final"}
+
+
+def test_tool_loop_asks_again_after_invalid_json(home):
+    from actaeon.hunt.toolloop import run_loop
+    from actaeon.providers.base import LLMResult
+    cfg = config.get_config(reload=True)
+    hub = Hub(results={"search": '{"total": 1}'})
+    h = finished(cfg, hub)
+    replies = ['{"action": "call", "tool": "search", "arguments": {"q": 1, "thought": "x"} oops}',
+               json.dumps({"action": "answer", "text": "fine"})]
+
+    class L:
+        def for_role(self, role):
+            class B:
+                def chat(self, messages, **kw):
+                    return LLMResult(text=replies.pop(0))
+            return B()
+    final, _m, calls = run_loop(llm=L(), hub=hub, store=service.store_for(cfg), hid=h["id"], system="s", user="u",
+                                final_action="answer", max_calls=5, max_results=50, actor="t", why_prefix="")
+    assert final == {"action": "answer", "text": "fine"} and calls == 0
