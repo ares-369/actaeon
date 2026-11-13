@@ -294,3 +294,14 @@ def test_snapshot_mode_no_time_bounds():
     assert out["total"] == 2 and out["hits"][0]["process"]["name"] == "bash"
     with pytest.raises(ToolInputError):
         b.first_seen({"index": "inventory-processes*", "field": "process.name"})
+
+
+def test_snapshot_tools_advertise_no_time_args():
+    b = SearchIndexBridge("https://idx.example", ["inv-*"], session=FakeSession({}), snapshot=True)
+    srv = b.build()
+    out = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    tools = {t["name"]: t for t in out["result"]["tools"]}
+    assert "first_seen" not in tools
+    for name in ("search", "count", "top_values"):
+        props = tools[name]["inputSchema"]["properties"]
+        assert "time_from" not in props and "time_to" not in props, name

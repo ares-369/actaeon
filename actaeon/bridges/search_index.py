@@ -199,21 +199,25 @@ class SearchIndexBridge:
         srv.tool("list_indices", "List the indices this bridge may search.", {"type": "object", "properties": {}})(self.list_indices)
         srv.tool("get_fields", "List field names and types of an index.",
                  {"type": "object", "properties": {**idx, "contains": {"type": "string"}}, "required": ["index"]})(self.get_fields)
-        srv.tool("search", "Search events in a time window. Returns the newest hits first.",
-                 {"type": "object", "properties": {**idx, **q, **TIME_SCHEMA,
+        ts = {} if self.snapshot else TIME_SCHEMA   # snapshot sources have no event time to bound
+        what = "current inventory records" if self.snapshot else "events in a time window"
+        srv.tool("search", f"Search {what}." + ("" if self.snapshot else " Returns the newest hits first."),
+                 {"type": "object", "properties": {**idx, **q, **ts,
                   "size": {"type": "integer", "description": f"max hits (default 50, max {self.max_size})"},
                   "fields": {"type": "array", "items": {"type": "string"}, "description": "fields to return"},
-                  "order": {"type": "string", "enum": ["desc", "asc"]}}, "required": ["index"]})(self.search)
-        srv.tool("count", "Count events matching a query in a time window.",
-                 {"type": "object", "properties": {**idx, **q, **TIME_SCHEMA}, "required": ["index"]})(self.count)
+                  **({} if self.snapshot else {"order": {"type": "string", "enum": ["desc", "asc"]}})},
+                  "required": ["index"]})(self.search)
+        srv.tool("count", f"Count {what} matching a query.",
+                 {"type": "object", "properties": {**idx, **q, **ts}, "required": ["index"]})(self.count)
         srv.tool("top_values", "Most common (or with rare=true, rarest) values of a field. Useful for stacking.",
-                 {"type": "object", "properties": {**idx, **q, **TIME_SCHEMA, "field": {"type": "string"},
+                 {"type": "object", "properties": {**idx, **q, **ts, "field": {"type": "string"},
                   "size": {"type": "integer"}, "rare": {"type": "boolean"}}, "required": ["index", "field"]})(self.top_values)
-        srv.tool("first_seen", "Values of a field that appear in the time window but never in the baseline_days "
-                 "before it (new processes, hosts, users, destinations). Good for baseline hunts.",
-                 {"type": "object", "properties": {**idx, **q, **TIME_SCHEMA, "field": {"type": "string"},
-                  "baseline_days": {"type": "number", "description": "days before the window to compare (default 14)"},
-                  "size": {"type": "integer"}}, "required": ["index", "field"]})(self.first_seen)
+        if not self.snapshot:
+            srv.tool("first_seen", "Values of a field that appear in the time window but never in the baseline_days "
+                     "before it (new processes, hosts, users, destinations). Good for baseline hunts.",
+                     {"type": "object", "properties": {**idx, **q, **ts, "field": {"type": "string"},
+                      "baseline_days": {"type": "number", "description": "days before the window to compare (default 14)"},
+                      "size": {"type": "integer"}}, "required": ["index", "field"]})(self.first_seen)
         return srv
 
 
