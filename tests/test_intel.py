@@ -194,3 +194,13 @@ def test_strict_links_keep_only_defanged(tmp_path):
     assert "https://reference.example/doc" in r["skipped_links"]
     r2 = s.add_advisory("Manual", "https://reference.example/doc")   # not strict: analyst text kept as is
     assert s.advisory(r2["advisory_id"])["indicators"]
+
+
+def test_advisory_never_keeps_loopback_or_private_ips(tmp_path):
+    from actaeon.intel import IntelStore
+    st = IntelStore(tmp_path / "i.sqlite")
+    r = st.add_advisory("t", "Exploit seen from 82.26.72.21 against 127.0.0.1 and 10.1.2.3; doc range 203.0.113.9; "
+                             "payload at hxxp://127.0.0.1:8080/x and hxxp://45.150.32[.]130/a")
+    vals = {i["value"] for i in st.advisory(r["advisory_id"])["indicators"]}
+    assert {"82.26.72.21", "203.0.113.9", "45.150.32.130"} <= vals
+    assert not {"127.0.0.1", "10.1.2.3"} & vals and not any("127.0.0.1" in v for v in vals)

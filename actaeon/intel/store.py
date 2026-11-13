@@ -9,6 +9,7 @@ is read-only.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import sqlite3
 import threading
@@ -21,6 +22,10 @@ from .extract import TYPES, extract, guess_type, normalize
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+_NON_ROUTABLE = [ipaddress.ip_network(n) for n in
+                 ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7")]
 
 
 class IntelStore:
@@ -130,6 +135,25 @@ class IntelStore:
                     dropped += [v for v in found[kind] if v not in kept]
                     found[kind] = kept
             found = {k: v for k, v in found.items() if v}
+        # Loopback, private, shared, link-local, multicast and unspecified addresses are never indicators:
+        # they are examples, lab addresses or victims' internal hosts in a write-up.
+        def routable(kind: str, v: str) -> bool:
+            host = v
+            if kind == "url":
+                from urllib.parse import urlparse
+                host = urlparse(v).hostname or ""
+            try:
+                ip = ipaddress.ip_address(host)
+            except ValueError:
+                return True
+            return not (ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified
+                        or any(ip in n for n in _NON_ROUTABLE if n.version == ip.version))
+        for kind in ("ipv4", "ipv6", "url"):
+            if kind in found:
+                kept = [v for v in found[kind] if routable(kind, v)]
+                dropped += [v for v in found[kind] if v not in kept]
+                found[kind] = kept
+        found = {k: v for k, v in found.items() if v}
         with self._lock, self._conn() as c:
             cur = c.execute("INSERT INTO advisories (title, text, source, url, added, techniques, cves) "
                             "VALUES (?,?,?,?,?,?,?)",
