@@ -138,6 +138,11 @@ class SqlBridge:
             return v
         return str(v) if not isinstance(v, str) else v
 
+    def _quoted(self, name: str) -> str:
+        """A table name already checked by _table_ok (letters, digits, _ . $ only), quoted for this database."""
+        q = "`" if self.kind == "mysql" else '"'
+        return ".".join(q + part + q for part in name.split("."))
+
     def _table_ok(self, name: str) -> str:
         if not _IDENT.match(name or ""):
             raise ToolInputError("table must be a plain table name")
@@ -160,7 +165,7 @@ class SqlBridge:
     def describe_table(self, args: dict) -> dict:
         t = self._table_ok(str(args.get("table", "")))
         if self.kind == "sqlite":
-            _, rows, _ = self._rows(f'SELECT name, type FROM pragma_table_info("{t}")')
+            _, rows, _ = self._rows("SELECT name, type FROM pragma_table_info(?)", (t,))
         elif self.kind == "mysql":
             _, rows, _ = self._rows("SELECT column_name, data_type FROM information_schema.columns "
                                     "WHERE table_schema = DATABASE() AND table_name = %s ORDER BY ordinal_position", (t,))
@@ -172,7 +177,9 @@ class SqlBridge:
         out = {"table": t, "columns": {r[0]: r[1] for r in rows}}
         n = cap(args.get("sample"), 0, 5) if args.get("sample") else 0
         if n:
-            cols, sample, _ = self._rows(f"SELECT * FROM {t} LIMIT {n}")
+            # Identifiers cannot be bound as parameters; t passed _table_ok (and the allow list) and is quoted.
+            sql = "SELECT * FROM " + self._quoted(t) + " LIMIT " + ("?" if self.kind == "sqlite" else "%s")  # nosec B608
+            cols, sample, _ = self._rows(sql, (n,))
             out["sample"] = [{c: self._cell(v) for c, v in zip(cols, r, strict=False)} for r in sample]
         return out
 
