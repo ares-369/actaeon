@@ -406,6 +406,37 @@ def cmd_models_test() -> int:
     return rc
 
 
+def cmd_sigma(a) -> int:
+    import json
+
+    from .hunt.sigma_convert import SigmaConvertError, available, convert, convert_for, targets
+    if a.action == "backends":
+        print(json.dumps(available(), indent=2))
+        return 0
+    if not a.file:
+        print("usage: actaeon sigma convert RULE.yml [--backend ID --pipeline P]")
+        return 2
+    rule = Path(a.file).read_text()
+    if a.backend:
+        try:
+            for q in convert(rule, backend=a.backend, pipelines=a.pipeline, fmt=a.format):
+                print(q)
+        except SigmaConvertError as exc:
+            print(f"error: {exc}")
+            return 1
+        return 0
+    from .config import get_config
+    tg = targets(get_config())
+    if not tg:
+        print("no connector has a sigma: block; use --backend, or see docs/detection.md")
+        return 1
+    rows = convert_for(rule, tg)
+    for r in rows:
+        print(f"== {r['connector']} ({r['backend']})")
+        print("\n".join(r.get("queries") or []) or f"error: {r.get('error')}")
+    return 1 if any(r.get("error") for r in rows) else 0
+
+
 def cmd_validate_pack(path: str | None) -> int:
     """Check hunt-pack YAML files (a folder or one file; default: the built-in pack)."""
     from pathlib import Path
@@ -449,6 +480,12 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_con.add_argument("action", choices=["list", "test", "check", "tools", "login"], nargs="?", default="list")
     p_con.add_argument("name", nargs="?")
     p_con.add_argument("--manual", action="store_true", help="login: paste the redirect URL instead of a local listener")
+    p_sg = sub.add_parser("sigma", help="Sigma conversion: list installed pySigma backends, or convert a rule file")
+    p_sg.add_argument("action", choices=["backends", "convert"])
+    p_sg.add_argument("file", nargs="?", help="convert: a Sigma rule YAML file")
+    p_sg.add_argument("--backend", default="", help="convert with this backend instead of the connectors' sigma: blocks")
+    p_sg.add_argument("--pipeline", action="append", default=[])
+    p_sg.add_argument("--format", default="default")
     p_aud = sub.add_parser("audit", help="check the audit log's hash chain")
     p_aud.add_argument("action", choices=["verify"], nargs="?", default="verify")
     p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
@@ -723,6 +760,8 @@ def cli_main(argv: list[str] | None = None) -> None:
         if a.action == "login":
             sys.exit(cmd_login(a.name, a.manual))
         sys.exit(cmd_connectors(a.action, a.name))
+    if a.cmd == "sigma":
+        sys.exit(cmd_sigma(a))
     if a.cmd == "audit":
         import json
 

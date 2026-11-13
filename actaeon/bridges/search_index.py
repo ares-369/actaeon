@@ -60,6 +60,17 @@ class SearchIndexBridge:
             for v in obj:
                 SearchIndexBridge._no_scripts(v)
 
+    _QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"')
+    _LEADING = re.compile(r"(?:^|[\s(\[:])[*?](?![\s)\]:]|$)")
+
+    @classmethod
+    def _query_string_ok(cls, q: str) -> None:
+        """The index answers 0 (not an error) for a leading wildcard it is told not to expand, which a hunt
+        would read as 'nothing there'. Refuse it with a clear message instead."""
+        if cls._LEADING.search(cls._QUOTED.sub('""', q)):
+            raise ToolInputError("leading wildcards (*foo, ?oo) are not allowed on this time-series index and would "
+                                 "silently match nothing; search the exact value, a prefix (foo*), or a keyword field")
+
     @staticmethod
     def _no_leading_wildcards(obj: Any) -> None:
         """Raw query clauses may not start a pattern with a wildcard on time-series indices: those
@@ -88,6 +99,8 @@ class SearchIndexBridge:
         start, end = (None, None) if self.snapshot else (window or time_window(args, self.max_days))
         must: list[dict] = []
         q = str(args.get("query", "") or "").strip()
+        if q and not self.snapshot:
+            self._query_string_ok(q)
         if q:
             # Leading wildcards are costly on large time-series indices but cheap on small snapshot
             # (inventory) indices, where matching a process path or command substring needs them.

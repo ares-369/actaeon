@@ -115,6 +115,9 @@ def _spec(raw: dict[str, Any]) -> ConnectorSpec:
         if auth.get(k) and not _VAR_RE.fullmatch(str(auth[k])):
             raise ValueError(f"connector {name}: put auth.{k} in .env and reference it as {k}_env or ${{VAR}}")
     tools = raw.get("tools") or {}
+    if raw.get("sigma"):
+        from ..hunt.sigma_convert import validate_target
+        validate_target(name, raw["sigma"])
     access = raw.get("access") or []
     if not isinstance(access, list) or not all(isinstance(a, str) and a.strip() for a in access):
         raise ValueError(f"connector {name}: access must be a list of group names, role:<role> or user:<name>")

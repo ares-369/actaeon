@@ -181,6 +181,7 @@ connectors: []
 #      - {goal: "process starts by parent", query: "process.parent.name:winword.exe AND process.name:powershell.exe"}
 #    tools: { allow: [], deny: [] }  # glob patterns
 #    access: []                      # who may use it: group names, "role:admin", "user:name"; empty = all
+#    sigma: { backend: "", pipelines: [], backtest: true }   # convert Sigma drafts (actaeon[sigma] + a backend)
 #    rate_per_min: 60
 #    timeout_sec: 30
 #  - name: intel

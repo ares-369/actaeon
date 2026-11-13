@@ -59,7 +59,7 @@ See [docs/demo.md](docs/demo.md).
 | Sources | Any MCP server, plus built-in bridges for search indices, read-only SQL, STIX/TAXII 2.1 and any REST/OpenAPI service. Each connector gets query notes and examples in its own query language. `actaeon connectors check` tests a connector, and a one-file template helps you write your own |
 | Intel | A local indicator and advisory store with first/last-seen tracking. Paste IOCs, import files, PDFs or URLs, or pull feeds. Export as STIX 2.1, or push a hunt's indicators to a TAXII 2.1 collection |
 | Analyst work | Leads with assignment, status, resolution and history; chat on a finished hunt; feedback on findings; a timeline view |
-| Detection | Draft rules from a hunt (Sigma, plus native queries) with a backtest of how often they would have fired |
+| Detection | Draft rules from a hunt (Sigma, plus native queries), converted to each connector's query language with pySigma, and a backtest of how often they would have fired |
 | Outputs | Email, Excel, webhook, or a write tool you explicitly allow (such as opening a case). A reply in the ticket can continue the hunt |
 | Reports | Markdown, CSV, PDF and Word, plus an ATT&CK coverage view |
 | Access | `basic`, `local`, OIDC single sign-on or a trusted proxy; viewer, operator and admin roles, mapped from your identity provider's groups; per-source limits so only some people can query (and see hunts over) sensitive sources ([access](docs/access.md)). All of it is free |

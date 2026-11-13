@@ -617,8 +617,27 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         ds = DetectionStore(store_for(c).path)
         if request.method == "GET":
             return jsonify(ds.list(hid))
+        from .hunt.sigma_convert import targets
         from .providers import get_llm
-        return jsonify(ds.save(draft(hs.privacy_llm(c, get_llm()), h)))
+        return jsonify(ds.save(draft(hs.privacy_llm(c, get_llm()), h, sigma_targets=targets(c), hub=hub())))
+
+    @app.route("/api/sigma/convert", methods=["POST"])
+    def sigma_convert_api():
+        """Convert a Sigma rule (e.g. an edited draft) for every connector with a sigma: block."""
+        from .hunt.detection import check_sigma
+        from .hunt.sigma_convert import convert_for, targets
+        b = request.get_json(silent=True) or {}
+        rule, problems = check_sigma(str(b.get("sigma", ""))[:50_000], [])
+        if problems:
+            return jsonify({"error": "; ".join(problems)}), 400
+        h = store_for(get_config()).get(str(b.get("hunt_id", ""))) if b.get("hunt_id") else None
+        return jsonify({"sigma": rule, "converted": convert_for(rule, targets(get_config()),
+                                                                hub=hub() if b.get("backtest") else None, h=h)})
+
+    @app.route("/api/sigma/backends")
+    def sigma_backends():
+        from .hunt.sigma_convert import available
+        return jsonify(available())
 
     @app.route("/api/hunts/<hid>/detection/backtest", methods=["POST"])
     def hunt_backtest(hid):

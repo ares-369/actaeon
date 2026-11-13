@@ -74,7 +74,9 @@ def check_sigma(text: str, attack: list[str]) -> tuple[str, list[str]]:
     return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), problems
 
 
-def draft(llm, h: dict) -> dict:
+def draft(llm, h: dict, *, sigma_targets: list[dict] | None = None, hub=None) -> dict:
+    """``sigma_targets`` (see sigma_convert.targets): also convert a valid Sigma draft for those connectors,
+    and with ``hub`` count how often each converted query would have matched."""
     v = h.get("verdict") or {}
     native = native_queries(h)
     from .attack_names import check
@@ -100,9 +102,13 @@ def draft(llm, h: dict) -> dict:
             problems = [f"model call failed: {exc}"[:300]]
     if not native:
         problems.append("no query in this hunt returned data, so the draft is not grounded in a working query")
+    valid = bool(sigma) and not [p for p in problems if "YAML" in p or "missing" in p or "condition" in p]
+    converted = []
+    if valid and sigma_targets:
+        from .sigma_convert import convert_for
+        converted = convert_for(sigma, sigma_targets, hub=hub, h=h)
     return {"hunt_id": h["id"], "native": native, "sigma": sigma, "notes": notes, "problems": problems,
-            "attack": attack, "status": "draft", "valid": bool(sigma) and not [p for p in problems if "YAML" in p
-                                                                                or "missing" in p or "condition" in p]}
+            "attack": attack, "status": "draft", "valid": valid, "converted": converted}
 
 
 class DetectionStore:

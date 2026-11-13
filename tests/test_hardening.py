@@ -256,3 +256,23 @@ def test_audit_verify_cli(home, capsys):
     with pytest.raises(SystemExit) as e:
         cli_main(["audit", "verify"])
     assert e.value.code == 0 and '"rows_checked": 1' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("q,ok", [("rule.groups:*auth*", False), ("*foo", False), ("(*foo OR x)", False),
+                                  ("x:?bc", False), ("*:*", True), ("*", True), ("field:*", True), ("a:b*", True),
+                                  ('msg:"*quoted"', True)])
+def test_query_string_leading_wildcard(q, ok):
+    b = si({"_count": {"count": 0}, "_search": {"hits": {"total": {"value": 0}, "hits": []}}})
+    if ok:
+        b.count({"index": "events-*", "query": q, "time_from": "now-1d"})
+    else:
+        with pytest.raises(ToolInputError, match="silently match nothing"):
+            b.count({"index": "events-*", "query": q, "time_from": "now-1d"})
+
+
+def test_snapshot_index_allows_leading_wildcard():
+    from actaeon.bridges.search_index import SearchIndexBridge
+    from tests.test_bridges import FakeSession
+    b = SearchIndexBridge("https://idx.example", ["inv-*"], snapshot=True,
+                          session=FakeSession({"_count": {"count": 2}}))
+    b.count({"index": "inv-x", "query": "process.command_line:*rclone*"})

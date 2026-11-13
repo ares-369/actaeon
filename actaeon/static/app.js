@@ -412,6 +412,10 @@ function detectionBox(hu) {
     (d.problems || []).length ? h("ul", {}, d.problems.map((p) => h("li", { class: "warn small" }, p))) : null,
     d.sigma ? [h("h3", {}, "Sigma draft"), h("pre", {}, d.sigma)] : null,
     d.notes ? h("p", { class: "small" }, d.notes) : null,
+    (d.converted || []).length ? [h("h3", {}, "Converted for your connectors (pySigma)"),
+      ...d.converted.map((c) => h("div", {}, h("div", { class: "muted small" }, `${c.connector} (${c.backend})`
+        + (c.backtest ? (c.backtest.error ? `  backtest: ${c.backtest.error}` : `  ${c.backtest.matches ?? "?"} match(es) in ${c.backtest.days} days`) : "")),
+        c.error ? h("p", { class: "warn small" }, c.error) : (c.queries || []).map((q) => h("pre", {}, q))))] : null,
     (d.native || []).length ? [h("h3", {}, "Queries that found data (exactly as they ran)"),
       ...d.native.map((q) => h("div", {}, h("div", { class: "muted small" }, `${q.evidence}  ${q.connector}.${q.tool}  hits ${q.hits ?? "?"}`), h("pre", {}, q.query)))] : null);
   api(`/api/hunts/${hu.id}/detection`).then((ds) => { if (ds.length) show(ds[0]); });

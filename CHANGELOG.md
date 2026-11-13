@@ -24,6 +24,15 @@
   assistant conversations, detection drafts) and are not sent to outputs unless an output opts in.
   See docs/access.md.
 
+### Detection
+- Sigma drafts are converted with pySigma (optional `actaeon[sigma]` plus your platform's backend) into
+  each connector's query language, set per connector with a `sigma:` block, and the converted query is
+  backtested. `actaeon sigma backends|convert`, `/api/sigma/convert`, `/api/sigma/backends`.
+
+### Fixes
+- Search-index bridge: a query string with a leading wildcard on a log index now fails with a clear
+  error. The index answered 0 for it, which a hunt could read as "nothing there".
+
 ### Open standards and community
 - Hunt packs: the 65 starter hypotheses are now one YAML file per hunt under `actaeon/hunts/<tactic>/`,
   with a schema, `actaeon library validate`, and `hunt.library_dirs` for private packs.

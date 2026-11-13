@@ -178,6 +178,33 @@ gives two things:
 Both are drafts for a detection engineer to review and test. Drafts are kept per
 hunt (`GET /api/hunts/<id>/detection`, `GET /api/detections`).
 
+### Converting the Sigma draft (pySigma)
+
+With `pip install 'actaeon[sigma]'` and the pySigma backend for your platform (each platform's
+backend is its own package), Actaeon also converts a valid Sigma draft into each connector's own
+query language and counts how often the converted query would have matched:
+
+```yaml
+connectors:
+  - name: logs
+    ...
+    sigma:
+      backend: <backend id>       # `actaeon sigma backends` lists the installed ones
+      pipelines: []               # pipeline names, or your own pipeline YAML mapping Sigma fields to yours
+      format: default
+      backtest: true              # count matches of the converted query over the last 14 days
+```
+
+Also: `actaeon sigma convert rule.yml` (for every connector with a `sigma:` block, or
+`--backend ID --pipeline P` for one), and `POST /api/sigma/convert {"sigma": "...", "backtest": true}`
+for an edited rule. Each connector's result shows the converted query or the converter's error.
+
+Read the counts with care. Zero matches can mean the field mapping is wrong, not that the rule is
+quiet. Sigma's `contains` and `endswith` become leading wildcards, which the search-index bridge
+refuses on log indices (they would silently match nothing). The backtest then reports that error:
+use `startswith`, an exact value or a keyword field instead. Backends pin their own pySigma
+version; install the backend after Actaeon's extra and let pip choose.
+
 ## Prompt size
 
 `hunt.prompt_mode: compact` is for cheaper or smaller models. The analyst sees
