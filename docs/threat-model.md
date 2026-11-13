@@ -1,6 +1,6 @@
 # Threat model
 
-What Actaeon protects, from whom, and how. Early software (0.1.0-dev): treat this as a working draft.
+What Actaeon protects, from whom, and how. Beta (0.1.0b1): treat this as a working draft.
 
 ## Assets
 

@@ -1,6 +1,6 @@
 # Known limitations
 
-Actaeon is early software (0.1.0-dev). These are the limits we know about.
+Actaeon is in beta (0.1.0b1). These are the limits we know about.
 
 ## Hunting quality
 

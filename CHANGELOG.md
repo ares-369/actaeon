@@ -1,112 +1,76 @@
 # Changelog
 
-## Unreleased
-- Analyst handoff: hunts Actaeon cannot answer (inconclusive, data missing, threat not confirmed,
-  threat naming only known-good items, errors) open a "needs analyst" lead with what was searched,
-  what was missing and next steps; repeats update the open lead.
-- `logs_missing` when the kind of data a hypothesis needs exists in no source (`needed_data_present`).
-- `environment.known_good`: normal activity given to every hunt; a threat naming only known-good items
-  is capped and handed over.
-- Web intel relevance: each new advisory is matched against the environment (products, platforms),
-  then checked by the model; only relevant ones are hunted; every decision is kept in the ledger.
-- Advisories never keep loopback or private addresses as indicators.
-- SQL bridge (SQLite, MySQL/MariaDB, PostgreSQL; read-only).
-- Search-index snapshot mode for host inventory (no event time), and compact search results
-  (shared fields once); `BRIDGE_NOW` pins time for frozen benchmark data.
-- Full ATT&CK dataset: IDs checked and revoked IDs mapped to their replacements; coverage by tactic.
-- Evidence grounding: values a finding names must appear in the evidence.
-- 65 starter hunts, including baseline and rarity hunts; `first_seen` tool.
-- Interactive OAuth sign-in for HTTP connectors (`actaeon connectors login`).
-- Detection backtest: day-by-day counts for a hunt's queries.
-- Token and cost tracking per hunt; default `hunt.max_result_bytes` 20000.
-- Benchmarks: `actaeon bench --workers`, reruns of cases that die on service errors, ExCyTIn-Bench
-  runner (`benchmarks/excytin/`) and a lab benchmark on frozen real data (`benchmarks/lab/`).
-- Fixed: concurrent calls on one stdio connector could lose replies; per-hunt token counts; last-turn
-  and malformed replies in the tool loop; filtered field lists refusing valid fields.
-- Response and destructive actions (isolate, quarantine, kill, delete, disable, revoke, block, ...)
-  are always blocked, even with `allow_write`.
-- Short rate limits (429 "try again later", overload) are retried with backoff before a model is
-  skipped; only a used-up quota skips it for an hour.
-- CI security job: bandit (medium/high fail) and pip-audit over all extras.
-- Native tool calling falls back to the JSON protocol when a model rejects tools.
-- Foundation: YAML + .env config, model providers with per-role models and a Settings
-  model picker, auth modes (none/basic/local/oidc/proxy) with RBAC, SQLite job engine
-  with stop/pause, waitress server with a startup security check, CLI, tests and CI.
-- Connector hub: MCP client for stdio and streamable HTTP (bearer, API key, OAuth client
-  credentials), role tags, read-only policy with allow/deny lists, untrusted-data wrapping,
-  per-connector pacing, 2 retries with backoff, append-only audit log, API and CLI.
-- Bridges (`actaeon bridge ...`): built-in stdio MCP servers for search indices (`_search` API,
-  time-bounded, capped, index allowlist, no scripts), STIX/TAXII 2.1 (read-only) and
-  REST/OpenAPI (GET only, POST only when named).
-- Local intel store: add indicators and advisories (paste with defang-aware extraction,
-  files, URL feeds); ledger with first/last seen and count; served to hunts as the built-in
-  read-only `local-intel` connector; UI panel, API and `actaeon intel` CLI.
-- Hunt engine: planner and analyst roles, a JSON action protocol that works with any
-  provider, a query validator, evidence ids, checked verdicts (threat / no_results /
-  telemetry_found_benign / logs_missing / inconclusive), step, time and size limits,
-  stop/pause/resume, API and `actaeon hunt` CLI. Provider settings accept `${VAR}`.
-- Hunt library: save finished hunts, replay them on a schedule without a model, escalate
-  replays with matches to a full hunt; 16 generic starter hypotheses.
-- Intel sweeps: ledger-driven searches for new or changed indicators with per-value
-  attribution; advisory hunts; hunt memory (past verdicts and analyst notes, FTS5).
-- Intel timestamps now use microseconds so the ledger never skips or repeats an indicator.
-- Web UI: hunts (start, live steps, stop/pause, verdict with clickable evidence), library,
-  intel, coverage, connectors and settings (models, memory notes, audit log). Strict CSP,
-  no inline script, untrusted data only rendered as text.
-- Reports: Markdown report, JSON and CSV export (formula-safe), optional reporter-model
-  narrative kept apart from the record. ATT&CK coverage view from hunts, saved hunts and starters.
-- Privacy masking for cloud model providers (emails, IPs, labelled usernames, custom terms and
-  patterns), restored in replies so tools get real values.
-- Offline decoder (`actaeon decode`, built-in `local-tools` connector, role `analysis`).
-- Environment profile, finding feedback (benign / false positive / confirmed, saved to memory),
-  advisory import from URL, PDF or HTML with private-address and redirect checks.
-- Actaeon as an MCP server: `actaeon mcp` (stdio) and `POST /mcp` (HTTP) with role checks per
-  tool, an optional `/mcp`-only bearer token, and opt-in intel writes.
-- Demo mode (`actaeon demo`): synthetic, labelled sample data through a demo bridge, a sample
-  advisory and note, a UI banner, and an optional scripted offline run that is marked as not AI.
-- Docs: known limitations, threat model, contributing, security policy.
-- Engine fixes found with a real 7B model: refused and unknown calls now use the step budget
-  (no loops), tool resolution tolerates "connector.tool" and role names, `*` copied into
-  argument names is stripped, and the tool list format is clearer.
-- Field guard: before the first query on a connector that offers get_fields, the engine fetches
-  the field names itself and refuses queries that use fields the source does not have
-  (with close-match suggestions). Found with a 7B model that guessed field names.
-- Autonomy: web intel sources (RSS/Atom/pages) with optional auto advisory hunts; autopilot that
-  proposes checked hypotheses from new advisories, coverage gaps and follow-ups and hunts them
-  within caps; web lookups during hunts with a leak guard.
-- `cli` model provider for signed-in model CLIs; per-role fallback models with quota cooldown.
-- Web and imported advisories keep domains, URLs and emails only when the text defanged them,
-  and never the publisher's own domain (a live pull showed reference links being stored as IOCs).
-- The field guard reuses the model's own get_fields result instead of fetching it twice.
-- Stricter threat verdicts: the analyst is asked once to corroborate (intel lookup, decode, a pivot)
-  before a 'threat' verdict; confidence is capped at 60 with one piece of evidence and at 75 when all
-  evidence comes from one kind of query.
-- `connectors test` now reads from the source (list_indices, list_collections and similar), so a wrong
-  password shows up as a failure instead of an OK.
-- IOC triage in sweeps: each match is executed / blocked / passive / unknown (rules, optional model second
-  look); only executed matches make a threat.
-- Gemini provider: API key, Vertex AI (service account, workload identity, VM identity, gcloud login),
-  Vertex express key, AI gateway base URL and headers; `actaeon models test` and a UI Test button.
-- Outputs: email (SMTP, extra recipients for critical), Excel workbook rows, webhook and an allowed MCP tool
-  (e.g. create a case); `actaeon outputs test`.
-- Query guides per connector (notes, file, examples, plus queries that found data before) and a compact
-  prompt mode for cheaper models.
-- Docker image (non-root, read-only root, health check) and compose file; CI builds and checks it.
-- Ask Actaeon: chat on a finished hunt with read-only follow-up calls added as evidence.
-- Threat-actor profiles and campaigns: actor indicators swept with triage, plus a model hunt for its
-  techniques and tools; actors feed autopilot.
-- Detection drafts: the hunt's working native queries plus a checked Sigma draft (experimental).
-- Timeline per hunt from its evidence (entities, states, filters), also in the report.
-- UI fixes found by clicking through in a browser: action buttons sent GET instead of POST (pause/stop, run,
-  delete, test, sweep, web pull, actor hunt, narrative, detection, model test); finished hunts re-drew every
-  2 s and wiped open panels; lists printed as text. A test now checks every UI call against the server routes.
-- Second look: threats are re-checked by a sceptical verifier pass that re-queries (confirmed / refuted /
-  unconfirmed); shared read-only tool loop for chat and verification. CI container name fix.
-- Cases: auto-opened for threats and review items; acknowledge (assign to me), assign, in progress, close with
-  resolution and comment, reopen, comments, full history, stats (time to acknowledge / close).
-- Named accounts for basic/local login (`actaeon users add`), the signed-in user on every request, login page.
-- Ask assistant: questions and hunt requests in plain language; it searches records, starts stored hunts
-  (origin ask:<user>), follows up on hunts, and saves the conversation with links.
-- Reports in PDF, Word and Markdown: per hunt, per case, and a period summary (`actaeon report`, UI, API).
-- Company setup: `actaeon init --company DIR` (private config folder), `actaeon doctor` (end-to-end check),
-  connector form in Settings with a config preview.
+## 0.1.0b1 (2026-11-13), first beta
+
+The first version meant for others to try. It is read-only, it runs on one machine, and it has been
+tested in one home lab and on public and synthetic benchmarks (see `docs/benchmarks.md` and
+`docs/field-test-2026-11.md`). Expect rough edges; please report them.
+
+### Hunting
+- Give a hypothesis; Actaeon plans the hunt, queries your sources, pivots on what it finds and
+  writes a verdict (threat, no results, benign activity found, logs missing, inconclusive) that
+  cites its evidence and maps to MITRE ATT&CK.
+- Checks on every verdict: claims must cite successful results, the values a claim names must
+  appear in that evidence, a threat needs corroboration and gets a second look, and missing data
+  is reported as missing, never as clean.
+- When it cannot answer (out of steps, data missing, threat not confirmed, only known-good things
+  found, an error), the hunt is handed to an analyst: a "needs analyst" lead with what was
+  searched, what was missing and what to check next.
+- Environment profile: platforms, products, key assets, what is not present and what is known good,
+  given to every hunt.
+- 65 starter hypotheses including baseline and rarity hunts, a hunt library with scheduled replays
+  that need no model, hunt memory and analyst notes, chat about a finished hunt, a timeline,
+  draft detection rules (native queries and a checked Sigma draft) and a backtest of how often
+  they would have fired.
+- ATT&CK: IDs are checked against the bundled release (20.1) and revoked IDs map to their
+  replacement; a coverage view shows breadth per tactic and the log sources behind gaps.
+
+### Data sources
+- Every source is an MCP connector tagged with a role (log search, endpoint, identity, email, asset,
+  network, cloud, intel). Read-only by default; response and destructive actions (isolate,
+  quarantine, kill, delete, disable, revoke, block, ...) are always refused, whatever the config.
+- Connector auth: bearer, API key, OAuth client credentials, and interactive OAuth sign-in
+  (`actaeon connectors login`). Tested with the public MCP reference servers over stdio and HTTP.
+- Built-in bridges for sources without an MCP server: search indices (with a snapshot mode for host
+  inventory and compact results), SQL (SQLite, MySQL/MariaDB, PostgreSQL), STIX/TAXII 2.1,
+  REST/OpenAPI and the web.
+
+### Intel
+- A local intel store: paste or import indicators and advisories (text, files, URL, PDF, HTML) with
+  defang-aware extraction; a ledger with first and last seen; intel sweeps that search your logs
+  for new or changed indicators and triage the matches.
+- Web intel from RSS/Atom feeds and pages. Each new advisory is checked for relevance to your
+  environment first; only relevant ones are hunted, and every decision is kept in the ledger.
+- Threat-actor profiles and campaign hunts.
+
+### Working with it
+- Web UI (leads, hunts, ask, library, intel, coverage, reports, connectors, settings), with a
+  phone layout. Leads with acknowledge, assign, close and history; reports in PDF, Word and
+  Markdown; outputs to email, Excel, a webhook or an allowed tool.
+- Auth: none (loopback only), basic, local accounts, OIDC or a trusted reverse-proxy header, with
+  viewer, operator and admin roles. It will not listen on a network address without a login.
+- Models per role (planner, analyst, reporter): Ollama, Anthropic, Gemini (API key or Vertex AI),
+  OpenAI, Azure OpenAI, any OpenAI-compatible endpoint, or a signed-in model CLI; fallbacks,
+  retries on rate limits, native tool calling where supported, token and cost tracking per hunt.
+  Personal data is masked before prompts reach cloud models.
+- Actaeon as an MCP server for other agents (`actaeon mcp`, `POST /mcp`).
+- Install with `scripts/install.sh` (systemd), Docker, or `pip install -e .`; `actaeon doctor`
+  checks a setup; `actaeon demo` runs on synthetic data with no model needed.
+
+### Benchmarks
+- `actaeon bench` with labelled cases, parallel workers and reruns of cases that fail on service
+  errors; an ExCyTIn-Bench runner (`benchmarks/excytin/`) and a lab benchmark on a frozen copy of
+  your own data (`benchmarks/lab/`).
+
+### Fixed during testing
+- Two hunts sharing one connector process could lose each other's replies.
+- Filtered field lists made the field guard refuse valid fields.
+- The model's last-turn tool call or a malformed reply could end up as the answer.
+- Per-hunt token counts showed the server's running total.
+- Loopback and private addresses from news articles were stored as indicators.
+- Short rate limits locked a model out for an hour.
+
+### Known limitations
+See `docs/known-limitations.md`. In short: one process with SQLite (no high availability), benchmark
+numbers for one model only, and hunts flag your own administration until the known-good list
+describes it.

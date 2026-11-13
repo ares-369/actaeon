@@ -1,6 +1,6 @@
 # Actaeon
 
-Actaeon is an open-source AI threat hunter that is in early development. You give it a
+Actaeon is an open-source AI threat hunter, in beta. You give it a
 hypothesis and it plans a hunt, queries your data sources, follows pivots, and writes
 a verdict that cites its evidence and maps to MITRE ATT&CK.
 
@@ -11,14 +11,10 @@ files, pull feeds) into a built-in store that hunts read like any other intel so
 The hunt engine asks for a role, never a specific product. Tools are
 read-only by default, and every tool call is written to an audit log.
 
-> Status: early (0.1.0-dev, not released). All planned parts are built: connector hub,
-> bridges (search index, SQL, STIX/TAXII, OpenAPI, web), local intel store, hunt engine with
-> verification, hunt library with replays and intel sweeps, leads, reports, coverage, an MCP
-> server and a demo. It has been scored on a small synthetic suite and on a sample of the
-> public ExCyTIn-Bench (see [docs/benchmarks.md](docs/benchmarks.md)), and field-tested in a home lab,
-> where it found a planted implant that raised no alert ([docs/field-test-2026-11.md](docs/field-test-2026-11.md)).
-> It has not been run in a production environment. Start with [docs/connectors.md](docs/connectors.md),
-> [docs/hunting.md](docs/hunting.md) and [docs/known-limitations.md](docs/known-limitations.md).
+> **Beta (0.1.0b1).** Read-only, single machine, tested in one home lab and on public and synthetic
+> benchmarks, not yet in production. See [what changed](CHANGELOG.md), the
+> [known limitations](docs/known-limitations.md), and start with [docs/connectors.md](docs/connectors.md)
+> and [docs/hunting.md](docs/hunting.md).
 
 ## Try it
 
@@ -44,7 +40,7 @@ See [docs/demo.md](docs/demo.md). Before relying on it, read
 
 ## Where Actaeon fits
 
-Actaeon is an early-stage, MCP-first threat hunter designed for small teams and
+Actaeon is a young, MCP-first threat hunter designed for small teams and
 labs that want one model-agnostic interface across whatever log, endpoint,
 identity, and intel sources they already run.
 
@@ -148,21 +144,6 @@ See [docs/company-setup.md](docs/company-setup.md): a private configuration fold
 `auth.mode` can be `none` (loopback only), `basic`, `local`, `oidc` or `proxy`, with
 viewer, operator and admin roles. Actaeon will not start if it would listen on a
 network address with no login.
-
-## Roadmap
-
-1. Foundation (done)
-2. Connector hub (done): MCP over stdio and HTTP, role tags, allow/deny lists, audit log
-3. Generic bridges (done) for sources without their own MCP server (search index, STIX/TAXII, REST/OpenAPI)
-4. Hunt engine (done): hypothesis, plan, queries, pivots, a verdict with cited evidence, step limits)
-5. Hunt library, scheduled replays, intel-driven hunts, memory (done)
-6. UI, reports, coverage view (done)
-7. Actaeon as an MCP server (done): `actaeon mcp` or `POST /mcp`, see [docs/mcp-server.md](docs/mcp-server.md)
-8. Demo mode, known limitations, threat model (done)
-9. Analyst handoff, known-good list, relevance-filtered news feeds, benchmarks on real data (done)
-
-Next: benchmark more models, a longer run in a real environment to measure how many leads analysts
-close as benign, and broader lab cases that do not name the technique being hunted.
 
 ## Development
 
