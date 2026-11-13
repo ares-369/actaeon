@@ -42,6 +42,8 @@ ACTION_TOOLS: list[dict[str, Any]] = [
                 "findings": {"type": "array", "items": {"type": "object"}},
                 "attack": {"type": "array", "items": {"type": "string"}},
                 "gaps": {"type": "array", "items": {"type": "string"}},
+                "needed_data_present": {"type": "boolean",
+                                        "description": "false if the kind of event the hypothesis needs exists in no source"},
                 "next_steps": {"type": "array", "items": {"type": "string"}},
             },
             "required": ["outcome", "confidence", "summary"],

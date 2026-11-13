@@ -129,6 +129,16 @@ async function leads() {
   poll = setInterval(load, 15000);
 }
 
+// What Actaeon hands to a person when it cannot reach a confident answer.
+function handoffBox(v) {
+  const hd = v && v.handoff;
+  if (!hd) return null;
+  const list = (title, xs) => xs && xs.length ? [h("h4", {}, title), h("ul", {}, xs.map((x) => h("li", { class: "small" }, x)))] : null;
+  return h("div", { class: "handoff" }, h("h3", {}, icon("account-arrow-left-outline"), " Handed to an analyst"),
+    h("p", {}, hd.reason), list("What Actaeon searched", hd.tried), list("What it could not check", hd.missing),
+    list("Suggested next steps", hd.next_steps));
+}
+
 async function leadDetail(id) {
   const c = await api("/api/leads/" + encodeURIComponent(id));
   const hu = c.hunt || {};
@@ -165,7 +175,8 @@ async function leadDetail(id) {
       v.verification ? h("span", { class: "badge" }, icon("check-all"), " second look: " + v.verification.result) : null),
     h("p", {}, v.summary || ""),
     (v.findings || []).length ? h("ul", {}, v.findings.map((f) => h("li", {}, f.claim, h("span", { class: "muted" }, ` (${f.evidence.join(", ")})`)))) : null,
-    v.verification && v.verification.reason ? h("p", { class: "small muted" }, "Second look: " + v.verification.reason) : null));
+    v.verification && v.verification.reason ? h("p", { class: "small muted" }, "Second look: " + v.verification.reason) : null,
+    handoffBox(v)));
   main.append(section("Activity", "history",
     h("ul", { class: "events" }, c.events.slice().reverse().map((e) => h("li", {},
       h("span", { class: "muted small" }, `${when(e.ts)}  `), h("b", {}, e.user), ` ${e.action.replace("_", " ")}`,
@@ -322,6 +333,7 @@ function renderHunt(hu) {
         v.needs_review && h("span", { class: "badge b-logs_missing" }, icon("eye"), "needs review")),
       h("p", {}, v.summary || ""),
       v.verification && v.verification.reason ? h("p", { class: "small muted" }, "Second look: " + v.verification.reason) : null,
+      handoffBox(v),
       (v.findings || []).length ? [h("h3", {}, "Findings"), h("ul", {}, v.findings.map((f, i) =>
         h("li", {}, f.claim, " ", f.evidence.map((e) => h("a", { href: "#", onclick: (ev) => { ev.preventDefault(); const t = document.getElementById("step-" + e); if (t) { t.open = true; t.scrollIntoView(); } } }, `[${e}] `)),
           (f.missing_values || []).length ? h("span", { class: "warn small" }, " not in the evidence: " + f.missing_values.join(", ")) : null,

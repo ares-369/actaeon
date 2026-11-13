@@ -50,7 +50,9 @@ def environment_context(cfg) -> str:
     if env.get("summary"):
         lines.append(str(env["summary"])[:1500])
     for key, label in (("platforms", "Platforms in use"), ("crown_jewels", "Most important assets"),
-                       ("not_present", "Not present here (do not hunt for these)"), ("notes", "Notes")):
+                       ("not_present", "Not present here (do not hunt for these)"),
+                       ("known_good", "Known good here (normal activity; still report it if it is being misused)"),
+                       ("notes", "Notes")):
         vals = env.get(key)
         if vals:
             vals = vals if isinstance(vals, list) else [vals]
@@ -65,8 +67,10 @@ def privacy_llm(cfg, llm):
 
 def make_engine(cfg, *, checkpoint=None, on_event=None, max_steps: int | None = None, llm=None, hub=None):
     from ..providers import get_llm
+    kg = ((cfg.raw or {}).get("environment") or {}).get("known_good") or []
     return HuntEngine(privacy_llm(cfg, llm or get_llm()), _hub(cfg, hub), store_for(cfg),
-                      limits_for(cfg, max_steps), checkpoint=checkpoint, on_event=on_event)
+                      limits_for(cfg, max_steps), checkpoint=checkpoint, on_event=on_event,
+                      known_good=kg if isinstance(kg, list) else [kg])
 
 
 def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = "manual", actor: str = "",
@@ -78,6 +82,7 @@ def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = 
     eng = make_engine(cfg, checkpoint=checkpoint, on_event=on_event, max_steps=max_steps, llm=llm, hub=hub)
     res = eng.run(hypothesis, hunt_id=hunt_id, origin=origin, actor=actor, context=ctx)
     res = maybe_verify(cfg, res, llm=eng.llm, hub=hub)
+    res = handoff(cfg, res)
     counts = eng.llm.masker.counts
     if counts:
         store = store_for(cfg)
@@ -87,6 +92,50 @@ def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = 
         res = store.get(res["id"]) or res
     mem.remember(res)
     return send_outputs(cfg, res, hub=hub)
+
+
+HANDOFF_DEFAULT = ("inconclusive", "logs_missing", "unverified_threat", "error", "known_good_threat")
+
+
+def handoff(cfg, h: dict) -> dict:
+    """When Actaeon cannot reach a confident answer, hand the hunt to an analyst: mark it for review and
+    record why, what was searched, what was missing and what to do next. A lead opens from this."""
+    if not h:
+        return h
+    v = dict(h.get("verdict") or {})
+    when = ((cfg.raw or {}).get("hunt") or {}).get("handoff", list(HANDOFF_DEFAULT))
+    when = set(when if isinstance(when, list) else [when])
+    out = h.get("outcome")
+    reason = ""
+    if h.get("status") == "error" and "error" in when:
+        reason = f"The hunt failed before a verdict ({(h.get('error') or '')[:200]})."
+    elif out == "inconclusive" and "inconclusive" in when:
+        reason = f"Actaeon could not reach a verdict: {v.get('summary', '')[:300]}"
+    elif out == "logs_missing" and "logs_missing" in when:
+        reason = ("The data needed to test this is not available to Actaeon. Confirm whether it exists "
+                  "elsewhere, or record that this cannot be hunted here.")
+    elif out == "threat" and v.get("needs_review") and (v.get("verification") or {}).get("result") not in (
+            None, "confirmed") and "unverified_threat" in when:
+        reason = "A threat was reported but a second pass could not confirm it."
+    elif out == "threat" and v.get("needs_review") and "known_good_threat" in when:
+        reason = "The threat only names things listed as known good; check whether they are being misused."
+    if not reason:
+        return h
+    tried = []
+    for s in h.get("steps") or []:
+        if s.get("kind") == "call":
+            a = s.get("arguments") or {}
+            what = a.get("query") or a.get("sql") or a.get("field") or ""
+            tried.append(f"E{s['n']} {s.get('connector')}.{s.get('tool')} {str(what)[:140]}".strip()
+                         + ("" if s.get("ok") else " (failed)"))
+    v["needs_review"] = True
+    v["handoff"] = {"reason": reason, "tried": tried[-15:], "missing": list(v.get("gaps") or [])[:10],
+                    "next_steps": list(v.get("next_steps") or [])[:10]}
+    store = store_for(cfg)
+    store.update(h["id"], verdict=v)
+    n = max([s["n"] for s in h.get("steps") or []] + [0]) + 1
+    store.add_step(h["id"], n, "note", ok=True, note=f"handed to an analyst: {reason[:300]}")
+    return store.get(h["id"]) or h
 
 
 def maybe_verify(cfg, h: dict, *, llm=None, hub=None) -> dict:

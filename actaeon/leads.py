@@ -36,7 +36,9 @@ def severity_of(h: dict) -> str:
         if (v.get("verification") or {}).get("result") == "confirmed" and conf >= 85:
             return "critical"
         return "high" if conf >= 70 else "medium"
-    return "low" if not v.get("needs_review") else "medium"
+    if not v.get("needs_review") or h.get("outcome") == "logs_missing":
+        return "low"
+    return "medium"
 
 
 class LeadStore:
@@ -71,9 +73,18 @@ class LeadStore:
         if not (h.get("outcome") == "threat" or v.get("needs_review")):
             return None
         sev = severity_of(h)
-        title = f"{(h.get('outcome') or 'review').replace('_', ' ')}: {h.get('hypothesis', '')[:160]}"
+        label = "needs analyst" if v.get("handoff") and h.get("outcome") != "threat" else (h.get("outcome") or "review")
+        title = f"{label.replace('_', ' ')}: {h.get('hypothesis', '')[:160]}"
         with _lock, self._conn() as c:
             row = c.execute("SELECT * FROM leads WHERE hunt_id=?", (h["id"],)).fetchone()
+            if not row and v.get("handoff") and h.get("outcome") != "threat":
+                # The same unanswered question again (a replay or schedule): note it on the open lead.
+                same = c.execute("SELECT * FROM leads WHERE title=? AND status!='closed' ORDER BY id DESC LIMIT 1",
+                                 (title,)).fetchone()
+                if same:
+                    c.execute("UPDATE leads SET updated=? WHERE id=?", (_now(), same["id"]))
+                    self._event(c, same["id"], "system", "seen again", f"hunt {h['id']}: {v['handoff']['reason'][:300]}")
+                    return self.get(same["id"])
             if row:
                 c.execute("UPDATE leads SET severity=?, outcome=?, confidence=?, updated=? WHERE id=?",
                           (sev, h.get("outcome"), int(v.get("confidence") or 0), _now(), row["id"]))

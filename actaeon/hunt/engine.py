@@ -102,8 +102,9 @@ def _clip(x: Any, n: int = 300) -> str:
 class HuntEngine:
     def __init__(self, llm, hub, store: HuntStore, limits: HuntLimits | None = None, *,
                  checkpoint: Callable[[], bool] | None = None, on_event: Callable[[dict], None] | None = None,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic, known_good: list[str] | None = None):
         self.llm, self.hub, self.store = llm, hub, store
+        self.known_good = [str(k).strip() for k in known_good or [] if str(k).strip()]
         self.limits = limits or HuntLimits()
         self._checkpoint = checkpoint or (lambda: True)
         self._emit = on_event or (lambda e: None)
@@ -429,6 +430,9 @@ class HuntEngine:
         if outcome == "telemetry_found_benign" and not findings:
             outcome = "inconclusive" if data_ok else "logs_missing"
             notes.append("'benign' had no cited evidence")
+        if outcome == "no_results" and v.get("needed_data_present") is False:
+            outcome = "logs_missing"
+            notes.append("the kind of data this hypothesis needs is not in any source, so this is logs_missing")
         if outcome == "no_results" and data_ok == 0:
             outcome = "logs_missing"
             notes.append("no data search succeeded, so 'no results' cannot be claimed")
@@ -441,6 +445,19 @@ class HuntEngine:
         if outcome == "threat" and findings and ungrounded == len(findings):
             conf = min(conf, 50)
             notes.append("every finding names values that are not in any evidence; confidence capped at 50")
+        needs_review = False
+        kg = getattr(self, "known_good", [])
+        if outcome == "threat" and findings and kg:
+            def hits(text: str) -> list[str]:
+                low = text.lower()
+                return [k for k in kg if re.search(r"(?<![a-z0-9])" + re.escape(k.lower()) + r"(?![a-z0-9])", low)]
+            per = [hits(f["claim"]) for f in findings]
+            if all(per):
+                conf = min(conf, 50)
+                needs_review = True
+                names = sorted({k for p in per for k in p})
+                notes.append(f"every finding names known-good items ({', '.join(names[:5])}); confidence capped "
+                             "at 50 and handed to an analyst to confirm whether they are being misused")
         if outcome == "threat":
             cited = {e for f in findings for e in f["evidence"]}
             sources = {(self.evidence[e]["connector"], self.evidence[e]["tool"]) for e in cited if e in self.evidence}
@@ -464,6 +481,7 @@ class HuntEngine:
             "checks": notes,
             "evidence_ok": sorted(good, key=lambda e: int(e[1:])),
             "data_searches": {"succeeded": data_ok, "attempted": getattr(self, "data_attempted", 0)},
+            **({"needs_review": True} if needs_review else {}),
         }
 
 

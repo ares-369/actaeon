@@ -62,6 +62,7 @@ environment: {}
 #  products: ["<web server>", "<ssh server>"]   # what runs here, by name; decides which news items are worth a hunt
 #  crown_jewels: ["payroll database", "domain controllers"]
 #  not_present: ["macOS", "on-prem email"]
+#  known_good: ["<your own service names>", "nightly backup job"]   # normal here; misuse is still reported
 #  notes: ["Admins use a jump host for remote work"]
 
 # Mask personal data before prompts go to cloud models (restored in replies).
@@ -94,6 +95,7 @@ hunt:
   max_result_bytes: 200000   # per tool result shown to the model
   max_results: 200           # cap on size/limit arguments of any tool
   prompt_mode: full          # full | compact (shorter prompts for cheaper models)
+  handoff: [inconclusive, logs_missing, unverified_threat, error, known_good_threat]   # hand these to an analyst
 
 # Local intel store: add indicators and advisories yourself (UI, API, CLI)
 # and pull feeds. Served to hunts as the built-in read-only "local-intel"

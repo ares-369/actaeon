@@ -62,6 +62,36 @@ source. Its calls are added to the hunt as evidence.
 Turn it off with `hunt.verify: false`. Sweeps are verified too when a model is
 configured for triage (`intel.sweep.triage: model`) or `intel.sweep.verify: true`.
 
+## Handing over to an analyst
+
+Actaeon does not pretend to know. When a hunt cannot reach a confident answer, it is handed to a
+person: the verdict is marked for review, a lead opens, and the hunt page, the lead and the report
+show a **Handed to an analyst** box with the reason, what Actaeon searched, what it could not check
+and suggested next steps. This happens when:
+
+- the hunt is **inconclusive** (step or time budget used up, unclear replies);
+- the data needed is **missing** (`logs_missing`), opened as a low-severity lead;
+- a **threat could not be confirmed** by the second look;
+- a **threat only names known-good things** (see below);
+- the hunt **failed** with an error.
+
+Repeats of the same unanswered question (a schedule or replay) add a "seen again" entry to the open
+lead instead of opening a new one. Choose the cases with `hunt.handoff`
+(default `[inconclusive, logs_missing, unverified_threat, error, known_good_threat]`).
+
+## Missing data is not "no results"
+
+If the kind of event a hypothesis needs does not exist in any source at all (for example Windows
+process-access events in a Linux-only environment), the model reports `needed_data_present: false`
+and the outcome becomes `logs_missing`, even though its searches ran and returned nothing.
+
+## Known good
+
+`environment.known_good` lists what is normal here: your own services, scheduled jobs, admin hosts,
+planned changes. It is given to every hunt. A threat whose every finding names known-good items is
+not dropped, because an attacker can reuse a trusted name; its confidence is capped at 50 and it is
+handed to an analyst to check for misuse.
+
 ## Query validator
 
 A basic sanity check before each call, not a guarantee:

@@ -435,3 +435,24 @@ def test_claim_values_must_appear_in_evidence():
     assert _ground(f, ev, notes) == 1
     assert f[0]["grounded"] is True and f[1]["missing_values"] == ["198.51.100.9", "evil.dll"]
     assert any("not in the cited results" in n for n in notes)
+
+
+def test_needed_data_absent_becomes_logs_missing(tmp_path):
+    h, _ = run(tmp_path, [call(index="e", time_from="now-7d", query="event.code:10"),
+                          {"action": "verdict", "outcome": "no_results", "confidence": 90, "summary": "none",
+                           "needed_data_present": False}])
+    assert h["outcome"] == "logs_missing" and any("not in any source" in c for c in h["verdict"]["checks"])
+
+
+def test_known_good_threat_is_capped_and_flagged(tmp_path):
+    from actaeon.hunt.engine import HuntEngine, HuntLimits
+    acts = [call(index="e", time_from="now-1d", query="x"), call(index="e", time_from="now-2d", query="y"),
+            {"action": "verdict", "outcome": "threat", "confidence": 90, "summary": "s",
+             "findings": [{"claim": "unknown service nightly-backup-job added", "evidence": ["E2", "E3"]}]}]
+    acts.append(dict(acts[-1]))          # given again after the engine asks for corroboration
+    eng = HuntEngine(LLM(PLAN, acts), Hub(), HuntStore(tmp_path / "h.sqlite"), HuntLimits(max_steps=5),
+                     known_good=["nightly-backup-job"])
+    h = eng.run("new systemd units")
+    v = h["verdict"]
+    assert h["outcome"] == "threat" and v["confidence"] <= 50 and v.get("needs_review")
+    assert any("known-good" in c for c in v["checks"])

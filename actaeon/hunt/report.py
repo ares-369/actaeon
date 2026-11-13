@@ -53,6 +53,13 @@ def markdown(h: dict, *, narrative: str = "", max_evidence_chars: int = 3000) ->
         out.append("### ATT&CK")
         out += [f"- {t} {name(t)}".rstrip() for t in techs]
         out.append("")
+    hd = v.get("handoff")
+    if hd:
+        out += ["", "### Handed to an analyst", "", hd.get("reason", "")]
+        for title, key in (("What Actaeon searched", "tried"), ("What it could not check", "missing"),
+                           ("Suggested next steps", "next_steps")):
+            if hd.get(key):
+                out += ["", f"**{title}**", ""] + [f"- {x}" for x in hd[key]]
     for title, key in (("Gaps", "gaps"), ("Next steps", "next_steps"), ("Checks applied", "checks")):
         if v.get(key):
             out.append(f"### {title}")

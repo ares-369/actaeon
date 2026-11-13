@@ -10,7 +10,10 @@ OUTCOME_HELP = """outcome must be one of:
 - threat: evidence shows malicious or clearly suspicious activity (cite it)
 - no_results: the relevant data was searched and nothing matched
 - telemetry_found_benign: matching activity exists but it is explained and benign (cite it)
-- logs_missing: the data needed to test the hypothesis is not there or could not be searched
+- logs_missing: the data needed to test the hypothesis is not there or could not be searched. If the kind of
+  event the hypothesis needs (for example Windows process-access events, or email logs) never appears in any
+  source at all, that is logs_missing, not no_results, even if your searches ran fine. Say so with
+  "needed_data_present": false.
 - inconclusive: something else stopped a clear answer"""
 
 PLANNER_SYSTEM = f"""You plan threat hunts. You do not run tools.
@@ -25,7 +28,8 @@ Reply with exactly ONE JSON object and nothing else. Either call a tool:
 or give the verdict:
 {{"action": "verdict", "outcome": "no_results", "confidence": 60, "summary": "two or three sentences",
  "findings": [{{"claim": "what you found", "evidence": ["E2"]}}], "attack": ["T1059.001"],
- "gaps": ["data you could not check"], "next_steps": ["what an analyst should do next"]}}
+ "gaps": ["data you could not check"], "next_steps": ["what an analyst should do next"],
+ "needed_data_present": true}}
 
 Rules:
 - Each tool result is labelled E1, E2, ... Cite only those labels. Never state a fact you cannot cite.

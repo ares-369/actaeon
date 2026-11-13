@@ -108,3 +108,26 @@ def test_users_cli(home, monkeypatch, capsys):
     with pytest.raises(ValueError):
         write_cfg(home, lambda d: d["auth"].update(users={"x": {"password": "plain"}}))
         config.load_config()
+
+
+def test_handoff_opens_one_lead_for_repeats(home):
+    from actaeon import config
+    from actaeon.hunt import service
+    cfg = config.get_config(reload=True)
+    st = service.store_for(cfg)
+    def finished(outcome):
+        hid = st.create("LSASS memory access on any host", origin="schedule")
+        st.update(hid, status="done", outcome=outcome, verdict={"outcome": outcome, "confidence": 0,
+                  "summary": "no Windows data", "gaps": ["Windows process-access events"], "next_steps": ["add Sysmon"]})
+        st.add_step(hid, 1, "call", connector="logs", tool="search", arguments={"query": "event.code:10"}, ok=True)
+        return service.handoff(cfg, st.get(hid))
+    a = finished("logs_missing")
+    v = a["verdict"]
+    assert v["needs_review"] and "not available" in v["handoff"]["reason"] and v["handoff"]["tried"][0].startswith("E1 logs.search")
+    leads = service.leads_for(cfg)
+    l1 = leads.open_for(a)
+    l2 = leads.open_for(finished("logs_missing"))
+    assert l1["id"] == l2["id"] and l1["severity"] == "low" and l1["title"].startswith("needs analyst")
+    assert any(e["action"] == "seen again" for e in leads.get(l1["id"])["events"])
+    nores = finished("no_results")
+    assert not nores["verdict"].get("handoff") and leads.open_for(nores) is None

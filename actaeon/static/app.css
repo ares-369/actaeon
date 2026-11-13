@@ -78,3 +78,4 @@ body[data-role="viewer"] [data-need="op"],body[data-role="viewer"] [data-need="a
 select,input,textarea{max-width:100%}
 @media (max-width:640px){.hunt-list th:nth-child(2),.hunt-list td:nth-child(2){display:none}.hunt-list th:nth-child(4),.hunt-list td:nth-child(4){display:table-cell}}
 meter{width:8rem;height:.7rem}
+.handoff{border:1px solid var(--amber);border-radius:8px;padding:.5rem .8rem;margin:.6rem 0}.handoff h4{margin:.4rem 0 .2rem;font-size:.85rem}
