@@ -73,6 +73,11 @@ class McpClient:
         self._http = requests.Session()
         self._oauth = (_OAuthCC(spec.auth, spec.timeout_sec, spec.verify_tls)
                        if spec.auth.get("type") == "oauth_client_credentials" else None)
+        self._oauth_user = None
+        if spec.auth.get("type") == "oauth":
+            from ..config import get_config
+            from .oauth import TokenStore
+            self._oauth_user = TokenStore(spec, get_config().data_dir)
 
     # ---- lifecycle ----
     def connect(self) -> dict[str, Any]:
@@ -220,6 +225,8 @@ class McpClient:
             h[hdr] = f"{a.get('prefix', '')}{key}"
         elif t == "oauth_client_credentials" and self._oauth:
             h["Authorization"] = f"Bearer {self._oauth.token()}"
+        elif t == "oauth" and self._oauth_user:
+            h["Authorization"] = f"Bearer {self._oauth_user.token()}"
         if self._session_id:
             h["Mcp-Session-Id"] = self._session_id
         return h

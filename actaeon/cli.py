@@ -47,6 +47,27 @@ def cmd_models() -> int:
     return 0
 
 
+def cmd_login(name: str | None, manual: bool) -> int:
+    from .config import get_config
+    from .connectors.oauth import OAuthError, login
+    from .connectors.spec import parse_connectors
+    cfg = get_config()
+    specs = {s.name: s for s in parse_connectors(list(cfg.connectors))}
+    if not name or name not in specs:
+        print("usage: actaeon connectors login <name> (an HTTP connector with auth: {type: oauth})")
+        return 2
+    if specs[name].auth.get("type") != "oauth":
+        print(f"{name} does not use auth type oauth")
+        return 2
+    try:
+        r = login(specs[name], cfg.data_dir, ask=input if manual else None)
+    except OAuthError as exc:
+        print(f"sign-in failed: {exc}")
+        return 1
+    print(f"signed in ({r.get('scope') or 'default scope'}); token saved under data/oauth/")
+    return 0
+
+
 def cmd_connectors(action: str, name: str | None) -> int:
     from .connectors import get_hub
     hub = get_hub()
@@ -381,8 +402,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_models.add_argument("action", nargs="?", choices=["show", "test"], default="show")
     sub.add_parser("hash-password", help="print a password hash for auth.password_hash")
     p_con = sub.add_parser("connectors", help="list, test or show tools of MCP connectors")
-    p_con.add_argument("action", choices=["list", "test", "tools"], nargs="?", default="list")
+    p_con.add_argument("action", choices=["list", "test", "tools", "login"], nargs="?", default="list")
     p_con.add_argument("name", nargs="?")
+    p_con.add_argument("--manual", action="store_true", help="login: paste the redirect URL instead of a local listener")
     p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
     br = p_br.add_subparsers(dest="kind", required=True)
     from .bridges import demo as demo_bridge
@@ -628,6 +650,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     if a.cmd in ("library", "sweep", "note"):
         sys.exit(cmd_phase5(a))
     if a.cmd == "connectors":
+        if a.action == "login":
+            sys.exit(cmd_login(a.name, a.manual))
         sys.exit(cmd_connectors(a.action, a.name))
     if a.cmd == "hash-password":
         from .auth import hash_password

@@ -105,3 +105,30 @@ actaeon connectors             # list
 actaeon connectors test        # connect and count allowed tools
 actaeon connectors tools logs  # show every tool and whether it is allowed
 ```
+
+## Sign in with OAuth (browser login)
+
+For HTTP MCP servers that ask users to sign in:
+
+```yaml
+  - name: remote-logs
+    roles: [log_search]
+    transport: http
+    url: https://mcp.example.internal/mcp
+    auth: {type: oauth}          # optional: client_id, client_secret_env, scope, redirect_port
+```
+
+Then run `actaeon connectors login remote-logs`. Actaeon finds the authorization server from
+the MCP server's metadata, registers itself if no `client_id` is set, and opens a one-time
+listener on `127.0.0.1:8765` for the sign-in to return to (PKCE S256, state checked). On a
+headless server add `--manual`: open the printed URL on any device, sign in, then paste the
+address the browser ended on. Tokens are stored in `data/oauth/<name>.json` (mode 600) and
+refreshed automatically; sign in again when the refresh token expires.
+
+## Tested third-party servers
+
+Checked on 2026-11-13 against the public MCP reference servers (`everything`, `filesystem`,
+`memory`) over stdio, and `everything` over streamable HTTP: tools listed, read tools called,
+results wrapped as untrusted data. Write and delete tools (`write_file`, `edit_file`,
+`create_entities`, `delete_entities`, ...) were blocked by the policy; server-declared
+destructive tools fell in the never-allowed class.
