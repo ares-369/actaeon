@@ -50,6 +50,11 @@ class IntelStore:
                 techniques TEXT NOT NULL DEFAULT '[]', cves TEXT NOT NULL DEFAULT '[]',
                 indicator_count INTEGER NOT NULL DEFAULT 0);
             """)
+            cols = {r[1] for r in c.execute("PRAGMA table_info(advisories)")}
+            if "relevance" not in cols:   # ledger of the relevance decision per advisory (added later)
+                c.execute("ALTER TABLE advisories ADD COLUMN relevance TEXT NOT NULL DEFAULT ''")
+            if "hunt_id" not in cols:
+                c.execute("ALTER TABLE advisories ADD COLUMN hunt_id TEXT NOT NULL DEFAULT ''")
 
     def _conn(self):
         c = sqlite3.connect(self.path, timeout=10)
@@ -200,9 +205,16 @@ class IntelStore:
 
     def advisories(self, limit: int = 50) -> list[dict]:
         with self._conn() as c:
-            rows = c.execute("SELECT id, title, source, url, added, techniques, cves, indicator_count "
-                             "FROM advisories ORDER BY id DESC LIMIT ?", (int(limit),))
-            return [{**dict(r), "techniques": json.loads(r["techniques"]), "cves": json.loads(r["cves"])} for r in rows]
+            rows = c.execute("SELECT id, title, source, url, added, techniques, cves, indicator_count, relevance, "
+                             "hunt_id FROM advisories ORDER BY id DESC LIMIT ?", (int(limit),))
+            return [{**dict(r), "techniques": json.loads(r["techniques"]), "cves": json.loads(r["cves"]),
+                     "relevance": json.loads(r["relevance"]) if r["relevance"] else None} for r in rows]
+
+    def set_relevance(self, aid: int, decision: dict, hunt_id: str = "") -> None:
+        """Record why an advisory was (or was not) hunted, and the hunt it started."""
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE advisories SET relevance=?, hunt_id=? WHERE id=?",
+                      (json.dumps(decision, ensure_ascii=False), hunt_id or "", int(aid)))
 
     def advisory(self, aid: int) -> dict | None:
         with self._conn() as c:
@@ -212,6 +224,7 @@ class IntelStore:
             inds = [self._row(x) for x in c.execute("SELECT * FROM indicators WHERE advisory_id=?", (int(aid),))]
         d = dict(r)
         d["techniques"], d["cves"] = json.loads(d["techniques"]), json.loads(d["cves"])
+        d["relevance"] = json.loads(d["relevance"]) if d.get("relevance") else None
         d["indicators"] = inds
         return d
 

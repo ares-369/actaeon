@@ -558,8 +558,13 @@ async function intel() {
       } }, icon("content-save"), "Save actor")))));
   const advs = await api("/api/intel/advisories");
   main.append(section("Advisories", "file-document-outline", h("table", {}, h("tbody", {}, advs.length ? advs.map((a) => h("tr", {},
-    h("td", {}, a.title, h("div", { class: "muted small" }, `${when(a.added)}  ${a.indicator_count} indicators  ${a.techniques.join(", ")}`)),
-    h("td", {}, h("button", { "data-need": "op", onclick: async () => { const r = await post(`/api/hunts/advisory/${a.id}`); location.hash = "#hunt/" + r.hunt_id; } }, icon("play"), "Hunt this")))) :
+    h("td", {}, a.url ? h("a", { href: a.url, target: "_blank", rel: "noopener noreferrer" }, a.title) : a.title,
+      h("div", { class: "muted small" }, `${when(a.added)}  ${a.source}  ${a.indicator_count} indicators  ${a.techniques.join(", ")}`)),
+    h("td", { class: "small" }, a.relevance ? [
+      h("span", { class: a.relevance.relevant ? "warn" : "muted" }, a.relevance.relevant ? `Relevant (${a.relevance.score})` : "Not relevant"),
+      h("div", { class: "muted" }, a.relevance.why)] : h("span", { class: "muted" }, "not assessed")),
+    h("td", {}, a.hunt_id ? h("a", { href: "#hunt/" + a.hunt_id }, h("button", { class: "ghost" }, icon("target"), "Open hunt")) :
+      h("button", { "data-need": "op", onclick: async () => { const r = await post(`/api/hunts/advisory/${a.id}`); location.hash = "#hunt/" + r.hunt_id; } }, icon("play"), "Hunt this")))) :
     h("tr", {}, h("td", { class: "muted" }, "No advisories yet."))))));
   const inds = await api("/api/intel/indicators?limit=100");
   main.append(section("Indicators", "format-list-bulleted",

@@ -17,7 +17,7 @@ recorded (`advisory:<id>`, `autopilot:<source>`). Findings still need an analyst
 intel:
   web:
     interval_minutes: 60          # pull on a schedule (0 = by hand)
-    auto_hunt: true               # hunt each new advisory that has indicators or techniques
+    auto_hunt: true               # hunt each new advisory that is relevant here (see below)
     sources:
       - name: advisories
         url: "https://example.org/advisories.xml"   # RSS or Atom
@@ -27,6 +27,38 @@ intel:
         url: "https://example.org/research/"
         kind: page                                  # re-read when the page changes
 ```
+
+### Only hunt what matters here (relevance)
+
+A general security news feed is mostly about software you do not run. Before a new
+advisory is hunted, Actaeon decides whether it is relevant to this environment:
+
+1. **Terms.** The advisory must mention something you run: `environment.platforms`,
+   `environment.products` and `intel.web.relevance.terms`, matched as whole words.
+   No match means not relevant, and no model is asked.
+2. **Model check.** For a match, the reporter model reads your environment profile and
+   the advisory and answers whether the affected product, version or technique applies
+   here, with a score, a one-line reason and a hunt hypothesis written for this
+   environment. Scores under `min_score` count as not relevant.
+
+```yaml
+environment:
+  platforms: [linux]
+  products: ["<web server>", "<ssh server>", "<database>"]   # what you run, by name; the more complete, the better
+intel:
+  web:
+    auto_hunt: true
+    max_hunts_per_pull: 3                   # cost cap; the rest are recorded as relevant but not hunted
+    relevance:
+      model: true                           # false: the term match alone decides
+      min_score: 50
+      terms: []                             # extra words that make an item worth a look
+```
+
+Every decision is kept on the advisory (the intel ledger), relevant or not: the
+score, the reason, the matched terms and the hunt it started. The Intel page shows
+it next to each advisory. With no terms configured, the older rule applies: hunt
+advisories that list indicators or techniques.
 
 `actaeon intel web [--hunt]`, `POST /api/intel/web/pull`, or the UI. The article
 behind each feed item is fetched and stored as an advisory: indicators,

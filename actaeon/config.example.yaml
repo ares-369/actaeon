@@ -59,6 +59,7 @@ llm:
 environment: {}
 #  summary: "Mostly Windows endpoints, a few Linux web servers, one cloud tenant."
 #  platforms: [windows, linux, cloud]
+#  products: ["<web server>", "<ssh server>"]   # what runs here, by name; decides which news items are worth a hunt
 #  crown_jewels: ["payroll database", "domain controllers"]
 #  not_present: ["macOS", "on-prem email"]
 #  notes: ["Admins use a jump host for remote work"]
@@ -106,7 +107,9 @@ intel:
     triage: rules             # rules | model | off: was each match executed, blocked or only mentioned?
   web:                        # web intel (see docs/autonomy.md)
     interval_minutes: 0       # > 0: pull sources on a schedule
-    auto_hunt: false          # start an advisory hunt for each new advisory
+    auto_hunt: false          # start an advisory hunt for each new advisory that is relevant here
+    max_hunts_per_pull: 3     # cost cap per pull
+    relevance: {model: true, min_score: 50, terms: []}   # see docs/autonomy.md
     tools: false              # give hunts public-web lookups (fetch_page, search_web)
     search_url: ""            # JSON search endpoint for search_web (optional)
     sources: []               # [{name, url, kind: feed|page, keywords: [], max_items: 10}]

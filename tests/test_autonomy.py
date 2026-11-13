@@ -187,3 +187,61 @@ def test_flatten_fits_limit():
            [{"role": "user", "content": "LAST"}]
     out = flatten(msgs, 60_000)
     assert len(out.encode()) <= 60_000 and out.startswith("### SYSTEM") and "LAST" in out
+
+
+class _Judge:
+    """A reporter model that answers the relevance prompt with a fixed JSON reply."""
+
+    def __init__(self, reply):
+        self.reply, self.calls = reply, 0
+
+    def for_role(self, role):
+        outer = self
+
+        class B:
+            def chat(self, messages, **kw):
+                outer.calls += 1
+                return LLMResult(text=json.dumps(outer.reply))
+        return B()
+
+
+def test_relevance_terms_then_model(home):
+    from actaeon.intel.relevance import assess
+    write_cfg(home, lambda d: d.update(environment={"platforms": ["linux"], "products": ["nginx", "OpenSSH"]}))
+    cfg = config.load_config()
+    adv = {"title": "Exchange zero-day exploited", "text": "Microsoft Exchange servers attacked", "techniques": ["T1190"]}
+    judge = _Judge({"relevant": True, "score": 90, "why": "x"})
+    d = assess(cfg, adv, llm=judge)
+    assert d["relevant"] is False and d["method"] == "terms" and judge.calls == 0     # no term: no model call
+    adv = {"title": "OpenSSH flaw lets attackers run code", "text": "regreSSHion in OpenSSH on Linux servers"}
+    judge = _Judge({"relevant": True, "score": 85, "why": "OpenSSH runs on the Linux hosts",
+                    "products": ["OpenSSH"], "hypothesis": "sshd crashed or spawned an unusual child in the last 7 days"})
+    d = assess(cfg, adv, llm=judge)
+    assert d["relevant"] and d["method"] == "model" and d["matched"] == ["linux", "OpenSSH"] and "sshd" in d["hypothesis"]
+    d = assess(cfg, {"title": "nginx funding round", "text": "nginx company raises money"},
+               llm=_Judge({"relevant": False, "score": 5, "why": "business news"}))
+    assert d["relevant"] is False and d["hypothesis"] == ""
+    d = assess(cfg, {"title": "nginx bug", "text": "nginx"}, llm=_Judge({"relevant": True, "score": 30, "why": "weak"}))
+    assert d["relevant"] is False                      # below min_score 50
+
+
+def test_web_intel_hunts_only_relevant_and_records_ledger(home, monkeypatch):
+    import actaeon.intel.web as wmod
+    feed = """<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>
+<item><title>OpenSSH bug exploited</title><link>https://news.example/s</link><description>OpenSSH attacks T1190</description></item>
+<item><title>Windows driver flaw</title><link>https://news.example/w</link><description>Windows kernel T1068</description></item>
+</channel></rss>"""
+    pages = {"https://news.example/feed": feed, "https://news.example/s": "OpenSSH", "https://news.example/w": "Windows"}
+    monkeypatch.setattr(wmod, "fetch_url", fake_fetch(pages))
+    write_cfg(home, lambda d: (d["intel"]["web"].update(auto_hunt=True, sources=[
+        {"name": "news", "url": "https://news.example/feed"}]), d.update(environment={"products": ["OpenSSH"]})))
+    cfg = config.load_config()
+    started = []
+    monkeypatch.setattr(service, "start_hunt", lambda jobs, cfg, hyp, **kw: started.append(hyp) or "h-ssh")
+    judge = _Judge({"relevant": True, "score": 80, "why": "OpenSSH runs here", "hypothesis": "sshd exploited here"})
+    r = service.run_web_intel(cfg, jobs=object(), llm=judge)
+    assert started == ["sshd exploited here"] and judge.calls == 1          # the Windows item never reached the model
+    ledger = {a["title"]: a for a in service.intel_for(cfg).advisories()}
+    assert ledger["OpenSSH bug exploited"]["hunt_id"] == "h-ssh" and ledger["OpenSSH bug exploited"]["relevance"]["relevant"]
+    assert ledger["Windows driver flaw"]["relevance"]["relevant"] is False and ledger["Windows driver flaw"]["hunt_id"] == ""
+    assert {x["relevant"] for x in r["relevance"]} == {True, False}

@@ -232,15 +232,32 @@ def run_web_intel(cfg, *, jobs=None, llm=None, hub=None, only: str | None = None
     from ..intel.web import WebIntel
     web = (cfg.intel or {}).get("web") or {}
     res = WebIntel(intel_for(cfg), web, allow_private=bool((cfg.intel or {}).get("allow_private_urls"))).pull(only)
-    res["hunts"] = []
-    if web.get("auto_hunt") and jobs is not None:
-        for a in res["new_advisories"]:
-            adv = intel_for(cfg).advisory(a["id"]) or {}
-            if not (adv.get("indicators") or adv.get("techniques")):
-                continue
+    res["hunts"], res["relevance"] = [], []
+    if not res["new_advisories"]:
+        return {"id": None, **res}
+    from ..intel.relevance import assess
+    from ..providers import get_llm
+    store = intel_for(cfg)
+    rel_cfg = web.get("relevance") or {}
+    judge = llm if llm is not None else (privacy_llm(cfg, get_llm()) if rel_cfg.get("model", True) else None)
+    cap = int(web.get("max_hunts_per_pull", 3))
+    for a in res["new_advisories"]:
+        adv = store.advisory(a["id"]) or {}
+        decision = assess(cfg, adv, llm=judge)
+        hid = ""
+        if decision["relevant"] and web.get("auto_hunt") and jobs is not None and len(res["hunts"]) < cap:
             hyp, ctx = advisory_hunt(cfg, a["id"])
-            res["hunts"].append(start_hunt(jobs, cfg, hyp, actor="web-intel", origin=f"advisory:{a['id']}",
-                                           context=ctx, llm=llm, hub=hub))
+            if decision.get("hypothesis"):
+                hyp = decision["hypothesis"]
+                ctx = f"Why this advisory is relevant here: {decision['why']}\n\n{ctx}"
+            hid = start_hunt(jobs, cfg, hyp, actor="web-intel", origin=f"advisory:{a['id']}",
+                             context=ctx, llm=llm, hub=hub)
+            res["hunts"].append(hid)
+        elif decision["relevant"] and web.get("auto_hunt") and jobs is not None:
+            decision["why"] += " (not hunted: per-pull hunt cap reached)"
+        store.set_relevance(a["id"], decision, hid)
+        res["relevance"].append({"advisory": a["id"], "title": a["title"], "relevant": decision["relevant"],
+                                 "why": decision["why"], "hunt_id": hid})
     return {"id": None, **res}
 
 
