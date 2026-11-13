@@ -64,7 +64,10 @@ class SearchIndexBridge:
         must: list[dict] = []
         q = str(args.get("query", "") or "").strip()
         if q:
-            must.append({"query_string": {"query": q, "analyze_wildcard": True, "allow_leading_wildcard": False}})
+            # Leading wildcards are costly on large time-series indices but cheap on small snapshot
+            # (inventory) indices, where matching a process path or command substring needs them.
+            must.append({"query_string": {"query": q, "analyze_wildcard": True,
+                                          "allow_leading_wildcard": self.snapshot}})
         dsl = args.get("dsl")
         if dsl:
             if isinstance(dsl, str):
