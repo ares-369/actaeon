@@ -4,35 +4,32 @@ Actaeon is in beta (0.1.0b1). These are the limits we know about.
 
 ## Hunting quality
 
-- Results depend on the model. Small local models (7B class) plan weaker hunts,
-  write poorer queries and sometimes pick the wrong ATT&CK technique. ATT&CK IDs
-  are checked for format only, not meaning.
-- The verdict checks make sure every claim cites a result that exists and
-  succeeded, and that indicators and quoted identifiers in a claim appear in the
-  evidence. They cannot check that the model interpreted the result correctly.
-  Read the cited evidence before acting.
-- One informal check: a 7B local model was run on the demo data, where the attack is
-  present. Its tool calls worked, and the field guard corrected its made-up field
-  names, but its query logic was still wrong and it answered `no_results`, a
-  false negative. Use a stronger model for the analyst role.
-- Benchmark numbers so far: the 8-case synthetic demo suite and a sample of the public
-  ExCyTIn-Bench, both with one fast cloud model and a model judge (see benchmarks.md).
+- **Which model was tested.** Every result in the benchmarks and the field test used one fast cloud
+  model for all roles. Other providers work through the same interface but have no measured results yet.
+- **Small local models are not good enough to hunt.** Early on, a 7B local model was tried on the demo
+  data, where the attack is present: its tool calls worked and the field guard corrected its made-up
+  field names, but its query logic was wrong and it answered `no_results`, a false negative. Use a
+  stronger model at least for the analyst role; a small local model is fine as a fallback.
+- The verdict checks make sure every claim cites a result that exists and succeeded, and that
+  indicators and quoted identifiers in a claim appear in the evidence. They cannot check that the
+  model interpreted the result correctly. Read the cited evidence before acting.
+- ATT&CK IDs are checked against the bundled release (unknown IDs dropped, revoked ones mapped to
+  their replacement), but whether a technique fits the activity is the model's judgement.
+- Benchmarks so far: an 8-case synthetic demo suite, a sample of the public ExCyTIn-Bench, and an
+  11-case lab benchmark on a frozen week of one home lab's data (see benchmarks.md). The samples are
+  small, the lab cases were written by someone who knew the answers, and results vary between runs.
   Nothing has been measured in a production environment yet.
-- Claude, Gemini and OpenAI-compatible providers use native tool calling and
-  fall back to the JSON action protocol when a model rejects tools (turn it off
-  with `native_tools: false` in the provider config). The native path is only
-  exercised live with one cloud model (Gemini on Vertex) so far. Ollama and
-  the `cli` provider always use the JSON protocol, which costs more tokens.
-
-- Hunts flag the environment's own administration (custom services, planned changes) until they
-  know what is normal there; a field test produced two such false positives. Describe normal
-  activity in `environment.notes` until a known-good list exists.
-- When a search succeeds but the data could never match (Windows hunts with only Linux logs), the
-  outcome can be `no_results` instead of `logs_missing`.
-
-- Host inventory is the last scan the agent sent. A machine that is switched off (a laptop, a
-  dual-boot system) keeps months-old inventory and vulnerability data, and hunts cannot tell how old it
-  is. Note such hosts in `environment.notes`, and remove agents of machines that no longer exist.
+- Hunts flag the environment's own administration (custom services, planned changes) unless the
+  environment profile describes it. List normal activity in `environment.known_good` and
+  `environment.notes`; a threat that only names known-good items is handed to an analyst rather
+  than dropped.
+- The analyst model reports whether the data a hypothesis needs exists at all; if it gets that wrong,
+  a hunt can still say `no_results` where `logs_missing` is right.
+- Native tool calling (Claude, Gemini, OpenAI-compatible providers) falls back to the JSON action
+  protocol when a model rejects tools (`native_tools: false` turns it off). It has been exercised live
+  with one cloud provider so far. Ollama and the `cli` provider always use the JSON protocol, which
+  costs more tokens.
+- A hunt uses roughly 400k to 500k input tokens with the fast cloud model (about 25 tool calls).
 
 ## Safety layers and their gaps
 
