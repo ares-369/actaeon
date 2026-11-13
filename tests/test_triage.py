@@ -48,7 +48,7 @@ class StateHub:
         return [{"connector": "logs", "name": "search", "inputSchema": {"type": "object", "properties": {
             "index": {"type": "string"}, "query": {"type": "string"}, "time_from": {"type": "string"}}}}]
 
-    def call(self, connector, tool, args, actor="", hunt_id=""):
+    def call(self, connector, tool, args, actor="", hunt_id="", **kw):
         self.calls.append(args["query"])
         hits = [e for v, evs in self.EVENTS.items() if f'"{v}"' in args["query"] for e in evs]
         return {"content": wrap({"total": len(hits), "hits": hits}), "is_error": False}

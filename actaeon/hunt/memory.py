@@ -3,6 +3,11 @@
 Before a hunt starts, the most related past hunts and notes are added to the
 model's context (for example "this admin tool on these hosts is known and
 benign"). Notes are written by analysts only, never by a model or a data source.
+
+A note can expire (``expires``): a wrong "benign" call should not blind every
+later hunt for good. Notes made from a benign / false-positive verdict get
+``memory.benign_note_days`` (default 90; 0 = never) unless the analyst says otherwise.
+Expired notes stay listed but are no longer used.
 """
 
 from __future__ import annotations
@@ -11,7 +16,7 @@ import json
 import re
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{2,}")
@@ -42,6 +47,8 @@ class HuntMemory:
                 active INTEGER NOT NULL DEFAULT 1);
             CREATE VIRTUAL TABLE IF NOT EXISTS mem_notes USING fts5(note_id UNINDEXED, text, tags);
             """)
+            if "expires" not in {r[1] for r in c.execute("PRAGMA table_info(notes)")}:
+                c.execute("ALTER TABLE notes ADD COLUMN expires TEXT")
 
     def _conn(self):
         c = sqlite3.connect(self.path, timeout=10)
@@ -59,20 +66,29 @@ class HuntMemory:
                        v.get("summary", ""), " | ".join(f["claim"] for f in v.get("findings") or []),
                        " ".join(v.get("attack") or [])))
 
-    def add_note(self, text: str, *, author: str = "", tags: list[str] | None = None) -> dict:
+    def add_note(self, text: str, *, author: str = "", tags: list[str] | None = None,
+                 expires_days: int | None = None) -> dict:
+        """``expires_days``: the note stops being used after this many days (None or 0 = never)."""
         text = (text or "").strip()[:2000]
         if not text:
             raise ValueError("note text is required")
         tags = [str(t).strip()[:40] for t in tags or [] if str(t).strip()]
+        days = int(expires_days or 0)
+        if days < 0 or days > 3650:
+            raise ValueError("expires_days must be between 0 and 3650")
+        expires = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec="seconds") if days else None
         with self._lock, self._conn() as c:
-            cur = c.execute("INSERT INTO notes (created, author, text, tags) VALUES (?,?,?,?)",
-                            (_now(), author[:100], text, json.dumps(tags)))
+            cur = c.execute("INSERT INTO notes (created, author, text, tags, expires) VALUES (?,?,?,?,?)",
+                            (_now(), author[:100], text, json.dumps(tags), expires))
             c.execute("INSERT INTO mem_notes VALUES (?,?,?)", (cur.lastrowid, text, " ".join(tags)))
-        return {"id": cur.lastrowid, "text": text, "tags": tags}
+        return {"id": cur.lastrowid, "text": text, "tags": tags, "author": author[:100], "expires": expires}
 
     def notes(self, limit: int = 100) -> list[dict]:
+        now = _now()
         with self._conn() as c:
-            return [{**dict(r), "tags": json.loads(r["tags"]), "active": bool(r["active"])}
+            return [{**dict(r), "tags": json.loads(r["tags"]),
+                     "expired": bool(r["expires"] and r["expires"] <= now),
+                     "active": bool(r["active"]) and not (r["expires"] and r["expires"] <= now)}
                     for r in c.execute("SELECT * FROM notes ORDER BY id DESC LIMIT ?", (int(limit),))]
 
     def retire_note(self, nid: int) -> bool:
@@ -90,8 +106,9 @@ class HuntMemory:
                 "SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts WHERE mem_hunts "
                 "MATCH ? ORDER BY rank LIMIT ?", (q, int(k)))]
             notes = [dict(r) for r in c.execute(
-                "SELECT n.id, n.text, n.tags FROM mem_notes m JOIN notes n ON n.id = m.note_id "
-                "WHERE mem_notes MATCH ? AND n.active=1 ORDER BY rank LIMIT ?", (q, int(k) + 2))]
+                "SELECT n.id, n.text, n.tags, n.author, n.created, n.expires FROM mem_notes m "
+                "JOIN notes n ON n.id = m.note_id WHERE mem_notes MATCH ? AND n.active=1 "
+                "AND (n.expires IS NULL OR n.expires > ?) ORDER BY rank LIMIT ?", (q, _now(), int(k) + 2))]
         return {"hunts": hunts, "notes": notes}
 
     def context(self, text: str, exclude: str = "") -> str:
@@ -99,7 +116,8 @@ class HuntMemory:
         lines = []
         if r["notes"]:
             lines.append("Analyst notes that may apply (written by people on this team):")
-            lines += [f"- {n['text']}" for n in r["notes"]]
+            lines += [f"- {n['text']} (by {n['author'] or 'unknown'}, {n['created'][:10]}"
+                      + (f", until {n['expires'][:10]})" if n.get("expires") else ")") for n in r["notes"]]
         hunts = [h for h in r["hunts"] if h["hunt_id"] != exclude]
         if hunts:
             lines.append("Related past hunts (for context only; re-check, data changes):")

@@ -60,6 +60,30 @@ class SearchIndexBridge:
             for v in obj:
                 SearchIndexBridge._no_scripts(v)
 
+    @staticmethod
+    def _no_leading_wildcards(obj: Any) -> None:
+        """Raw query clauses may not start a pattern with a wildcard on time-series indices: those
+        scan every term of the field and can stall the cluster (the query string already refuses them)."""
+        if isinstance(obj, list):
+            for v in obj:
+                SearchIndexBridge._no_leading_wildcards(v)
+            return
+        if not isinstance(obj, dict):
+            return
+        for k, v in obj.items():
+            key = str(k).lower()
+            if key in ("wildcard", "regexp") and isinstance(v, dict):
+                for spec in v.values():
+                    pat = spec.get("value", spec.get("wildcard", "")) if isinstance(spec, dict) else spec
+                    pat = str(pat or "")
+                    bad = pat[:1] in ("*", "?") if key == "wildcard" else pat.startswith((".*", ".+", ".?"))
+                    if bad:
+                        raise ToolInputError(f"a {key} pattern may not start with a wildcard here "
+                                             f"({pat[:40]!r}); anchor it, or search the full value")
+            elif key == "query_string" and isinstance(v, dict) and v.get("allow_leading_wildcard"):
+                raise ToolInputError("allow_leading_wildcard is not allowed on this index")
+            SearchIndexBridge._no_leading_wildcards(v)
+
     def _query(self, args: dict, window=None) -> dict:
         start, end = (None, None) if self.snapshot else (window or time_window(args, self.max_days))
         must: list[dict] = []
@@ -79,6 +103,8 @@ class SearchIndexBridge:
             if not isinstance(dsl, dict):
                 raise ToolInputError("dsl must be a JSON object (a query clause)")
             self._no_scripts(dsl)
+            if not self.snapshot:
+                self._no_leading_wildcards(dsl)
             must.append(dsl)
         if self.snapshot:
             return {"bool": {"must": must or [{"match_all": {}}]}}

@@ -33,7 +33,7 @@ def test_connectors_cli(home, capsys):
     config.get_config(reload=True)
     with pytest.raises(SystemExit) as e:
         cli.cli_main(["connectors", "test"])
-    assert e.value.code == 0 and "4/6 tools allowed" in capsys.readouterr().out
+    assert e.value.code == 0 and "5/7 tools allowed" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         cli.cli_main(["connectors", "tools", "fake"])
     assert "BLOCK isolate_host" in capsys.readouterr().out

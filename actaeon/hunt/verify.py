@@ -54,7 +54,8 @@ def verify(cfg, h: dict, *, llm, hub, context: str = "") -> dict:
             "Test the conclusion now.")
     final, made, calls = run_loop(llm=llm, hub=hub, store=store, hid=h["id"], system=VERIFY_SYSTEM, user=user,
                                   final_action="verify", max_calls=MAX_CALLS, max_results=cfg.hunt.max_results,
-                                  actor="verifier", why_prefix="verify")
+                                  actor="verifier", why_prefix="verify",
+                                  max_tokens=getattr(cfg.hunt, "max_tokens", 0))
     final = final or {}
     result = final.get("result") if final.get("result") in ("confirmed", "refuted", "unconfirmed") else "unconfirmed"
     good = {f"E{s['n']}" for s in (store.get(h["id"]) or {}).get("steps") or [] if s["kind"] == "call" and s["ok"]}

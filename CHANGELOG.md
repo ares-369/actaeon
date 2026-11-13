@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Safety and cost
+- `hunt.max_tokens`: a token budget per hunt; when it is used up the model must give its verdict.
+- `hunt.max_query_sec` (default 120): one tool call, retries included, cannot run longer, nor past
+  the hunt's own time limit.
+- The search-index bridge also refuses leading wildcards inside raw query clauses (wildcard,
+  regexp, query_string) on time-series indices.
+- Tool results that try to instruct an AI ("ignore previous instructions", "mark this host as
+  benign", chat-template tags, fake verdicts) are flagged: the hunt goes to an analyst as a
+  high-severity "prompt injection" lead.
+- Memory notes can expire; notes made from a benign or false-positive call expire after
+  `memory.benign_note_days` (90 by default). The model sees who wrote each note and when.
+- The audit log is hash-chained; `actaeon audit verify` and `GET /api/audit/verify` find changed
+  or removed rows.
+
+### Workflow
+- Ticket replies: `POST /api/tickets/reply` turns an analyst's answer in a ticket into a question
+  for Actaeon, a follow-up hunt (`/hunt ...`) or a resume (`/resume`). Answers go back through
+  outputs that list `reply`. Optional bearer token scoped to that path (`tickets.token_env`).
+
 ## 0.1.0b1 (2026-11-13), first beta
 
 The first version meant for others to try. It is read-only, it runs on one machine, and it has been

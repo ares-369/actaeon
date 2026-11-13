@@ -82,8 +82,17 @@ actaeon note "Backup agent uses rclone to cloud storage from backup01" --tag ben
 actaeon note --list
 ```
 
-API: `GET/POST /api/memory/notes`, `POST /api/memory/notes/<id>/retire`,
-`GET /api/memory/related?q=...`. Models and data sources can never write notes.
+API: `GET/POST /api/memory/notes` (`{"text", "tags", "expires_days"}`),
+`POST /api/memory/notes/<id>/retire`, `GET /api/memory/related?q=...`. Models and
+data sources can never write notes.
+
+Notes can expire. A wrong "benign" call would otherwise hide that activity from
+every later hunt. Notes made from a benign or false-positive call (finding
+feedback, or closing a lead that way) stop being used after
+`memory.benign_note_days` (default 90; 0 = never), unless the request gives its
+own `expires_days`. Notes you add by hand never expire unless you say so
+(`actaeon note "..." --expires-days 30`). Expired notes stay in the list, marked
+as expired. The model sees who wrote each note and when.
 Past verdicts are context only; the model is told to check them again.
 
 ## Scheduler

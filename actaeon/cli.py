@@ -286,9 +286,11 @@ def cmd_phase5(a) -> int:
         mem = hs.memory_for(cfg)
         if a.list or not a.text:
             for n in mem.notes():
-                print(f"{n['id']:4} {'   ' if n['active'] else 'OFF'} {n['text'][:100]} {n['tags']}")
+                state = "   " if n["active"] else ("EXP" if n.get("expired") else "OFF")
+                print(f"{n['id']:4} {state} {n['text'][:100]} {n['tags']}"
+                      + (f" until {n['expires'][:10]}" if n.get("expires") else ""))
             return 0
-        print(_json.dumps(mem.add_note(a.text, author="cli", tags=a.tag)))
+        print(_json.dumps(mem.add_note(a.text, author="cli", tags=a.tag, expires_days=a.expires_days)))
         return 0
     lib = hs.library_for(cfg)
     if a.action == "starters":
@@ -405,6 +407,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_con.add_argument("action", choices=["list", "test", "tools", "login"], nargs="?", default="list")
     p_con.add_argument("name", nargs="?")
     p_con.add_argument("--manual", action="store_true", help="login: paste the redirect URL instead of a local listener")
+    p_aud = sub.add_parser("audit", help="check the audit log's hash chain")
+    p_aud.add_argument("action", choices=["verify"], nargs="?", default="verify")
     p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
     br = p_br.add_subparsers(dest="kind", required=True)
     from .bridges import demo as demo_bridge
@@ -506,6 +510,7 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_note.add_argument("text", nargs="?")
     p_note.add_argument("--tag", action="append", default=[])
     p_note.add_argument("--list", action="store_true")
+    p_note.add_argument("--expires-days", type=int, default=0, help="stop using the note after N days (0 = never)")
     a = ap.parse_args(argv)
 
     if a.cmd == "version":
@@ -654,6 +659,14 @@ def cli_main(argv: list[str] | None = None) -> None:
         if a.action == "login":
             sys.exit(cmd_login(a.name, a.manual))
         sys.exit(cmd_connectors(a.action, a.name))
+    if a.cmd == "audit":
+        import json
+
+        from .config import get_config
+        from .connectors.audit import AuditLog
+        res = AuditLog(get_config().data_dir / "audit.sqlite").verify()
+        print(json.dumps(res, indent=2))
+        sys.exit(0 if res["ok"] else 1)
     if a.cmd == "hash-password":
         from .auth import hash_password
         print(hash_password(getpass.getpass("Password: ")))

@@ -24,7 +24,7 @@ class CountHub(Hub):
         super().__init__(**kw)
         self.bad = set(bad)
 
-    def call(self, connector, tool, args, actor="", hunt_id=""):
+    def call(self, connector, tool, args, actor="", hunt_id="", **kw):
         self.calls.append((connector, tool, args))
         if tool in self.fail:
             from actaeon.connectors.hub import ToolCallError

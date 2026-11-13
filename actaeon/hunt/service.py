@@ -31,7 +31,8 @@ def limits_for(cfg, max_steps: int | None = None) -> HuntLimits:
     h = cfg.hunt
     steps = h.max_steps if max_steps is None else max(1, min(int(max_steps), h.max_steps))
     compact = str(((cfg.raw or {}).get("hunt") or {}).get("prompt_mode", "full")) == "compact"
-    return HuntLimits(max_steps=steps, max_runtime_sec=h.max_runtime_sec, max_results=h.max_results, compact=compact)
+    return HuntLimits(max_steps=steps, max_runtime_sec=h.max_runtime_sec, max_results=h.max_results, compact=compact,
+                      max_tokens=getattr(h, "max_tokens", 0))
 
 
 def _hub(cfg, hub=None):
@@ -94,7 +95,7 @@ def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = 
     return send_outputs(cfg, res, hub=hub)
 
 
-HANDOFF_DEFAULT = ("inconclusive", "logs_missing", "unverified_threat", "error", "known_good_threat")
+HANDOFF_DEFAULT = ("inconclusive", "logs_missing", "unverified_threat", "error", "known_good_threat", "injection")
 
 
 def handoff(cfg, h: dict) -> dict:
@@ -119,6 +120,11 @@ def handoff(cfg, h: dict) -> dict:
         reason = "A threat was reported but a second pass could not confirm it."
     elif out == "threat" and v.get("needs_review") and "known_good_threat" in when:
         reason = "The threat only names things listed as known good; check whether they are being misused."
+    if v.get("injection") and "injection" in when:
+        where = ", ".join(i["evidence"] for i in v["injection"][:5])
+        reason = (f"Log data in {where} contains text that tries to instruct an AI (possible prompt injection). "
+                  "Someone may be trying to blind automated hunting; check who wrote it and where."
+                  + (f" {reason}" if reason else ""))
     if not reason:
         return h
     tried = []
@@ -188,7 +194,15 @@ def send_outputs(cfg, h: dict, *, hub=None) -> dict:
 FEEDBACK_KINDS = ("benign", "false_positive", "confirmed")
 
 
-def add_feedback(cfg, hid: str, *, finding: int, kind: str, comment: str = "", author: str = "") -> dict:
+def benign_note_days(cfg, override=None) -> int:
+    """Days a benign / false-positive memory note lasts (0 = never expires)."""
+    if override not in (None, ""):
+        return int(override)
+    return int(((cfg.raw or {}).get("memory") or {}).get("benign_note_days", 90))
+
+
+def add_feedback(cfg, hid: str, *, finding: int, kind: str, comment: str = "", author: str = "",
+                 expires_days: int | None = None) -> dict:
     """Record an analyst's view of one finding. Benign and false-positive calls become memory notes."""
     if kind not in FEEDBACK_KINDS:
         raise ValueError(f"kind must be one of {FEEDBACK_KINDS}")
@@ -207,7 +221,8 @@ def add_feedback(cfg, hid: str, *, finding: int, kind: str, comment: str = "", a
     if kind in ("benign", "false_positive", "benign_true_positive"):
         label = "Known benign" if kind == "benign" else "False positive"
         note = memory_for(cfg).add_note(f"{label}: {claim}" + (f" Analyst: {comment}" if comment else ""),
-                                        author=author, tags=[kind, f"hunt:{hid}"])
+                                        author=author, tags=[kind, f"hunt:{hid}"],
+                                        expires_days=benign_note_days(cfg, expires_days))
     return {"feedback": entry, "note": note}
 
 

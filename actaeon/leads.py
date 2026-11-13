@@ -36,6 +36,8 @@ def severity_of(h: dict) -> str:
         if (v.get("verification") or {}).get("result") == "confirmed" and conf >= 85:
             return "critical"
         return "high" if conf >= 70 else "medium"
+    if v.get("injection"):
+        return "high"         # someone planted instructions for an AI in the logs
     if not v.get("needs_review") or h.get("outcome") == "logs_missing":
         return "low"
     return "medium"
@@ -74,6 +76,8 @@ class LeadStore:
             return None
         sev = severity_of(h)
         label = "needs analyst" if v.get("handoff") and h.get("outcome") != "threat" else (h.get("outcome") or "review")
+        if v.get("injection") and h.get("outcome") != "threat":
+            label = "prompt injection"
         title = f"{label.replace('_', ' ')}: {h.get('hypothesis', '')[:160]}"
         with _lock, self._conn() as c:
             row = c.execute("SELECT * FROM leads WHERE hunt_id=?", (h["id"],)).fetchone()

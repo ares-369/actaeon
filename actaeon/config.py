@@ -74,6 +74,8 @@ class HuntLimits:
     max_runtime_sec: int = 900
     max_result_bytes: int = 20_000   # per tool result fed back to the model (search hits are compacted)
     max_results: int = 200         # cap on size/limit arguments
+    max_tokens: int = 0            # model tokens per hunt before a verdict is forced (0 = no cap)
+    max_query_sec: int = 120       # one tool call, retries included
 
 
 @dataclass
@@ -153,6 +155,8 @@ def load_config() -> Config:
         max_runtime_sec=max(10, int(h.get("max_runtime_sec", 900))),
         max_result_bytes=max(1024, int(h.get("max_result_bytes", 20_000))),
         max_results=max(1, int(h.get("max_results", 200))),
+        max_tokens=max(0, int(h.get("max_tokens", 0) or 0)),
+        max_query_sec=max(0, int(h.get("max_query_sec", 120) or 0)),
     )
 
     from .connectors.spec import parse_connectors

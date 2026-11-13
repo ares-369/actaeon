@@ -97,6 +97,11 @@ only. This lowers prompt-injection risk; it does not remove it.
 - Every call, including blocked ones, goes to an append-only audit log
   (`data/audit.sqlite`) with redacted arguments, outcome, attempts and timing.
   Admins can read it at `/api/audit`.
+- Each audit row stores a SHA-256 of the previous row's hash plus its own content.
+  `actaeon audit verify` (or `GET /api/audit/verify`, admin) walks the chain and
+  names any row that was changed or removed. Rows written before this existed are
+  counted but not checked. Cutting rows off the end does not break the chain:
+  note the `head` hash somewhere else if that matters to you.
 
 ## Commands
 

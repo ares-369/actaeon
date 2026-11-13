@@ -3,7 +3,7 @@
     outputs:
       - name: soc-mail
         type: email
-        when: [threat]                     # threat | needs_review | benign | no_results | logs_missing | inconclusive | all
+        when: [threat]                     # threat | needs_review | benign | no_results | logs_missing | inconclusive | all | reply
         smtp_host: "mail.example.org"
         smtp_port: 587
         starttls: true
@@ -50,7 +50,7 @@ from typing import Any
 import requests
 
 TYPES = ("email", "excel", "webhook", "mcp_tool")
-EVENTS = ("threat", "needs_review", "benign", "no_results", "logs_missing", "inconclusive", "all")
+EVENTS = ("threat", "needs_review", "benign", "no_results", "logs_missing", "inconclusive", "all", "reply")
 _XLSX_LOCK = threading.Lock()
 HEADERS = ["Time (UTC)", "Hunt id", "Origin", "Hypothesis", "Outcome", "Confidence", "Needs review", "Summary",
            "Findings", "Indicators", "Queries executed", "Result per query", "ATT&CK", "Link"]
@@ -209,16 +209,26 @@ def call_tool(o: dict, f: dict, hub) -> str:
     return f"{o['connector']}.{o['tool']} called"
 
 
-def dispatch(cfg, h: dict, *, hub=None, only: str | None = None, smtp_cls=None, session=None) -> list[dict]:
-    """Send ``h`` to every matching output. Returns [{name, ok, detail}]; never raises."""
+def dispatch(cfg, h: dict, *, hub=None, only: str | None = None, smtp_cls=None, session=None,
+             event: str | None = None, extra: dict | None = None) -> list[dict]:
+    """Send ``h`` to every matching output. Returns [{name, ok, detail}]; never raises.
+
+    ``event="reply"``: an answer to a ticket reply; only outputs that list ``reply`` get it,
+    with ``extra`` (reply, reply_author, answer) added to the template fields."""
     outs = (cfg.raw or {}).get("outputs") or []
     ev = events_of(h)
     f = facts(h, getattr(cfg, "external_url", "") or "")
+    if extra:
+        f.update(extra)
     results = []
     for o in outs:
         if only and o.get("name") != only:
             continue
-        if not only and not (set(o.get("when") or ["threat"]) & ev):
+        when = set(o.get("when") or ["threat"])
+        if event:
+            if event not in when:
+                continue
+        elif not only and not (when & ev):
             continue
         if o.get("origins") and not any(h.get("origin", "").startswith(p) for p in o["origins"]):
             continue

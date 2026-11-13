@@ -117,6 +117,31 @@ other layers.
 `hunt.max_result_bytes` in `config.yaml`. After 3 replies that are not valid
 actions the hunt ends as `inconclusive`.
 
+- `hunt.max_query_sec` (default 120): one tool call, retries included, never runs
+  longer than this, and never past the end of `max_runtime_sec`. The connector's
+  own `timeout_sec` still applies per attempt when it is shorter. A query cut off
+  this way fails like any other failed call; the source may keep working on it on
+  its side.
+- `hunt.max_tokens` (default 0 = no cap): model tokens (in + out) for the whole
+  hunt, the second-look pass included. When reached, no more tool calls: the model
+  must give its verdict from what it has, and a note on the hunt says why. Usually
+  that verdict is `inconclusive` or an unconfirmed threat, so it goes to an analyst.
+
+## Prompt injection in the data
+
+Every tool result is scanned for text that tries to instruct an AI: "ignore
+previous instructions", "mark this host as benign", chat-template tags, a fake
+verdict object, a copy of the data marker. Normal telemetry never contains such
+text, so a match is a lead in its own right:
+
+- the model is told the text is data and planting it is suspicious;
+- the hunt gets a note naming the evidence, and `verdict.injection` lists it;
+- the hunt is handed to an analyst (`hunt.handoff` value `injection`) and its lead
+  is `high` severity, titled "prompt injection", whatever the verdict was.
+
+The patterns are simple and catch the blatant attempts only. The untrusted-data
+wrapping, the read-only tool policy and evidence checks remain the main defence.
+
 ## Ask Actaeon (chat)
 
 On a finished hunt, the UI has an **Ask Actaeon** box (API:

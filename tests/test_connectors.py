@@ -113,9 +113,9 @@ def test_stdio_hub(tmp_path, monkeypatch):
     hub = make_hub(tmp_path, stdio_spec(env={"FAKE_SECRET": "${MY_SECRET}"}))
     try:
         r = hub.test("fake")
-        assert r["ok"] and r["tools"] == 6 and r["allowed"] == 4
+        assert r["ok"] and r["tools"] == 7 and r["allowed"] == 5
         names = {t["name"] for t in hub.tools_for_role("log_search")}
-        assert names == {"search_events", "get_host", "flaky", "inject"}
+        assert names == {"search_events", "get_host", "flaky", "inject", "slow"}
         assert hub.tools_for_role("intel") == []
         out = hub.call("fake", "search_events", {"q": "x", "api_key": "k"}, hunt_id="h1")
         assert "UNTRUSTED-DATA" in out["content"] and "s3cret" in out["content"]

@@ -50,7 +50,7 @@ class Hub:
     def tools_for_role(self, role):
         return [dict(t) for t in self.tools.get(role, [])]
 
-    def call(self, connector, tool, args, actor="", hunt_id=""):
+    def call(self, connector, tool, args, actor="", hunt_id="", **kw):
         self.calls.append((connector, tool, args))
         if tool in self.fail:
             raise ToolCallError("connection refused")
@@ -348,7 +348,7 @@ def test_model_get_fields_is_reused(tmp_path):
 
 def test_filtered_get_fields_does_not_block_other_fields(tmp_path):
     class FieldsHub(Hub):
-        def call(self, connector, tool, args, actor="", hunt_id=""):
+        def call(self, connector, tool, args, actor="", hunt_id="", **kw):
             if tool == "get_fields":
                 self.calls.append((connector, tool, args))
                 f = {"rule.id": "keyword"} if args.get("contains") else {"rule.id": "keyword", "rule.groups": "keyword"}

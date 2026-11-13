@@ -105,6 +105,10 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         return jsonify(hub().audit.recent(limit=min(500, int(request.args.get("limit", 100))),
                                           hunt_id=request.args.get("hunt_id") or None))
 
+    @app.route("/api/audit/verify")
+    def audit_verify():
+        return jsonify(hub().audit.verify())
+
     def intel_store():
         from .intel import IntelStore
         return IntelStore(get_config().data_dir / "intel.sqlite")
@@ -341,8 +345,9 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
             return jsonify(mem.notes())
         b = request.get_json(silent=True) or {}
         try:
-            return jsonify(mem.add_note(str(b.get("text", "")), author=_actor(), tags=b.get("tags") or []))
-        except ValueError as exc:
+            return jsonify(mem.add_note(str(b.get("text", "")), author=_actor(), tags=b.get("tags") or [],
+                                        expires_days=int(b.get("expires_days") or 0)))
+        except (ValueError, TypeError) as exc:
             return jsonify({"error": str(exc)}), 400
 
     @app.route("/api/memory/notes/<int:nid>/retire", methods=["POST"])
@@ -399,7 +404,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
                     label = "False positive" if out["resolution"] == "false_positive" else "Known benign"
                     hs.memory_for(get_config()).add_note(
                         f"{label} (lead {cid}): {h.get('hypothesis', '')[:200]}. Analyst: {b.get('comment', '')}"[:2000],
-                        author=who, tags=[out["resolution"], f"lead:{cid}"])
+                        author=who, tags=[out["resolution"], f"lead:{cid}"],
+                        expires_days=hs.benign_note_days(get_config(), b.get("expires_days")))
             elif action == "reopen":
                 out = st.reopen(cid, who, str(b.get("comment", ""))[:4000])
             elif action == "comment":
@@ -507,7 +513,7 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         try:
             return jsonify(hs.add_feedback(get_config(), hid, finding=int(b.get("finding", -1)),
                                            kind=str(b.get("kind", "")), comment=str(b.get("comment", "")),
-                                           author=_actor()))
+                                           author=_actor(), expires_days=b.get("expires_days")))
         except LookupError:
             return jsonify({"error": "not found"}), 404
         except (ValueError, TypeError) as exc:
@@ -547,6 +553,17 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         r = intel_store().add_advisory(title, doc["text"], source="import", url=doc.get("url", ""), confidence=conf,
                                        strict_links=True)
         return jsonify({**r, "title": title, "chars": len(doc["text"])})
+
+    @app.route("/api/tickets/reply", methods=["POST"])
+    def ticket_reply():
+        from .tickets import ReplyError, handle_reply
+        b = request.get_json(silent=True) or {}
+        try:
+            return jsonify(handle_reply(get_config(), jobs, text=str(b.get("text", "")),
+                                        author=str(b.get("author", "") or _actor()),
+                                        hunt_id=b.get("hunt_id"), lead_id=b.get("lead_id"))), 202
+        except ReplyError as exc:
+            return jsonify({"error": str(exc)}), exc.status
 
     @app.route("/api/hunts/<hid>/chat", methods=["GET", "POST"])
     def hunt_chat(hid):

@@ -66,6 +66,7 @@ class McpClient:
         # One request at a time per stdio process: replies share one stream, so a second caller
         # waiting at the same time could read (and drop) the first caller's reply.
         self._io_lock = threading.Lock()
+        self._local = threading.local()   # per-thread call timeout override
         self.server_info: dict[str, Any] = {}
         self._initialized = False
         # stdio
@@ -128,9 +129,18 @@ class McpClient:
                 break
         return tools
 
-    def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def call_tool(self, name: str, arguments: dict[str, Any], *, timeout: float | None = None) -> dict[str, Any]:
+        """``timeout``: seconds for this call, when shorter than the connector's own timeout_sec."""
         self.connect()
-        return self._request("tools/call", {"name": name, "arguments": arguments}) or {}
+        self._local.timeout = timeout
+        try:
+            return self._request("tools/call", {"name": name, "arguments": arguments}) or {}
+        finally:
+            self._local.timeout = None
+
+    def _timeout(self) -> float:
+        t = getattr(self._local, "timeout", None)
+        return min(self.spec.timeout_sec, t) if t else self.spec.timeout_sec
 
     # ---- JSON-RPC plumbing ----
     def _next_id(self) -> int:
@@ -153,7 +163,7 @@ class McpClient:
             self._write(msg)
         else:
             self._http.post(self.spec.url, json=msg, headers=self._headers(),
-                            timeout=self.spec.timeout_sec, verify=self.spec.verify_tls)
+                            timeout=self._timeout(), verify=self.spec.verify_tls)
 
     @staticmethod
     def _refusal(msg: dict) -> dict:
@@ -192,11 +202,11 @@ class McpClient:
 
     def _stdio_roundtrip_locked(self, msg: dict) -> dict:
         self._write(msg)
-        deadline = time.monotonic() + self.spec.timeout_sec
+        deadline = time.monotonic() + self._timeout()
         while True:
             left = deadline - time.monotonic()
             if left <= 0:
-                raise McpError(f"timed out after {self.spec.timeout_sec}s")
+                raise McpError(f"timed out after {self._timeout()}s")
             try:
                 line = self._lines.get(timeout=left)
             except queue.Empty:
@@ -240,7 +250,7 @@ class McpClient:
 
     def _http_roundtrip(self, msg: dict) -> dict:
         r = self._http.post(self.spec.url, json=msg, headers=self._headers(), stream=True,
-                            timeout=self.spec.timeout_sec, verify=self.spec.verify_tls)
+                            timeout=self._timeout(), verify=self.spec.verify_tls)
         if r.status_code in (401, 403):
             raise McpError(f"HTTP {r.status_code}: authentication failed")
         if r.status_code >= 400:
@@ -258,7 +268,7 @@ class McpClient:
 
     def _read_sse(self, r: requests.Response, rid: int) -> dict:
         data: list[str] = []
-        deadline = time.monotonic() + self.spec.timeout_sec
+        deadline = time.monotonic() + self._timeout()
         for raw in r.iter_lines(decode_unicode=True):
             if time.monotonic() > deadline:
                 break
@@ -279,6 +289,6 @@ class McpClient:
                         return m
                     if "method" in m and "id" in m:
                         self._http.post(self.spec.url, json=self._refusal(m), headers=self._headers(),
-                                        timeout=self.spec.timeout_sec, verify=self.spec.verify_tls)
+                                        timeout=self._timeout(), verify=self.spec.verify_tls)
         r.close()
         raise McpError("no response in event stream")

@@ -35,7 +35,7 @@ _ADMIN_ONLY_PATHS = {"/api/config", "/api/config/preview", "/api/settings/llm", 
                      "/api/settings/connectors"}
 _ADMIN_ONLY_PREFIXES = ("/api/connectors/",)
 # Reads that are NOT safe for every role (full database export) are admin-only.
-_ADMIN_ONLY_READ_PATHS = {"/api/backup/download", "/api/audit", "/api/doctor"}
+_ADMIN_ONLY_READ_PATHS = {"/api/backup/download", "/api/audit", "/api/audit/verify", "/api/doctor"}
 
 
 def resolve_user_role(cfg, user: str) -> str:
@@ -219,6 +219,15 @@ def init_auth(app, cfg) -> None:
                 role = str(mc.get("token_role", "operator")).lower()
                 g.actaeon_role = role if role in _VALID_ROLES else "viewer"
                 g.actaeon_user = "mcp-token"
+                return None
+        if p == "/api/tickets/reply" and request.method == "POST":
+            import os
+            tc = (cfg.raw or {}).get("tickets") or {}
+            tok = os.getenv(str(tc.get("token_env", "")), "") if tc.get("token_env") else ""
+            got = request.headers.get("Authorization", "")
+            if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), tok):
+                g.actaeon_role = "operator"
+                g.actaeon_user = "ticket-token"
                 return None
         if mode == "none":
             return None

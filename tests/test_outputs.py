@@ -110,7 +110,7 @@ def test_mcp_tool_output_respects_write_policy(home):
             hub = self
 
             class C:
-                def call_tool(self, tool, args):
+                def call_tool(self, tool, args, **kw):
                     hub.made.append(args)
                     return {"content": [{"type": "text", "text": "case 42"}]}
 

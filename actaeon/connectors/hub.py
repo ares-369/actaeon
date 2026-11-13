@@ -83,10 +83,12 @@ def _result_text(res: dict[str, Any]) -> str:
 
 class ConnectorHub:
     def __init__(self, specs: list[ConnectorSpec], audit: AuditLog, *, max_result_bytes: int = 20_000,
-                 pacer: Pacer | None = None, sleep=time.sleep, client_factory=McpClient):
+                 pacer: Pacer | None = None, sleep=time.sleep, client_factory=McpClient,
+                 max_query_sec: float = 0):
         self.specs = {s.name: s for s in specs}
         self.audit = audit
         self.max_result_bytes = max_result_bytes
+        self.max_query_sec = float(max_query_sec or 0)   # all attempts of one call together; 0 = no cap
         self.pacer = pacer or Pacer()
         self._sleep = sleep
         self._factory = client_factory
@@ -104,7 +106,8 @@ class ConnectorHub:
         if w:
             items.append(w)
         return cls(parse_connectors(items), AuditLog(cfg.data_dir / "audit.sqlite"),
-                   max_result_bytes=cfg.hunt.max_result_bytes)
+                   max_result_bytes=cfg.hunt.max_result_bytes,
+                   max_query_sec=getattr(cfg.hunt, "max_query_sec", 0))
 
     # ---- discovery ----
     def _client(self, name: str) -> McpClient:
@@ -168,8 +171,12 @@ class ConnectorHub:
         return out
 
     # ---- calls ----
-    def call(self, name: str, tool: str, arguments: dict[str, Any], *, actor: str = "", hunt_id: str = "") -> dict:
-        """Call one tool. Returns the output wrapped as untrusted data."""
+    def call(self, name: str, tool: str, arguments: dict[str, Any], *, actor: str = "", hunt_id: str = "",
+             deadline: float | None = None) -> dict:
+        """Call one tool. Returns the output wrapped as untrusted data.
+
+        Time: every attempt (retries included) must finish within ``hunt.max_query_sec`` of the first,
+        and before ``deadline`` (a time.monotonic() value, e.g. the end of the hunt's runtime)."""
         if name not in self.specs or not self.specs[name].enabled:
             raise ToolCallError(f"unknown or disabled connector {name!r}")
         spec = self.specs[name]
@@ -186,11 +193,21 @@ class ConnectorHub:
             raise ToolCallError(f"{name}/{tool} blocked: {why}")
 
         start = time.monotonic()
+        ends = [t for t in (deadline, start + self.max_query_sec if self.max_query_sec else None) if t]
+        end = min(ends) if ends else None
         last_err = ""
+        attempts = 0
         for attempt in range(1, RETRIES + 2):
             self.pacer.acquire(name, spec.rate_per_min)
+            left = None if end is None else end - time.monotonic()
+            if left is not None and left < 1:
+                last_err = last_err or "no time left for this query (hunt.max_query_sec or the hunt's time limit)"
+                break
+            attempts = attempt
             try:
-                res = self._client(name).call_tool(tool, arguments)
+                client = self._client(name)
+                res = (client.call_tool(tool, arguments) if left is None
+                       else client.call_tool(tool, arguments, timeout=left))
                 text = _result_text(res)
                 status = "tool_error" if res.get("isError") else "ok"
                 out = wrap(name, tool, text, self.max_result_bytes)
@@ -206,9 +223,9 @@ class ConnectorHub:
                 if attempt <= RETRIES:
                     self._sleep(BACKOFF_SEC * (2 ** (attempt - 1)))
         self.audit.record(connector=name, tool=tool, arguments=arguments, decision=why, status="error",
-                          actor=actor, hunt_id=hunt_id, attempts=RETRIES + 1,
+                          actor=actor, hunt_id=hunt_id, attempts=attempts,
                           duration_ms=int((time.monotonic() - start) * 1000), error=last_err)
-        raise ToolCallError(f"{name}/{tool} failed after {RETRIES + 1} attempts: {last_err}")
+        raise ToolCallError(f"{name}/{tool} failed after {attempts} attempt{'' if attempts == 1 else 's'}: {last_err}")
 
     def _drop(self, name: str) -> None:
         with self._lock:

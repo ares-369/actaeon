@@ -34,8 +34,13 @@ names. Use read-only credentials on every source.
 **T2. Prompt injection through log content, intel or advisories.**
 All tool output is wrapped in nonce-tagged untrusted-data markers, and copies of
 the marker inside the data are altered. The system prompts say to treat the
-content as data. Verdict claims must cite real successful results.
-*Residual:* the model's reasoning can still be misled; findings need analyst review.
+content as data. Verdict claims must cite real successful results. Results that
+contain text addressed to an AI are flagged: the hunt goes to an analyst as a
+high-severity "prompt injection" lead. Benign memory notes expire (90 days by
+default), so a wrong or socially-engineered "benign" call does not blind later
+hunts for good.
+*Residual:* the model's reasoning can still be misled, and the injection patterns
+only catch blatant attempts; findings need analyst review.
 
 **T3. A data source tries to drive the model or the user.**
 Server-to-client MCP requests (sampling, elicitation, roots) are refused, and
@@ -45,7 +50,8 @@ stdio connectors get a minimal environment.
 Auth modes are basic, local (hashed passwords, login rate limit), OIDC, or
 proxy (trusted proxy IPs required). There are three roles (viewer, operator,
 admin). Actaeon will not start on a network address with no login. Session
-requests get a CSRF origin check. The `/mcp` token is scoped to `/mcp` only.
+requests get a CSRF origin check. The `/mcp` token is scoped to `/mcp` only, and
+the ticket-reply token (`tickets.token_env`) to `POST /api/tickets/reply` only.
 
 **T5. Cross-site scripting through data shown in the UI.**
 The UI only ever sets text, never HTML (a test enforces this), and the CSP
@@ -68,13 +74,18 @@ in connector config are rejected at startup. Audit arguments are redacted, as
 are diffs in the settings preview. A secret scan runs in CI.
 
 **T9. Runaway cost or load on sources.**
-Limits on steps, runtime and result size, per-connector pacing, a size cap on
-every query, and a mandatory time range when a tool takes one.
+Limits on steps, runtime, tokens per hunt (`hunt.max_tokens`), time per query
+(`hunt.max_query_sec`) and result size, per-connector pacing, a size cap on
+every query, and a mandatory time range when a tool takes one. The search-index
+bridge refuses leading wildcards on time-series indices, in query strings and in
+raw query clauses.
 
 **T10. Tampering with the audit log.**
-SQLite triggers refuse updates and deletes.
-*Residual:* someone with file access can still replace the database. Ship the
-audit log elsewhere if you need stronger guarantees.
+SQLite triggers refuse updates and deletes, and every row is hash-chained to the
+one before; `actaeon audit verify` finds changed or removed rows.
+*Residual:* someone with file access can rewrite the whole chain or cut rows off
+the end. Keep the `head` hash, or ship the audit log elsewhere, if you need
+stronger guarantees.
 
 ## Out of scope
 

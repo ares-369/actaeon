@@ -63,6 +63,41 @@ it. The connector must have `allow_write: true` and list `create_case` exactly i
 Template fields: `{title} {summary} {hypothesis} {outcome} {confidence} {severity}
 {findings} {indicators} {queries} {attack} {link} {hunt_id} {origin} {time}`.
 
+## Replies from the ticket
+
+A ticket opened by an output carries the hunt id (`{hunt_id}`). When the analyst
+answers in the ticket, have the ticket system post the reply back:
+
+```
+POST /api/tickets/reply
+Authorization: Bearer <token from tickets.token_env>
+{"hunt_id": "...", "text": "...", "author": "jdoe"}      (or "lead_id": 12)
+```
+
+| Reply | What happens |
+|---|---|
+| `/resume` | resumes the hunt if it is paused |
+| `/hunt <hypothesis>` | starts a follow-up hunt with the first hunt's record as context (origin `followup:<id>`); its result goes out like any hunt |
+| anything else | a question about the hunt, answered in the background like **Ask Actaeon** (read-only tool calls, cited evidence) |
+
+Every reply and every answer is a comment on the lead. An answer is also sent to
+each output whose `when` lists `reply` (`all` does not include replies), with the
+extra template fields `{reply} {reply_author} {answer}`:
+
+```yaml
+tickets:
+  token_env: TICKET_REPLY_TOKEN     # in .env; valid on /api/tickets/reply only, acts as operator
+outputs:
+  - name: ticket-answer
+    type: mcp_tool
+    when: [reply]
+    connector: cases
+    tool: add_comment               # must be allowed like any write tool
+    arguments: {case: "{hunt_id}", text: "{answer}"}
+```
+
+Without a token, logged-in operators can call the same endpoint.
+
 ## Checking
 
 `actaeon outputs` lists them. `actaeon outputs test <name>` sends a clearly

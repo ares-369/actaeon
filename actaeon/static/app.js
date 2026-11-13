@@ -691,11 +691,13 @@ async function settings() {
       } }, icon("lan-check"), "Test models")), diff, testOut));
   const note = h("input", { class: "grow", placeholder: "Note, for example: the backup agent uploads to cloud storage from backup01 nightly" });
   const ntags = h("input", { placeholder: "tags" });
+  const ndays = h("input", { type: "number", min: "0", max: "3650", placeholder: "expires in days (0 = never)", title: "Stop using the note after this many days" });
   const notes = await api("/api/memory/notes");
   main.append(section("Memory notes", "note-text-outline",
     h("p", { class: "muted small" }, "Notes are added to the context of related hunts. Only people write them."),
-    h("div", { class: "row" }, note, ntags, h("button", { "data-need": "op", onclick: async () => { await api("/api/memory/notes", { text: note.value, tags: ntags.value.split(",").map((x) => x.trim()).filter(Boolean) }); route(); } }, icon("plus"), "Add")),
+    h("div", { class: "row" }, note, ntags, ndays, h("button", { "data-need": "op", onclick: async () => { await api("/api/memory/notes", { text: note.value, tags: ntags.value.split(",").map((x) => x.trim()).filter(Boolean), expires_days: Number(ndays.value || 0) }); route(); } }, icon("plus"), "Add")),
     h("table", {}, h("tbody", {}, notes.map((n) => h("tr", {}, h("td", { class: n.active ? "" : "muted" }, n.text), h("td", { class: "small muted" }, n.tags.join(", ")),
+      h("td", { class: "small muted" }, `${n.author || "unknown"} ${n.created.slice(0, 10)}` + (n.expires ? (n.expired ? " expired " : " until ") + n.expires.slice(0, 10) : "")),
       h("td", {}, n.active && h("button", { "data-need": "op", class: "ghost", onclick: async () => { await post(`/api/memory/notes/${n.id}/retire`); route(); } }, icon("archive")))))))));
   const audit = h("div", {}, h("button", { "data-need": "admin", class: "ghost", onclick: async () => {
     const rows = await api("/api/audit?limit=100");
