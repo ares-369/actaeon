@@ -334,3 +334,12 @@ def test_triage_sees_common_fields():
     body = '{"common": {"event.action": "blocked", "host.name": "a"}, "hits": [{"destination.ip": "203.0.113.9"}]}'
     ev = events_from(body)
     assert ev == [{"event.action": "blocked", "host.name": "a", "destination.ip": "203.0.113.9"}]
+
+
+def test_relative_times_with_rounding(monkeypatch):
+    from actaeon.bridges.common import parse_time
+    monkeypatch.setenv("BRIDGE_NOW", "2026-11-12T15:47:30+00:00")   # a Thursday
+    assert parse_time("now-7d/d", default="now").isoformat() == "2026-11-05T00:00:00+00:00"
+    assert parse_time("now/h", default="now").isoformat() == "2026-11-12T15:00:00+00:00"
+    assert parse_time("now/w", default="now").isoformat() == "2026-11-09T00:00:00+00:00"
+    assert parse_time("now-2h", default="now").isoformat() == "2026-11-12T13:47:30+00:00"

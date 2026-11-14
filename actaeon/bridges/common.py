@@ -10,7 +10,7 @@ import requests
 
 from .server import ToolInputError
 
-_REL = re.compile(r"^now-(\d{1,5})([mhdw])$")
+_REL = re.compile(r"^now(?:-(\d{1,5})([mhdw]))?(?:/([mhdw]))?$")   # now, now-7d, now-7d/d (rounded down)
 _UNITS = {"m": "minutes", "h": "hours", "d": "days", "w": "weeks"}
 
 
@@ -46,14 +46,22 @@ def bridge_now() -> datetime:
 
 
 def parse_time(value: str, *, default: str) -> datetime:
-    """Accept ISO-8601 or relative ``now-24h`` / ``now-7d`` / ``now``."""
+    """Accept ISO-8601 or relative ``now``, ``now-24h``, ``now-7d``, with optional rounding down (``now-7d/d``)."""
     v = (value or default).strip()
     now = bridge_now()
-    if v == "now":
-        return now
     m = _REL.match(v)
     if m:
-        return now - timedelta(**{_UNITS[m.group(2)]: int(m.group(1))})
+        t = now - timedelta(**{_UNITS[m.group(2)]: int(m.group(1))}) if m.group(1) else now
+        r = m.group(3)
+        if r == "m":
+            t = t.replace(second=0, microsecond=0)
+        elif r == "h":
+            t = t.replace(minute=0, second=0, microsecond=0)
+        elif r in ("d", "w"):
+            t = t.replace(hour=0, minute=0, second=0, microsecond=0)
+            if r == "w":
+                t -= timedelta(days=t.weekday())
+        return t
     try:
         dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
     except ValueError as exc:

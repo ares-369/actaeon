@@ -31,6 +31,7 @@ from .signals import hits
 from .store import OUTCOMES, HuntStore
 from .validator import ValidationError, validate_call
 
+_FOUND = re.compile(r'"found"\s*:\s*true', re.I)
 TECHNIQUE = re.compile(r"^T\d{4}(?:\.\d{3})?$")
 from ..connectors.spec import DATA_ROLES  # noqa: E402
 
@@ -332,7 +333,8 @@ class HuntEngine:
             self.data_attempted += is_data
             self.data_ok += bool(s.get("ok")) and is_data
             self.evidence[eid] = {"ok": bool(s.get("ok")), "connector": s.get("connector"), "tool": s.get("tool"),
-                                  "role": role, "args": args, "text": (s.get("result") or "")[:400_000]}
+                                  "role": role, "args": args, "text": (s.get("result") or "")[:400_000],
+                                  "hits": hits(s.get("result") or "") if s.get("ok") and is_data else None}
             done_calls[json.dumps([s.get("connector"), s.get("tool"), args], sort_keys=True, default=str)] = eid
             transcript.append({"role": "assistant", "content": json.dumps(
                 {"thought": s.get("why") or "", "action": "call", "connector": s.get("connector"),
@@ -481,6 +483,7 @@ class HuntEngine:
                 ok, content = False, f"call failed: {exc}"
             ms = int((time.monotonic() - t0) * 1000)
             self.data_ok += ok and is_data
+            n_hits = None
             if ok and is_data and not tool.startswith(("list_", "get_fields", "describe")):
                 n_hits = hits(content)
                 if n_hits is not None:
@@ -497,7 +500,7 @@ class HuntEngine:
                 # (a count result holds only a number). A query that matched nothing adds nothing.
                 text += "\n" + json.dumps(args, default=str)
             self.evidence[eid] = {"ok": ok, "connector": connector, "tool": tool, "role": meta["role"], "args": args,
-                                  "text": text}
+                                  "text": text, "hits": n_hits}
             self.store.add_step(hid, n, "call", connector=connector, tool=tool, role=meta["role"], arguments=args,
                                 why=str(action.get("thought", "")), ok=ok, ms=ms, result=content,
                                 note="; ".join(notes))
@@ -595,10 +598,10 @@ class HuntEngine:
         needs_review = False
         kg = getattr(self, "known_good", [])
         if outcome == "threat" and findings and kg:
-            def hits(text: str) -> list[str]:
+            def kg_hits(text: str) -> list[str]:
                 low = text.lower()
                 return [k for k in kg if re.search(r"(?<![a-z0-9])" + re.escape(k.lower()) + r"(?![a-z0-9])", low)]
-            per = [hits(f["claim"]) for f in findings]
+            per = [kg_hits(f["claim"]) for f in findings]
             if all(per):
                 conf = min(conf, 50)
                 needs_review = True
@@ -614,6 +617,19 @@ class HuntEngine:
             elif len(sources) < 2:
                 conf = min(conf, 75)
                 notes.append("all evidence comes from one kind of query; confidence capped at 75")
+        ev = getattr(self, "evidence", {})
+        if outcome == "no_results" and any((ev.get(e, {}).get("hits") or 0) > 0 for f in findings for e in f["evidence"]):
+            # The verdict says nothing was found while its own findings cite results that matched: the model
+            # contradicts itself (seen with small local models). Do not close it; an analyst decides.
+            outcome, conf, needs_review = "inconclusive", min(conf, 40), True
+            notes.append("'no_results' but the findings cite searches that matched; changed to inconclusive and "
+                         "handed to an analyst")
+        intel_hits = sorted((e for e, d in ev.items() if d.get("ok") and d.get("tool") in ("lookup", "find_indicator")
+                             and _FOUND.search(d.get("text") or "")), key=lambda e: int(e[1:]))
+        if outcome == "telemetry_found_benign" and intel_hits:
+            conf, needs_review = min(conf, 50), True
+            notes.append(f"'benign' although an intel lookup matched ({', '.join(intel_hits[:5])}); confidence capped "
+                         "at 50 and handed to an analyst")
         injections = list(getattr(self, "injections", []))
         if injections:
             needs_review = True

@@ -8,6 +8,10 @@ behaviour may still change between releases.
 ## [Unreleased]
 
 ### Security
+- Two more checks on the verdict, so a confused model cannot quietly close a real finding: a `no_results`
+  whose own findings cite searches that matched becomes `inconclusive` and goes to an analyst, and a
+  `benign` verdict when an intel lookup matched is capped at confidence 50 and goes to an analyst. Both
+  were seen with a local 7B model on the demo cases.
 - Scheduled replays run as the person who saved the hunt; the scheduler's own work can be given an identity
   (`scheduler.groups`); notes and saved hunts made from restricted hunts are restricted; the audit log names
   the identity a call ran as.
@@ -64,6 +68,8 @@ behaviour may still change between releases.
   offline decoder named, PostgreSQL and worker install lines.
 
 ### Fixed
+- Bridges accept relative times rounded down (`now-7d/d`, `now/h`), as search indexes do; they were
+  refused before.
 - The investigation graph was wider than its box at laptop widths and cut off the Intel column; it now
   shrinks to fit (and scrolls on small screens). The top bar no longer wraps to two lines at 1280 px
   now that it has an Entities tab (labels hide below 1240 px, icons stay).

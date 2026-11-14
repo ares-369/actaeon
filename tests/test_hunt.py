@@ -495,3 +495,27 @@ def test_no_broaden_nudge_when_a_search_matched(tmp_path):
     hub = Hub(results={"search": '{"total": 4, "hits": [{"a": 1}]}'})
     h, _ = run(tmp_path, [call(index="e", time_from="now-1d", query="a"), nores], hub=hub)
     assert not any("asked to broaden" in (s["note"] or "") for s in h["steps"] if s["kind"] == "note")
+
+
+def test_no_results_contradicted_by_matching_evidence(tmp_path):
+    hub = Hub(results={"search": '{"total": 1, "hits": [{"process.name": "schtasks.exe"}]}'})
+    h, _ = run(tmp_path, [call(index="e", time_from="now-7d", query="schtasks"),
+                          {"action": "verdict", "outcome": "no_results", "confidence": 90,
+                           "summary": "A scheduled task running hidden PowerShell was found",
+                           "findings": [{"claim": "schtasks created a task", "evidence": ["E2"]}]}], hub=hub)
+    v = h["verdict"]
+    assert v["outcome"] == "inconclusive" and v["needs_review"] and v["confidence"] <= 40
+    assert any("findings cite searches that matched" in c for c in v["checks"])
+
+
+def test_benign_with_intel_match_goes_to_analyst(tmp_path):
+    hub = Hub(results={"search": '{"total": 3, "hits": [{"destination.ip": "203.0.113.66"}]}',
+                       "lookup": '{"value": "203.0.113.66", "found": true}'})
+    h, _ = run(tmp_path, [call(index="e", time_from="now-7d", query="x"), call("lookup", value="203.0.113.66"),
+                          {"action": "verdict", "outcome": "telemetry_found_benign", "confidence": 90,
+                           "summary": "known advisory, so benign",
+                           "findings": [{"claim": "203.0.113.66 is in an advisory", "evidence": ["E2", "E3"]}]}],
+                 hub=hub)
+    v = h["verdict"]
+    assert v["outcome"] == "telemetry_found_benign" and v["needs_review"] and v["confidence"] == 50
+    assert any("intel lookup matched (E3)" in c for c in v["checks"])
