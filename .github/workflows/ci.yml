@@ -73,6 +73,7 @@ jobs:
           cd /tmp && export HOME=/tmp/home
           /tmp/v/bin/actaeon version
           /tmp/v/bin/actaeon init
+          /tmp/v/bin/actaeon demo --dir /tmp/demo --offline --run | grep -q "verdict: threat"
           ACTAEON_BIND_PORT=8697 /tmp/v/bin/actaeon serve > /tmp/serve.log 2>&1 &
           for i in $(seq 1 30); do curl -fs http://127.0.0.1:8697/healthz && break; sleep 1; done
           curl -fs -o /dev/null http://127.0.0.1:8697/

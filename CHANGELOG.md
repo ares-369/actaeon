@@ -38,6 +38,15 @@ behaviour may still change between releases.
   and authority-style wording) are listed in docs/hunting.md and left unfixed in the score.
 
 ### Changed
+- Version format matches the author's other tools: `0.2.0-beta` in the code and tags, `0.2.0b0` on PyPI.
+  `docs/project-standard.md` lists the shared naming, packaging and release rules. Install with
+  `pipx install actaeon`; publishing a GitHub release uploads to PyPI (trusted publishing).
+- The changelog follows Keep a Changelog; `SECURITY.md` has the same layout as the other tools.
+- The icon font ships only the 100 icons the UI uses (7 KB instead of about 3.6 MB of font files), so the
+  wheel drops from 2.5 MB to about 0.36 MB. CI checks the five required packages and the wheel size, and
+  the wheel smoke test runs the offline demo.
+- When every search in a hunt matched nothing and the model answers `no_results`, it is asked once to
+  search again more broadly first (small models tend to stack guessed filters into one query and stop).
 - `actaeon hunt --plan-only` (also `POST /api/hunts/plan` and a **Plan only** button): the planning step
   alone, with no data queried and no hunt stored.
 - Token usage records the part of the input served from the provider's prompt cache (Gemini, Claude,
@@ -53,6 +62,10 @@ behaviour may still change between releases.
   offline decoder named, PostgreSQL and worker install lines.
 
 ### Fixed
+- Local models: Ollama was called with its own default context window (2,048 to 4,096 tokens), which
+  silently drops the start of a longer prompt. Actaeon now asks for `num_ctx` tokens (default 8192,
+  `llm.providers.ollama.num_ctx`) and reports a prompt that still fills the window as an error instead of
+  using the answer. The request timeout is configurable (`timeout_sec`, default 300).
 - Chat and the second look on threats failed silently on newer Gemini models (every reply a malformed
   tool call), so threats were never confirmed. Every tool loop now declares its final action as a native
   tool next to `call_tool`, and requests without tools say so. With gemini-3.8-flash the second look now

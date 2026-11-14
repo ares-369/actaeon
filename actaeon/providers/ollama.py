@@ -1,4 +1,9 @@
-"""Local Ollama provider (no API key, plain HTTP). The default."""
+"""Local Ollama provider (no API key, plain HTTP). The default.
+
+Ollama's own default context window is small (2,048 to 4,096 tokens) and it drops the start of a longer
+prompt without an error, so a hunt prompt would lose its instructions. The provider asks for
+``num_ctx`` tokens (default 8192) instead; lower it on a small GPU, raise it if the model allows.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +23,8 @@ class OllamaProvider(LLMProvider):
     def __init__(self, cfg: dict[str, Any], secret: str = ""):
         super().__init__(cfg, secret)
         self.base_url = (cfg.get("base_url") or "http://localhost:11434").rstrip("/")
+        self.num_ctx = int(cfg.get("num_ctx") or 8192)
+        self.timeout = float(cfg.get("timeout_sec") or 300)
 
     def chat(self, messages: list[Message], *, model=None, temperature=0.2, max_tokens=900) -> LLMResult:
         use_model = model or self.default_model
@@ -28,16 +35,21 @@ class OllamaProvider(LLMProvider):
                     "model": use_model,
                     "messages": messages,
                     "stream": False,
-                    "options": {"temperature": temperature, "num_predict": max_tokens},
+                    "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": self.num_ctx},
                 },
-                timeout=120,
+                timeout=self.timeout,
             )
             r.raise_for_status()
             data = r.json()
             content = data.get("message", {}).get("content", "") or ""
             content = _THINK_RE.sub("", content).strip()
+            tokens_in = int(data.get("prompt_eval_count") or 0)
+            if tokens_in >= self.num_ctx - 16:
+                return LLMResult(text="", model=use_model, tokens_in=tokens_in,
+                                 error=f"Ollama error: the prompt filled the {self.num_ctx}-token context and was cut; "
+                                       "raise llm.providers.ollama.num_ctx or use prompt_mode: compact")
             return LLMResult(text=content or "(empty response)", model=use_model,
-                             tokens_in=int(data.get("prompt_eval_count") or 0), tokens_out=int(data.get("eval_count") or 0))
+                             tokens_in=tokens_in, tokens_out=int(data.get("eval_count") or 0))
         except Exception as exc:
             return LLMResult(text="", model=use_model, error=f"Ollama error: {exc}")
 

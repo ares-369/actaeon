@@ -37,6 +37,8 @@ llm:
     ollama:
       base_url: "http://localhost:11434"
       default_model: "qwen2.5:7b"
+      num_ctx: 8192            # context window asked of Ollama (its own default cuts long prompts)
+      timeout_sec: 300
     anthropic:
       default_model: ""        # ANTHROPIC_API_KEY in .env
     gemini:                    # see docs/models.md for every way to connect

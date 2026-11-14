@@ -1,6 +1,6 @@
 # Known limitations
 
-Actaeon is in beta (0.1.0b2). These are the limits we know about.
+Actaeon is in beta. These are the limits we know about.
 
 ## Hunting quality
 

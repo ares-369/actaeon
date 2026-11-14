@@ -137,7 +137,7 @@ Details: [docs/threat-model.md](docs/threat-model.md), [docs/connectors.md](docs
 | Test | Result |
 |---|---|
 | Lab benchmark on a frozen week of real SIEM data (11 labelled cases) | gemini-3.8-flash: 10 to 11 / 11 over four runs, all 5 threats found, no false positives |
-| Same lab cases, other models | gemini-3.1-pro-preview 9 / 11, gemini-3.1-flash-lite 8 / 11, no false positives |
+| Same lab cases, other models | gemini-3.1-pro-preview 9 / 11 (3 of 5 threats; its second look talked it out of 2, which went to an analyst), gemini-3.1-flash-lite 8 / 11 (2 of 5 threats); no false positives |
 | ExCyTIn-Bench sample (80 public investigation questions) | mean reward 0.512, 40 / 80 fully correct |
 | Field test: implant planted where no detection rule covered it | found from host inventory with no alert behind it |
 | Tokens per hunt on the lab data (gemini-3.8-flash) | about 210k to 250k input, more than half served from the provider's cache; about 4k output; about 20 model calls |

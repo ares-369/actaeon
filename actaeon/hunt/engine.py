@@ -360,6 +360,8 @@ class HuntEngine:
         calls = int((state or {}).get("calls") or 0)
         parse_fail = 0
         nudged = False
+        broadened = False
+        searched = {"empty": 0, "matched": 0}   # data searches with a hit count: none matched / some matched
         while True:
             self._gate()
             over_tokens = self._over_tokens()
@@ -392,6 +394,19 @@ class HuntEngine:
                     transcript.append({"role": "user", "content": f"Before a threat verdict, corroborate it: {gap} "
                                        "Make those calls, then give the verdict again."})
                     continue
+            if (action["action"] == "verdict" and not last and not broadened and action.get("outcome") == "no_results"
+                    and searched["empty"] and not searched["matched"]):
+                # Every search matched nothing. Small models often stack guessed filters into one query and stop;
+                # ask once for a broader search before accepting 'no_results'.
+                broadened = True
+                self.store.add_step(hid, self._next(), "note", ok=True,
+                                    note="every search matched nothing; asked to broaden once before 'no_results'")
+                transcript.append({"role": "assistant", "content": json.dumps(action)[:3000]})
+                transcript.append({"role": "user", "content": (
+                    "Every search so far matched nothing. Before concluding no_results, search once more, broader: "
+                    "drop filters on fields or values you have not seen in a result, keep only the one or two terms "
+                    "that define the behaviour, and use the whole time window. Then give the verdict again.")})
+                continue
             if action["action"] == "verdict" or last:
                 if action["action"] != "verdict":
                     # One more chance: models often make one more call on the last turn.
@@ -466,6 +481,10 @@ class HuntEngine:
                 ok, content = False, f"call failed: {exc}"
             ms = int((time.monotonic() - t0) * 1000)
             self.data_ok += ok and is_data
+            if ok and is_data and not tool.startswith(("list_", "get_fields", "describe")):
+                n_hits = hits(content)
+                if n_hits is not None:
+                    searched["matched" if n_hits > 0 else "empty"] += 1
             if ok and tool == "get_fields" and not args.get("contains"):
                 learned = _fields_from(content)   # a filtered (contains) list is partial: never learn from it
                 if learned:

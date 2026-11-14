@@ -477,3 +477,21 @@ def test_count_evidence_grounds_the_values_it_searched_for(tmp_path):
     hub0 = Hub(tools={"log_search": [SEARCH, {**SEARCH, "name": "count"}]}, results={"count": '{"count": 0}'})
     h0, _ = run(tmp_path / "zero", acts, hub=hub0)
     assert h0["verdict"]["findings"] == [] or h0["verdict"]["findings"][0].get("missing_values") == ["203.0.113.66"]
+
+
+def test_empty_searches_nudged_to_broaden_once(tmp_path):
+    nores = {"action": "verdict", "outcome": "no_results", "confidence": 70, "summary": "nothing"}
+    hub = Hub(results={"search": '{"total": 0, "hits": []}'})
+    h, _ = run(tmp_path, [call(index="e", time_from="now-1d", query="a AND b AND c"), nores,
+                          call(index="e", time_from="now-7d", query="a"), nores], hub=hub)
+    notes = [s["note"] for s in h["steps"] if s["kind"] == "note"]
+    assert sum("asked to broaden" in n for n in notes) == 1
+    assert len([c for c in hub.calls if c[1] == "search"]) == 2
+    assert h["verdict"]["outcome"] == "no_results"
+
+
+def test_no_broaden_nudge_when_a_search_matched(tmp_path):
+    nores = {"action": "verdict", "outcome": "no_results", "confidence": 70, "summary": "nothing bad"}
+    hub = Hub(results={"search": '{"total": 4, "hits": [{"a": 1}]}'})
+    h, _ = run(tmp_path, [call(index="e", time_from="now-1d", query="a"), nores], hub=hub)
+    assert not any("asked to broaden" in (s["note"] or "") for s in h["steps"] if s["kind"] == "note")

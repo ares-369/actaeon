@@ -1,3 +1,3 @@
 """Actaeon: an open-source AI threat hunter that works through MCP connectors."""
 
-__version__ = "0.1.0b2"
+__version__ = "0.2.0-beta"

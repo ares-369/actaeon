@@ -1,12 +1,23 @@
 # Security
 
-Please report vulnerabilities privately, through the repository's private
-security advisory feature, not in a public issue. Include steps to reproduce
-and the version or commit.
+## Reporting a vulnerability
 
-Actaeon is in beta (0.1.0b2). See [docs/threat-model.md](docs/threat-model.md) for what it
-tries to protect and [docs/known-limitations.md](docs/known-limitations.md) for
-known gaps.
+Please report vulnerabilities privately, through the repository's
+[private security advisory](https://github.com/ares-369/actaeon/security/advisories/new) feature, not in
+a public issue. Include steps to reproduce and the version or commit.
+
+Actaeon is maintained by one person in spare time, so responses are best-effort: I aim to acknowledge a
+report within a week and keep you updated on a fix. Reporters are credited in the changelog unless they
+prefer otherwise.
+
+## Supported versions
+
+Actaeon is beta software. Fixes go into the latest release only.
+
+## More
+
+- [docs/threat-model.md](docs/threat-model.md): what it tries to protect, and how.
+- [docs/known-limitations.md](docs/known-limitations.md): known gaps.
 
 Deployment advice:
 
