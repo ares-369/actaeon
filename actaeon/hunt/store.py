@@ -38,8 +38,9 @@ class HuntStore:
                 arguments TEXT, why TEXT, ok INTEGER, ms INTEGER, result TEXT, note TEXT);
             CREATE INDEX IF NOT EXISTS steps_hunt ON steps(hunt_id, n);
             """)
-            for col in ("job_id", "narrative", "feedback", "restricted"):
+            for col in ("job_id", "narrative", "feedback", "restricted", "profile"):
                 db.add_column(c, "hunts", col, "TEXT")
+            db.add_column(c, "hunts", "resumes", "INTEGER NOT NULL DEFAULT 0")
 
     def _conn(self):
         c = db.connect(self.path)
@@ -123,6 +124,11 @@ class HuntStore:
         from ..access import can_see
         with self._conn() as c:
             return [h for h in (self._hunt(r) for r in c.execute(q, a)) if can_see(h["restricted"])]
+
+    def running(self) -> list[dict]:
+        """Hunts still marked queued or running (no visibility filter: used at startup)."""
+        with self._conn() as c:
+            return [self._hunt(r) for r in c.execute("SELECT * FROM hunts WHERE status IN ('queued','running')")]
 
     def mark_orphans(self) -> None:
         """Hunts left running by a restart can never finish; mark them stopped."""

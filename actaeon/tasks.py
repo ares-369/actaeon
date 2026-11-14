@@ -18,7 +18,8 @@ def hunt(p: dict, ctl, jobs) -> dict:
     from .hunt.service import run_hunt
     res = run_hunt(_cfg(), p["hypothesis"], hunt_id=p["hunt_id"], origin=p.get("origin", "manual"),
                    actor=p.get("actor", ""), context=p.get("context", ""), max_steps=p.get("max_steps"),
-                   checkpoint=ctl.checkpoint if ctl else None)
+                   checkpoint=ctl.checkpoint if ctl else None, resume=bool(p.get("resume")),
+                   profile=p.get("profile"))
     return {"hunt_id": p["hunt_id"], "outcome": res.get("outcome"), "status": res.get("status")}
 
 

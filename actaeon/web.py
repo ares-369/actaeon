@@ -106,6 +106,11 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         return jsonify(hub().audit.recent(limit=min(500, int(request.args.get("limit", 100))),
                                           hunt_id=request.args.get("hunt_id") or None))
 
+    @app.route("/api/retention", methods=["POST"])
+    def retention_run():
+        from .retention import purge
+        return jsonify(purge(get_config(), dry_run=bool((request.get_json(silent=True) or {}).get("dry_run"))))
+
     @app.route("/api/audit/verify")
     def audit_verify():
         return jsonify(hub().audit.verify())
@@ -222,7 +227,7 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     from .hunt import service as hs
     from .hunt.library import starters
     from .hunt.service import start_hunt, store_for
-    store_for(cfg).mark_orphans()
+    hs.resume_interrupted(cfg, jobs)      # hunts a previous process left running: continue or mark stopped
     if start_scheduler:
         from .hunt.scheduler import Scheduler
         app.extensions["actaeon_scheduler"] = Scheduler(cfg, jobs)
@@ -258,7 +263,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         b = request.get_json(silent=True) or {}
         try:
             hid = start_hunt(jobs, get_config(), str(b.get("hypothesis", ""))[:4000], actor=_actor(),
-                             context=str(b.get("context", ""))[:8000], max_steps=b.get("max_steps"))
+                             context=str(b.get("context", ""))[:8000], max_steps=b.get("max_steps"),
+                             profile=str(b.get("profile") or "") or None)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         return jsonify({"hunt_id": hid}), 202
@@ -736,7 +742,12 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         fn = {"stop": jobs.cancel, "pause": jobs.pause, "resume": jobs.resume}.get(action)
         if not fn:
             return jsonify({"error": "unknown action"}), 400
-        return jsonify({"ok": bool(h.get("job_id")) and fn(h["job_id"])})
+        ok = bool(h.get("job_id")) and fn(h["job_id"])
+        if action == "resume" and not ok and h.get("status") in ("stopped", "error"):
+            # not a paused job: continue a stopped or interrupted hunt from its stored steps
+            full = store_for(get_config()).get(hid)
+            return jsonify({"ok": True, "continued": True, "job_id": hs.resume_hunt(jobs, get_config(), full)})
+        return jsonify({"ok": ok})
 
     from .mcp_server import build as build_mcp
 

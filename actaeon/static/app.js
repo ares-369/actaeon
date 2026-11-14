@@ -247,12 +247,16 @@ async function hunts() {
   const lib = await api("/api/library").catch(() => ({ starters: [] }));
   const hyp = h("textarea", { "data-need": "op", placeholder: "Hypothesis, for example: an Office app started encoded PowerShell on any host in the last 7 days" });
   const steps = h("input", { type: "number", min: 1, max: 100, placeholder: "max steps" });
+  const profile = h("select", { title: "quick: fewer calls and tokens, no second look; deep: more calls and time" },
+    ["standard", "quick", "deep"].map((p) => h("option", { value: p }, p)));
   const pick = h("select", { onchange: () => { if (pick.value) hyp.value = pick.value; } },
     h("option", { value: "" }, "Starter hypotheses..."),
     lib.starters.map((s) => h("option", { value: s.hypothesis }, `${s.name} (${s.attack.join(", ")})`)));
   const start = async () => {
     if (!hyp.value.trim()) return toast("Write a hypothesis first.");
-    const r = await api("/api/hunts", { hypothesis: hyp.value, max_steps: steps.value ? +steps.value : undefined });
+    const r = await api("/api/hunts", { hypothesis: hyp.value, max_steps: steps.value ? +steps.value : undefined,
+      profile: profile.value === "standard" ? undefined : profile.value });
+    if (r.error) return toast(r.error);
     location.hash = "#hunt/" + r.hunt_id;
   };
   const planBox = h("div");
@@ -270,7 +274,7 @@ async function hunts() {
     } finally { e.target.disabled = false; }
   };
   main.append(section("New hunt", "target", hyp,
-    h("div", { class: "row" }, pick, steps,
+    h("div", { class: "row" }, pick, profile, steps,
       h("button", { "data-need": "op", class: "ghost", onclick: planOnly, title: "Show the plan without querying any data" }, icon("map-search-outline"), "Plan only"),
       h("button", { "data-need": "op", onclick: start }, icon("play"), "Start hunt")), planBox));
   const sug = h("div");
@@ -330,11 +334,15 @@ function renderHunt(hu) {
     h("div", { class: "row" }, badge(hu.status), badge(hu.outcome),
       hu.lead ? h("a", { href: "#lead/" + hu.lead.id }, h("span", { class: "badge" }, icon("briefcase-outline"), ` lead #${hu.lead.id} ${hu.lead.status}${hu.lead.assignee ? " - " + hu.lead.assignee : ""}`)) : null,
       h("span", { class: "muted small" },
-      `started ${when(hu.created)}  origin ${hu.origin}  ${hu.actor ? "by " + hu.actor : ""}` + usageText(hu))),
+      `started ${when(hu.created)}  origin ${hu.origin}  ${hu.actor ? "by " + hu.actor : ""}` + (hu.profile ? `  profile ${hu.profile}` : "")
+      + (hu.resumes ? `  resumed ${hu.resumes}x` : "") + usageText(hu))),
     h("div", { class: "row" },
       running && h("button", { "data-need": "op", class: "ghost", onclick: act("pause") }, icon("pause"), "Pause"),
       running && h("button", { "data-need": "op", class: "ghost", onclick: act("resume") }, icon("play"), "Resume"),
       running && h("button", { "data-need": "op", class: "danger", onclick: act("stop") }, icon("stop"), "Stop"),
+      ["stopped", "error"].includes(hu.status) && h("button", { "data-need": "op", class: "ghost",
+        title: "Continue this hunt from its stored steps", onclick: async () => { await post(`/api/hunts/${hu.id}/resume`); toast("Hunt continues"); route(); } },
+        icon("play-circle-outline"), "Continue"),
       h("a", { href: `/api/hunts/${hu.id}/report.pdf` }, h("button", { class: "ghost" }, icon("file-pdf-box"), "PDF")),
       h("a", { href: `/api/hunts/${hu.id}/report.docx` }, h("button", { class: "ghost" }, icon("file-word-box"), "Word")),
       h("a", { href: `/api/hunts/${hu.id}/report.md` }, h("button", { class: "ghost" }, icon("file-document"), "Markdown")),

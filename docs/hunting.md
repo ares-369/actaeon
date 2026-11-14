@@ -127,6 +127,34 @@ actions the hunt ends as `inconclusive`.
   must give its verdict from what it has, and a note on the hunt says why. Usually
   that verdict is `inconclusive` or an unconfirmed threat, so it goes to an analyst.
 
+## Profiles
+
+Pick how deep a hunt goes (UI drop-down, `"profile"` in `POST /api/hunts`, `actaeon hunt --profile`):
+
+| Profile | Tool calls | Token cap | Prompts | Second look on threats |
+|---|---|---|---|---|
+| `quick` | 10 | 150k | compact | off |
+| `standard` | `hunt.max_steps` | `hunt.max_tokens` | `hunt.prompt_mode` | on |
+| `deep` | 40 | `hunt.max_tokens` | `hunt.prompt_mode` | on, and 30 minutes |
+
+Change them or add your own under `hunt.profiles`, with the keys `max_steps`, `max_tokens`,
+`max_runtime_sec`, `prompt_mode` and `verify`:
+
+```yaml
+hunt:
+  profiles:
+    triage: {max_steps: 6, verify: false}
+```
+
+## Resuming interrupted hunts
+
+When the server or a worker stops in the middle of a hunt, the hunt is continued when it starts again:
+it rebuilds the conversation from the stored tool calls and results, keeps the same plan and evidence
+ids, and counts the calls already made against the step budget. A hunt is resumed at most twice; replays,
+sweeps and drift runs are marked stopped instead (run them again). Turn it off with
+`hunt.resume_on_restart: false`. A stopped hunt can also be continued by hand (**Continue** on the hunt
+page, or `POST /api/hunts/<id>/resume`).
+
 ## Prompt injection in the data
 
 Every tool result is scanned for text that tries to instruct an AI: "ignore

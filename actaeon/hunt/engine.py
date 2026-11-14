@@ -170,7 +170,9 @@ class HuntEngine:
 
     # ---- main ----
     def run(self, hypothesis: str, *, hunt_id: str | None = None, origin: str = "manual", actor: str = "",
-            context: str = "") -> dict:
+            context: str = "", resume: bool = False) -> dict:
+        """Run a hunt. ``resume``: continue an interrupted hunt from its stored steps (same plan, same
+        evidence ids, the tool calls already made count against the step budget)."""
         hypothesis = hypothesis.strip()
         if not hypothesis:
             raise ValueError("a hypothesis is required")
@@ -188,11 +190,19 @@ class HuntEngine:
         self.injections: list[dict] = []   # tool results that try to instruct the model
         self.data_ok = 0          # successful calls to non-intel roles
         self.data_attempted = 0
+        state = None
+        prior = self.store.get(hid) if resume else None
         try:
             tools = self._tools()
             roles = self._roles(tools)
-            plan = self._plan(hid, hypothesis, roles, context)
-            verdict = self._investigate(hid, hypothesis, plan, tools, context, actor)
+            if prior and (prior.get("steps") or prior.get("plan")):
+                plan = prior.get("plan")
+                state = self._restore(prior)
+                self.store.add_step(hid, self._next(), "note", ok=True,
+                                    note=f"resumed after an interruption with {state['calls']} tool call(s) already made")
+            else:
+                plan = self._plan(hid, hypothesis, roles, context)
+            verdict = self._investigate(hid, hypothesis, plan, tools, context, actor, state=state)
             status = "done"
             err = None
         except Stopped as exc:
@@ -305,7 +315,36 @@ class HuntEngine:
                           "examples": getattr(sp, "query_examples", []), "learned": learned}
         return guides(entries, self.limits.compact)
 
-    def _investigate(self, hid, hypothesis, plan, tools, context, actor) -> dict:
+    def _restore(self, h: dict) -> dict:
+        """Rebuild the loop state of an interrupted hunt from its stored steps."""
+        transcript: list[dict] = []
+        done_calls: dict[str, str] = {}
+        calls = 0
+        for s in h.get("steps") or []:
+            self.n = max(self.n, int(s.get("n") or 0))
+            if s.get("kind") != "call":
+                continue
+            calls += 1
+            eid = f"E{s['n']}"
+            args = s.get("arguments") or {}
+            role = s.get("role") or ""
+            is_data = any(r in DATA_ROLES for r in role.split(","))
+            self.data_attempted += is_data
+            self.data_ok += bool(s.get("ok")) and is_data
+            self.evidence[eid] = {"ok": bool(s.get("ok")), "connector": s.get("connector"), "tool": s.get("tool"),
+                                  "role": role, "args": args, "text": (s.get("result") or "")[:400_000]}
+            done_calls[json.dumps([s.get("connector"), s.get("tool"), args], sort_keys=True, default=str)] = eid
+            transcript.append({"role": "assistant", "content": json.dumps(
+                {"thought": s.get("why") or "", "action": "call", "connector": s.get("connector"),
+                 "tool": s.get("tool"), "arguments": args})[:3000]})
+            transcript.append({"role": "user", "content": f"{eid} result of {s.get('connector')}.{s.get('tool')}:\n"
+                               + (s.get("result") or ""), "_result": True})
+        if transcript:
+            transcript.append({"role": "user", "content": "The hunt was interrupted and is resuming here. Continue "
+                               "from the evidence above; do not repeat calls you already made."})
+        return {"transcript": transcript, "done_calls": done_calls, "calls": calls}
+
+    def _investigate(self, hid, hypothesis, plan, tools, context, actor, state: dict | None = None) -> dict:
         if self.limits.compact and plan and plan.get("steps"):
             wanted = {s["role"] for s in plan["steps"]} | {"intel", "analysis"}
             narrowed = [t for t in tools if set(t["role"].split(",")) & wanted]
@@ -314,11 +353,12 @@ class HuntEngine:
         base = [{"role": "system", "content": ANALYST_SYSTEM},
                 {"role": "user", "content": analyst_user(hypothesis, plan, tools, context, self.limits.max_steps,
                                                          self._guides(tools), self.limits.compact)}]
-        transcript: list[dict] = []
-        done_calls: dict[str, str] = {}
+        transcript: list[dict] = list((state or {}).get("transcript") or [])
+        done_calls: dict[str, str] = dict((state or {}).get("done_calls") or {})
         known_fields: dict[str, set[str]] = {}   # connector -> field names it reported (union over indices)
         fetched: set[tuple[str, str]] = set()     # (connector, index) whose full field list was read
-        calls = parse_fail = 0
+        calls = int((state or {}).get("calls") or 0)
+        parse_fail = 0
         nudged = False
         while True:
             self._gate()

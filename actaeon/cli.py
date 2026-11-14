@@ -333,7 +333,8 @@ def cmd_hunt(a) -> int:
         elif e["type"] == "step":
             print(f"E{e['n']} {'ok ' if e['ok'] else 'ERR'} {e['tool']}", flush=True)
     from .hunt.service import run_hunt
-    h = run_hunt(cfg, a.hypothesis, origin=origin, context=context, on_event=ev, max_steps=a.max_steps)
+    h = run_hunt(cfg, a.hypothesis, origin=origin, context=context, on_event=ev, max_steps=a.max_steps,
+                 profile=a.profile)
     _print_verdict(h["verdict"])
     print(f"\nhunt id {h['id']} (actaeon hunt --show {h['id']})")
     return 0
@@ -568,6 +569,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_sg.add_argument("--backend", default="", help="convert with this backend instead of the connectors' sigma: blocks")
     p_sg.add_argument("--pipeline", action="append", default=[])
     p_sg.add_argument("--format", default="default")
+    p_ret = sub.add_parser("retention", help="delete finished hunts older than retention.hunts_days")
+    p_ret.add_argument("--dry-run", action="store_true", help="only count what would be deleted")
     p_aud = sub.add_parser("audit", help="check the audit log's hash chain")
     p_aud.add_argument("action", choices=["verify"], nargs="?", default="verify")
     p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
@@ -635,6 +638,7 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_h.add_argument("--json", action="store_true")
     p_h.add_argument("--advisory", type=int, metavar="ID", help="hunt the activity in a stored advisory")
     p_h.add_argument("--actor", metavar="NAME", help="campaign: sweep an actor's indicators and hunt its techniques")
+    p_h.add_argument("--profile", default=None, help="quick | standard | deep (or one from hunt.profiles)")
     p_h.add_argument("--plan-only", action="store_true",
                      help="show the plan (roles, steps, missing data) without querying any data or storing a hunt")
     p_lib = sub.add_parser("library", help="saved hunts: list, save a finished hunt, replay, starters; "
@@ -865,6 +869,13 @@ def cli_main(argv: list[str] | None = None) -> None:
         return
     if a.cmd == "sigma":
         sys.exit(cmd_sigma(a))
+    if a.cmd == "retention":
+        import json
+
+        from .config import get_config
+        from .retention import purge
+        print(json.dumps(purge(get_config(), dry_run=a.dry_run), indent=2))
+        return
     if a.cmd == "audit":
         import json
 

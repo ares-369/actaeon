@@ -87,6 +87,10 @@ class Worker:
                     n = self.jobs.reconcile_stale()
                     if n:
                         log.warning("marked %d job(s) interrupted: their worker stopped", n)
+                        from .hunt.service import resume_interrupted
+                        resumed = resume_interrupted(self.cfg, self.jobs)
+                        if resumed:
+                            log.info("resuming %d interrupted hunt(s)", len(resumed))
                     last_reconcile = now
             except Exception:
                 log.exception("worker loop error")

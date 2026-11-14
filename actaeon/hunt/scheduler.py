@@ -25,6 +25,7 @@ class Scheduler:
         self._last_web: datetime | None = None
         self._last_autopilot: datetime | None = None
         self._last_drift: datetime | None = None
+        self._last_retention: datetime | None = None
         self._thread: threading.Thread | None = None
         self._lockfile = None
 
@@ -100,6 +101,16 @@ class Scheduler:
             queued.append(service.start_job(self.jobs, "web-intel", {"web": True},
                                             lambda: service.run_web_intel(self.cfg, jobs=self.jobs),
                                             task="web-intel", params={}))
+        from ..retention import purge
+        from ..retention import settings as retention_settings
+        rs = retention_settings(self.cfg)
+        if (rs["hunts_days"] or rs["jobs_days"]) and (self._last_retention is None
+                                                    or (now - self._last_retention).total_seconds() >= 86400):
+            self._last_retention = now
+            try:
+                purge(self.cfg)            # once a day; quick, so it runs here rather than as a job
+            except Exception:
+                log.exception("retention purge failed")
         dr = (self.cfg.raw or {}).get("drift") or {}
         devery = int(dr.get("interval_minutes", 0) or 0)
         if devery > 0 and dr.get("targets") and (self._last_drift is None

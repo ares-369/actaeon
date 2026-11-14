@@ -96,6 +96,8 @@ autopilot:
 hunt:
   max_steps: 25
   verify: true               # second look on threats: tries to prove each threat wrong (extra model calls)
+  resume_on_restart: true    # continue hunts a restart interrupted (at most twice)
+  profiles: {}               # override or add hunt profiles (quick, standard, deep); see docs/hunting.md
   max_runtime_sec: 900
   max_result_bytes: 8000     # per tool result shown to the model (search hits are compacted)
   max_results: 200           # cap on size/limit arguments of any tool
@@ -138,6 +140,12 @@ drift:
 #scheduler:
 #  groups: [soc-automation]
 #  role: operator
+
+# Retention: delete finished hunts (and their steps, chat, drafts, entities, closed leads) after N days.
+# 0 keeps everything. Hunts with an open lead and the audit log are never deleted. See docs/deploy.md.
+retention:
+  hunts_days: 0
+  jobs_days: 30
 
 # Background jobs. local: the server runs them. queue: `actaeon worker` processes run them (docs/deploy.md).
 jobs:

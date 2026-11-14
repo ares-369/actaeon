@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from .engine import HuntEngine, HuntLimits
 from .library import Library, replay, replay_context
 from .memory import HuntMemory
@@ -27,12 +29,37 @@ def intel_for(cfg):
     return IntelStore(cfg.data_dir / "intel.sqlite")
 
 
-def limits_for(cfg, max_steps: int | None = None) -> HuntLimits:
+PROFILES = {
+    "quick": {"max_steps": 10, "max_tokens": 150_000, "prompt_mode": "compact", "verify": False},
+    "standard": {},
+    "deep": {"max_steps": 40, "max_runtime_sec": 1800},
+}
+
+
+def profile_settings(cfg, name: str | None) -> dict:
+    """A hunt profile: the built-in ones (quick, standard, deep) with hunt.profiles.<name> applied on top.
+    Keys: max_steps, max_tokens, max_runtime_sec, prompt_mode, verify. Unknown names raise ValueError."""
+    if not name:
+        return {}
+    own = (((cfg.raw or {}).get("hunt") or {}).get("profiles") or {})
+    if name not in PROFILES and name not in own:
+        raise ValueError(f"unknown hunt profile {name!r}; use {', '.join(sorted(set(PROFILES) | set(own)))}")
+    out = {**PROFILES.get(name, {}), **(own.get(name) or {})}
+    bad = set(out) - {"max_steps", "max_tokens", "max_runtime_sec", "prompt_mode", "verify"}
+    if bad:
+        raise ValueError(f"hunt profile {name}: unknown settings {sorted(bad)}")
+    return out
+
+
+def limits_for(cfg, max_steps: int | None = None, profile: str | None = None) -> HuntLimits:
     h = cfg.hunt
-    steps = h.max_steps if max_steps is None else max(1, min(int(max_steps), h.max_steps))
-    compact = str(((cfg.raw or {}).get("hunt") or {}).get("prompt_mode", "full")) == "compact"
-    return HuntLimits(max_steps=steps, max_runtime_sec=h.max_runtime_sec, max_results=h.max_results, compact=compact,
-                      max_tokens=getattr(h, "max_tokens", 0))
+    p = profile_settings(cfg, profile)
+    base_steps = int(p.get("max_steps", h.max_steps))
+    steps = base_steps if max_steps is None else max(1, min(int(max_steps), max(base_steps, h.max_steps)))
+    mode = p.get("prompt_mode", ((cfg.raw or {}).get("hunt") or {}).get("prompt_mode", "full"))
+    return HuntLimits(max_steps=steps, max_runtime_sec=int(p.get("max_runtime_sec", h.max_runtime_sec)),
+                      max_results=h.max_results, compact=str(mode) == "compact",
+                      max_tokens=int(p.get("max_tokens", getattr(h, "max_tokens", 0)) or 0))
 
 
 def _hub(cfg, hub=None):
@@ -66,11 +93,12 @@ def privacy_llm(cfg, llm):
     return PrivacyLLM(llm, (cfg.raw or {}).get("privacy") or {})
 
 
-def make_engine(cfg, *, checkpoint=None, on_event=None, max_steps: int | None = None, llm=None, hub=None):
+def make_engine(cfg, *, checkpoint=None, on_event=None, max_steps: int | None = None, llm=None, hub=None,
+                profile: str | None = None):
     from ..providers import get_llm
     kg = ((cfg.raw or {}).get("environment") or {}).get("known_good") or []
     return HuntEngine(privacy_llm(cfg, llm or get_llm()), _hub(cfg, hub), store_for(cfg),
-                      limits_for(cfg, max_steps), checkpoint=checkpoint, on_event=on_event,
+                      limits_for(cfg, max_steps, profile), checkpoint=checkpoint, on_event=on_event,
                       known_good=kg if isinstance(kg, list) else [kg])
 
 
@@ -82,7 +110,7 @@ def plan_hunt(cfg, hypothesis: str, *, context: str = "", llm=None, hub=None) ->
 
 def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = "manual", actor: str = "",
              context: str = "", max_steps: int | None = None, checkpoint=None, on_event=None, llm=None,
-             hub=None) -> dict:
+             hub=None, resume: bool = False, profile: str | None = None) -> dict:
     """Run a hunt in this thread with memory context, then remember the result."""
     mem = memory_for(cfg)
     try:
@@ -90,8 +118,11 @@ def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = 
     except Exception:
         ent = ""
     ctx = "\n\n".join(x for x in (environment_context(cfg), context, mem.context(hypothesis), ent) if x)
-    eng = make_engine(cfg, checkpoint=checkpoint, on_event=on_event, max_steps=max_steps, llm=llm, hub=hub)
-    res = eng.run(hypothesis, hunt_id=hunt_id, origin=origin, actor=actor, context=ctx)
+    if profile is None and hunt_id:
+        profile = (store_for(cfg).get(hunt_id, with_steps=False) or {}).get("profile") or None
+    eng = make_engine(cfg, checkpoint=checkpoint, on_event=on_event, max_steps=max_steps, llm=llm, hub=hub,
+                      profile=profile)
+    res = eng.run(hypothesis, hunt_id=hunt_id, origin=origin, actor=actor, context=ctx, resume=resume)
     res = maybe_verify(cfg, res, llm=eng.llm, hub=hub)
     res = handoff(cfg, res)
     counts = eng.llm.masker.counts
@@ -157,6 +188,8 @@ def handoff(cfg, h: dict) -> dict:
 def maybe_verify(cfg, h: dict, *, llm=None, hub=None) -> dict:
     """Second pass on threats: re-query to test whether the threat is real (hunt.verify, default on)."""
     if not h or h.get("outcome") != "threat" or ((cfg.raw or {}).get("hunt") or {}).get("verify", True) is False:
+        return h
+    if profile_settings(cfg, h.get("profile") or None).get("verify") is False:
         return h
     from .verify import apply, verify
     if llm is None:
@@ -247,22 +280,25 @@ def add_feedback(cfg, hid: str, *, finding: int, kind: str, comment: str = "", a
 
 
 def start_hunt(jobs, cfg, hypothesis: str, *, actor: str = "", origin: str = "manual", context: str = "",
-               max_steps: int | None = None, llm=None, hub=None) -> str:
+               max_steps: int | None = None, llm=None, hub=None, profile: str | None = None) -> str:
     """Queue a hunt on the job runner and return its id."""
     hypothesis = (hypothesis or "").strip()
     if not hypothesis:
         raise ValueError("a hypothesis is required")
+    profile_settings(cfg, profile)            # unknown profile: fail before anything is stored
     store = store_for(cfg)
     hid = store.create(hypothesis, origin=origin, actor=actor)
+    if profile:
+        store.update(hid, profile=profile)
 
     def work(ctl):
         res = run_hunt(cfg, hypothesis, hunt_id=hid, origin=origin, actor=actor, context=context,
-                       max_steps=max_steps, checkpoint=ctl.checkpoint, llm=llm, hub=hub)
+                       max_steps=max_steps, checkpoint=ctl.checkpoint, llm=llm, hub=hub, profile=profile)
         return {"hunt_id": hid, "outcome": res.get("outcome"), "status": res.get("status")}
 
     job_id = jobs.submit("hunt", {"hunt_id": hid}, work, deduplicate=False, task=None if (llm or hub) else "hunt",
                          params={"hunt_id": hid, "hypothesis": hypothesis, "actor": actor, "origin": origin,
-                                 "context": context, "max_steps": max_steps})
+                                 "context": context, "max_steps": max_steps, "profile": profile})
     store.update(hid, job_id=job_id)
     return hid
 
@@ -336,6 +372,47 @@ def run_sweep(cfg, *, full: bool = False, hub=None, actor: str = "scheduler", ll
     if llm is not None or settings.get("verify"):
         res = maybe_verify(cfg, res, llm=llm, hub=hub)
     return send_outputs(cfg, res, hub=hub)
+
+
+MAX_RESUMES = 2
+
+
+def resume_interrupted(cfg, jobs) -> list[str]:
+    """Hunts left running by a process that stopped (restart, crash, dead worker): continue each from its
+    stored steps, at most MAX_RESUMES times; with ``hunt.resume_on_restart: false``, or past that limit,
+    mark them stopped. Returns the hunts resumed."""
+    store = store_for(cfg)
+    on = ((cfg.raw or {}).get("hunt") or {}).get("resume_on_restart", True)
+    resumed = []
+    for h in store.running():
+        job = jobs.get(h["job_id"]) if (jobs is not None and h.get("job_id")) else None
+        if job and job["status"] in ("queued", "running"):
+            continue                       # still being worked on (another worker, or this process)
+        n = int(h.get("resumes") or 0)
+        if not on or jobs is None or n >= MAX_RESUMES or h.get("origin", "").startswith(("replay:", "drift:", "sweep")):
+            store.update(h["id"], status="stopped", error="interrupted by a restart",
+                         finished=time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()))
+            continue
+        store.update(h["id"], resumes=n + 1)
+        resume_hunt(jobs, cfg, h)
+        resumed.append(h["id"])
+    return resumed
+
+
+def resume_hunt(jobs, cfg, h: dict, *, llm=None, hub=None) -> str:
+    """Queue an interrupted (or stopped) hunt to continue from its stored steps."""
+    hid = h["id"]
+
+    def work(ctl):
+        res = run_hunt(cfg, h["hypothesis"], hunt_id=hid, origin=h.get("origin", "manual"), actor=h.get("actor", ""),
+                       checkpoint=ctl.checkpoint, llm=llm, hub=hub, resume=True)
+        return {"hunt_id": hid, "outcome": res.get("outcome"), "status": res.get("status")}
+    job_id = jobs.submit("hunt", {"hunt_id": hid, "resume": True}, work, deduplicate=False,
+                         task=None if (llm or hub) else "hunt",
+                         params={"hunt_id": hid, "hypothesis": h["hypothesis"], "actor": h.get("actor", ""),
+                                 "origin": h.get("origin", "manual"), "resume": True})
+    store_for(cfg).update(hid, job_id=job_id, status="queued")
+    return job_id
 
 
 def start_job(jobs, kind: str, meta: dict, fn, *, task: str | None = None, params: dict | None = None) -> str:

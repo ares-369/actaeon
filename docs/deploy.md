@@ -87,6 +87,20 @@ The URL (with its password) goes into `.env` as `ACTAEON_DB_URL`. Tables are cre
 Use a database account that owns that schema and nothing else. There is no migration tool from an
 existing SQLite data folder yet: choose before you start.
 
+## Retention
+
+```yaml
+retention:
+  hunts_days: 180      # delete finished hunts older than this (0 = keep everything, the default)
+  jobs_days: 30        # background job records
+```
+
+Once a day the scheduler deletes, for each finished hunt older than `hunts_days`, the hunt, its steps
+(stored tool results), chat, detection drafts, entity records, memory entry and closed lead. A hunt with
+an open lead is kept whatever its age. Analyst notes and indicators have their own expiry. The audit log is
+never trimmed: it is append-only and hash-chained, so archive its file (`data/audit.sqlite`) if it grows.
+`actaeon retention --dry-run` shows what would go; `POST /api/retention` runs it (admin).
+
 ## Without Docker
 
 ```bash

@@ -104,6 +104,7 @@ flowchart TD
 | Reports | Markdown, CSV and JSON; PDF and Word with the `reports` extra; an ATT&CK coverage view |
 | Access | `basic`, `local`, OIDC single sign-on or a trusted proxy; viewer, operator and admin roles, mapped from your identity provider's groups; per-source limits so only some people can query (and see hunts over) sensitive sources ([access](docs/access.md)). All of it is free |
 | Interfaces | Web UI, CLI, REST API, and Actaeon itself as an MCP server |
+| Hunting depth and upkeep | Quick / standard / deep profiles (calls, token cap, second look), hunts that resume after a restart, and retention of old hunts |
 | Running it | pip, Docker / compose (non-root, read-only filesystem) or systemd. Runs with no internet access, with local models ([air-gapped](docs/air-gapped.md)) |
 
 ## Safety model
