@@ -33,6 +33,17 @@ It does not replace your SIEM or EDR. It works on top of them, reading what they
 
 ![actaeon demo: scripted offline run against synthetic data](docs/demo.gif)
 
+*The offline demo: synthetic data and a scripted run, no model. It shows the workflow, not detection
+quality. Rebuild it with `scripts/make_demo_gif.py`.*
+
+![A finished hunt: verdict, findings with the evidence they cite, ATT&CK techniques](docs/screenshots/hunt.png)
+
+| Investigation graph | Entities across hunts |
+|---|---|
+| ![Investigation graph](docs/screenshots/graph.png) | ![Entities](docs/screenshots/entities.png) |
+| **Leads** | **ATT&CK coverage** |
+| ![Leads](docs/screenshots/leads.png) | ![Coverage](docs/screenshots/coverage.png) |
+
 ## Try it in a minute
 
 ```bash
@@ -52,11 +63,7 @@ docker compose --profile demo up demo         # open http://127.0.0.1:8611
 The demo has a planted attack and a harmless look-alike, and all of its data is labelled SAMPLE.
 See [docs/demo.md](docs/demo.md).
 
-| Leads | Hunt verdict and evidence |
-|---|---|
-| ![Leads](docs/screenshots/leads.png) | ![Hunt](docs/screenshots/hunt.png) |
-| **ATT&CK coverage** | **Reports** |
-| ![Coverage](docs/screenshots/coverage.png) | ![Reports](docs/screenshots/reports.png) |
+Screenshots are from this demo; `scripts/make_screenshots.py` rebuilds them.
 
 ## How a hunt works
 

@@ -4,7 +4,7 @@ Usage (needs Playwright with Chromium):
     python scripts/make_screenshots.py [--actaeon PATH_TO_actaeon_CLI]
 
 Runs `actaeon demo --offline --run` in a temporary folder (synthetic data, scripted, no model),
-serves it on a free local port, and captures the Leads, Hunt, Coverage and Reports pages.
+serves it on a free local port, and captures the Leads, Hunt, investigation graph, Entities and Coverage pages.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def main() -> None:
         with sync_playwright() as p:
             b = p.chromium.launch()
             pg = b.new_page(viewport={"width": 1280, "height": 860}, device_scale_factor=2)
-            shots = [("leads", "#leads"), ("coverage", "#coverage"), ("reports", "#reports")]
+            shots = [("leads", "#leads"), ("entities", "#entities"), ("coverage", "#coverage")]
             for name, route in shots:
                 pg.goto(base + "/" + route)
                 pg.wait_for_timeout(1500)
@@ -63,6 +63,10 @@ def main() -> None:
             pg.locator("main tbody tr", has_text="Office application").first.click()   # the main demo hunt
             pg.wait_for_timeout(1800)
             pg.screenshot(path=str(OUT / "hunt.png"))
+            g = pg.locator("section", has=pg.locator("svg.graph")).first      # the investigation graph
+            g.scroll_into_view_if_needed()
+            pg.wait_for_timeout(500)
+            g.screenshot(path=str(OUT / "graph.png"))
             b.close()
         print("wrote", ", ".join(sorted(p.name for p in OUT.glob("*.png"))))
     finally:

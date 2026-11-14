@@ -91,3 +91,8 @@ th,.sev{white-space:nowrap}td code,td .small{overflow-wrap:anywhere}
 .graph .g-node text { fill: #e2e8f0; font-size: 12px; pointer-events: none; }
 .graph .g-node { cursor: pointer; }
 .graph .g-node:focus rect, .graph .g-node:hover rect { fill: #273449; }
+/* keep the top bar on one line at common laptop widths; icons only when it would wrap */
+header{gap:.8rem}nav{gap:.1rem}nav a{padding:.35rem .5rem}
+@media (max-width:1240px){nav .lbl{display:none}nav a{padding:.4rem .55rem}}
+/* the graph shrinks to fit its box on wide screens; it scrolls on small ones */
+@media (min-width:700px){.graph{max-width:100%;height:auto}}

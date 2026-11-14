@@ -38,6 +38,8 @@ behaviour may still change between releases.
   and authority-style wording) are listed in docs/hunting.md and left unfixed in the score.
 
 ### Changed
+- README screenshots rebuilt from the current demo, shown under the demo GIF: a finished hunt, the
+  investigation graph, entities, leads and ATT&CK coverage.
 - Version format matches the author's other tools: `0.2.0-beta` in the code and tags, `0.2.0b0` on PyPI.
   `docs/project-standard.md` lists the shared naming, packaging and release rules. Install with
   `pipx install actaeon`; publishing a GitHub release uploads to PyPI (trusted publishing).
@@ -62,6 +64,9 @@ behaviour may still change between releases.
   offline decoder named, PostgreSQL and worker install lines.
 
 ### Fixed
+- The investigation graph was wider than its box at laptop widths and cut off the Intel column; it now
+  shrinks to fit (and scrolls on small screens). The top bar no longer wraps to two lines at 1280 px
+  now that it has an Entities tab (labels hide below 1240 px, icons stay).
 - The demo data source read a range such as `@timestamp:[now-7d TO now]` as three loose words and
   matched nothing; it now supports ranges, as real search indexes do. Found by a local 7B model that
   writes its time window into the query.
