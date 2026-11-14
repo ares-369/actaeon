@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/ares-369/actaeon/actions/workflows/ci.yml/badge.svg)](https://github.com/ares-369/actaeon/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Python 3.10–3.12](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](pyproject.toml)
+[![PyPI](https://img.shields.io/pypi/v/actaeon.svg)](https://pypi.org/project/actaeon/)
+[![Release](https://img.shields.io/github/v/release/ares-369/actaeon?include_prereleases&sort=semver)](https://github.com/ares-369/actaeon/releases)
 
 **An open-source AI threat hunter.** You give it a hypothesis ("an Office app started encoded
 PowerShell this week"). Actaeon plans the hunt, queries your own data sources, follows pivots, and
@@ -23,10 +25,11 @@ It does not replace your SIEM or EDR. It works on top of them, reading what they
 - **Fully open source.** Apache-2.0. Every feature is in this repository. There is no paid
   edition, no licence key and no telemetry.
 
-> **Status: beta (0.1.0b2).** It has been tested in one home lab and on public and synthetic
+> **Beta, solo-maintained.** It has been tested in one home lab and on public and synthetic
 > benchmarks, but not yet in production. It runs on one machine with SQLite by default, with
-> PostgreSQL and separate worker processes as options. Read
-> [known limitations](docs/known-limitations.md) before relying on it.
+> PostgreSQL and separate worker processes as options. Treat verdicts as leads to verify, expect
+> rough edges, and please [open an issue](https://github.com/ares-369/actaeon/issues) when something
+> is wrong. Read [known limitations](docs/known-limitations.md) before relying on it.
 
 ![actaeon demo: scripted offline run against synthetic data](docs/demo.gif)
 
@@ -148,7 +151,15 @@ welcome. Details, failures included, are in
 
 ## Install
 
-**Python (3.10+)**
+**From PyPI (3.10+)**
+
+```bash
+pipx install actaeon         # or: pip install actaeon ; add extras with 'actaeon[all]'
+actaeon init                 # config.yaml, .env and data/ in ~/.actaeon (ACTAEON_HOME to change)
+actaeon serve                # http://127.0.0.1:8601
+```
+
+**From a checkout**
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
