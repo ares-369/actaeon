@@ -12,11 +12,11 @@ context.
 from __future__ import annotations
 
 import json
-import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .. import db
 from ..connectors.hub import ToolCallError
 from .signals import fingerprint, hits
 from .store import HuntStore
@@ -47,8 +47,7 @@ class Library:
                 last_hunt_id TEXT)""")
 
     def _conn(self):
-        c = sqlite3.connect(self.path, timeout=10)
-        c.row_factory = sqlite3.Row
+        c = db.connect(self.path)
         return c
 
     @staticmethod

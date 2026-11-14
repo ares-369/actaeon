@@ -19,6 +19,8 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 
+from . import db
+
 STATUSES = ("new", "acknowledged", "in_progress", "closed")
 RESOLUTIONS = ("true_positive", "benign_true_positive", "false_positive", "duplicate", "other")
 SEVERITIES = ("critical", "high", "medium", "low")
@@ -61,8 +63,7 @@ class LeadStore:
             """)
 
     def _conn(self):
-        c = sqlite3.connect(self.path, timeout=10)
-        c.row_factory = sqlite3.Row
+        c = db.connect(self.path)
         return c
 
     def _event(self, c, cid: int, user: str, action: str, detail: str = "") -> None:

@@ -63,10 +63,29 @@ actaeon worker --concurrency 1 --scheduler     # one of them (or the server) run
 - Stop and pause in the UI reach the worker through the database.
 - On SIGTERM a worker takes no new jobs and finishes the ones it has.
 - Only one process schedules at a time: the first to hold `<data>/scheduler.lock`.
-- All processes must use the same data folder on the same machine (SQLite). Several machines need
-  a shared database, which is planned (PostgreSQL), not built.
+- With SQLite (the default), all processes must use the same data folder on the same machine. With
+  PostgreSQL (below), servers and workers can run on different machines; keep the scheduler on one.
 
 With compose, uncomment the `worker` service in `docker-compose.yml`.
+
+## Storage: SQLite or PostgreSQL
+
+SQLite is the default: nothing to install, data in the data folder, one machine. PostgreSQL is an
+option you choose at install, for running on several machines or using your existing database
+backups:
+
+```bash
+pip install 'actaeon[postgres]'
+actaeon init --database postgres --db-url 'postgresql://actaeon:PASSWORD@db.example.org:5432/actaeon'
+actaeon doctor
+```
+
+The URL (with its password) goes into `.env` as `ACTAEON_DB_URL`. Tables are created in the schema
+`database.schema` (default `actaeon`) on first start. The installer asks which one you want
+(`scripts/install.sh`, or `ACTAEON_DATABASE=postgres` to skip the question).
+
+Use a database account that owns that schema and nothing else. There is no migration tool from an
+existing SQLite data folder yet: choose before you start.
 
 ## Without Docker
 

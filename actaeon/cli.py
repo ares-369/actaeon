@@ -20,7 +20,7 @@ def _example_config() -> Path:
     raise FileNotFoundError("config.example.yaml is missing from this install")
 
 
-def cmd_init(force: bool = False) -> int:
+def cmd_init(force: bool = False, database: str = "sqlite", db_url: str = "") -> int:
     home = home_dir()
     home.mkdir(parents=True, exist_ok=True)
     (home / "data").mkdir(exist_ok=True)
@@ -35,7 +35,41 @@ def cmd_init(force: bool = False) -> int:
         env.write_text(f"ACTAEON_SECRET_KEY={secrets.token_hex(32)}\n")
         env.chmod(0o600)
         print(f"wrote {env}")
+    if database == "postgres":
+        return _init_postgres(env, db_url)
+    print("storage: SQLite in the data folder (nothing else to install)")
     return 0
+
+
+def _init_postgres(env: Path, db_url: str) -> int:
+    """Store the PostgreSQL URL in .env (it holds the password) and check that it connects."""
+    import os
+
+    from . import db
+    db_url = db_url or os.getenv("ACTAEON_DB_URL", "")
+    if not db_url:
+        if not sys.stdin.isatty():
+            print("--database postgres needs --db-url postgresql://user:password@host:5432/dbname")
+            return 2
+        db_url = getpass.getpass("PostgreSQL URL (postgresql://user:password@host:5432/dbname): ").strip()
+    try:
+        db.configure(db_url)
+    except ValueError as exc:
+        print(f"error: {exc}")
+        return 2
+    lines = [ln for ln in env.read_text().splitlines() if not ln.startswith("ACTAEON_DB_URL=")]
+    env.write_text("\n".join([*lines, f"ACTAEON_DB_URL={db_url}"]) + "\n")
+    env.chmod(0o600)
+    print(f"storage: PostgreSQL (URL saved in {env})")
+    try:
+        with db.connect(home_dir() / "data" / "check.sqlite") as c:
+            c.execute("SELECT 1")
+        print("connected OK; tables are created on first start")
+        return 0
+    except Exception as exc:
+        print(f"could not connect yet: {str(exc)[:300]}")
+        print("fix the URL in .env (or install the extra: pip install 'actaeon[postgres]') and run actaeon doctor")
+        return 1
 
 
 def cmd_models() -> int:
@@ -469,6 +503,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_init.add_argument("--force", action="store_true")
     p_init.add_argument("--company", metavar="DIR", help="create a private configuration folder for an organisation")
     p_init.add_argument("--name", default="", help="instance name for --company")
+    p_init.add_argument("--database", choices=["sqlite", "postgres"], default="sqlite",
+                        help="storage: sqlite (default, nothing to install) or postgres (needs actaeon[postgres])")
+    p_init.add_argument("--db-url", default="", help="postgres: postgresql://user:password@host:5432/dbname")
     p_doc = sub.add_parser("doctor", help="check the whole setup and say what to fix")
     p_doc.add_argument("--offline", action="store_true", help="skip connector probes")
     p_doc.add_argument("--models", action="store_true", help="also send one test prompt to each model role")
@@ -617,7 +654,7 @@ def cli_main(argv: list[str] | None = None) -> None:
             print(f"created {a.company}:\n  " + "\n  ".join(files))
             print("next: fill in every <...> in config.yaml, then: ACTAEON_HOME=" + a.company + " actaeon doctor")
             return
-        sys.exit(cmd_init(a.force))
+        sys.exit(cmd_init(a.force, database=a.database, db_url=a.db_url))
     if a.cmd == "doctor":
         from .doctor import run as run_doctor
         rows = run_doctor(offline=a.offline, models=a.models)

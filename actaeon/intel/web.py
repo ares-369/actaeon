@@ -73,7 +73,9 @@ class WebIntel:
 
     def _mark(self, key: str, source: str, aid: int | None) -> None:
         with self.store._conn() as c:
-            c.execute("INSERT OR REPLACE INTO web_seen VALUES (?,?,?,?)", (key, source, _now(), aid))
+            c.execute("INSERT INTO web_seen (key, source, seen, advisory_id) VALUES (?,?,?,?) ON CONFLICT(key) DO UPDATE "
+                      "SET source=excluded.source, seen=excluded.seen, advisory_id=excluded.advisory_id",
+                      (key, source, _now(), aid))
 
     def _wanted(self, src: dict, text: str) -> bool:
         kws = [k.lower() for k in src.get("keywords") or []]

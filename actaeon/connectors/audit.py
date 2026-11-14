@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .. import db
+
 _SECRETISH = re.compile(r"(?i)(pass(word)?|secret|token|api[_-]?key|authorization|cookie)")
 
 
@@ -55,13 +57,21 @@ class AuditLog:
                 if col not in cols:
                     c.execute(f"ALTER TABLE audit ADD COLUMN {col} TEXT")
             # append-only: refuse updates and deletes at the database level
-            c.execute("CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit "
-                      "BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END")
-            c.execute("CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit "
-                      "BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END")
+            if db.is_pg():
+                c.execute("CREATE OR REPLACE FUNCTION audit_append_only() RETURNS trigger LANGUAGE plpgsql AS "
+                          "$f$ BEGIN RAISE EXCEPTION 'audit log is append-only'; END $f$")
+                if not c.execute("SELECT 1 FROM pg_trigger WHERE tgname = 'audit_no_change' AND tgrelid = "
+                                 "'audit'::regclass").fetchone():
+                    c.execute("CREATE TRIGGER audit_no_change BEFORE UPDATE OR DELETE OR TRUNCATE ON audit "
+                              "FOR EACH STATEMENT EXECUTE FUNCTION audit_append_only()")
+            else:
+                c.execute("CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit "
+                          "BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END")
+                c.execute("CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit "
+                          "BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END")
 
     def _conn(self):
-        return sqlite3.connect(self.path, timeout=10)
+        return db.connect(self.path)
 
     def record(self, *, connector: str, tool: str, arguments: dict, decision: str, status: str,
                actor: str = "", hunt_id: str = "", attempts: int = 0, duration_ms: int = 0,

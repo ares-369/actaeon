@@ -16,10 +16,10 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 import threading
 from datetime import datetime, timezone
 
+from . import db
 from .connectors.untrusted import SYSTEM_RULE
 from .hunt.jsonparse import first_object
 
@@ -58,8 +58,7 @@ class Conversations:
             """)
 
     def _conn(self):
-        c = sqlite3.connect(self.path, timeout=10)
-        c.row_factory = sqlite3.Row
+        c = db.connect(self.path)
         return c
 
     def create(self, user: str, title: str) -> int:

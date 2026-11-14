@@ -185,6 +185,10 @@ def load_config() -> Config:
         raise ValueError("environment: must be a mapping (summary, platforms, crown_jewels, not_present, notes)")
 
     data_dir = Path(str(srv.get("data_dir", "") or (home_dir() / "data"))).expanduser()
+    dbc = data.get("database") or {}
+    from . import db
+    from .connectors.spec import expand_env
+    db.configure(expand_env(str(dbc.get("url", "") or "")), str(dbc.get("schema", "actaeon") or "actaeon"))
     return Config(
         raw=data,
         instance_name=str(srv.get("instance_name", "Actaeon")),

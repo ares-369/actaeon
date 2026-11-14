@@ -107,7 +107,8 @@ class JobManager:
                    stale_after_sec=float(j.get("stale_after_sec", 600) or 600))
 
     def _conn(self):
-        con = sqlite3.connect(self.db_path, timeout=30)
+        from . import db
+        con = db.connect(self.db_path, timeout=30)
         try:
             con.execute("PRAGMA journal_mode=WAL")
             con.execute("PRAGMA busy_timeout=5000")

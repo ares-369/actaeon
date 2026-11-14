@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .. import db
+
 OUTCOMES = ("threat", "no_results", "logs_missing", "telemetry_found_benign", "inconclusive")
 STATUSES = ("queued", "running", "done", "stopped", "error")
 
@@ -42,8 +44,7 @@ class HuntStore:
                     c.execute(f"ALTER TABLE hunts ADD COLUMN {col} TEXT")
 
     def _conn(self):
-        c = sqlite3.connect(self.path, timeout=10)
-        c.row_factory = sqlite3.Row
+        c = db.connect(self.path)
         return c
 
     def create(self, hypothesis: str, *, origin: str = "manual", actor: str = "", hunt_id: str | None = None) -> str:

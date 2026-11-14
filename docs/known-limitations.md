@@ -67,11 +67,12 @@ Actaeon is in beta (0.1.0b1). These are the limits we know about.
 
 ## Operations
 
-- One machine: storage is SQLite. With `jobs.mode: queue`, hunts run in separate
-  `actaeon worker` processes, so the web server stays responsive and workers can be
-  restarted or added, but every process must share one data folder on one machine.
-  Several machines (and high availability) need a shared database; PostgreSQL support
-  is planned, not built.
+- Storage is SQLite by default: one machine. With `jobs.mode: queue`, hunts run in
+  separate `actaeon worker` processes there. For several machines, choose PostgreSQL at
+  install (`actaeon[postgres]`). It is new: CI runs the whole test suite against
+  PostgreSQL, and it has not been used in a production deployment.
+- With PostgreSQL, the scheduler lock is still a file in the data folder: run the
+  scheduler (the server, or one `worker --scheduler`) on one machine only.
 - A hunt that is running when its process stops is marked stopped or interrupted; it
   does not resume where it was.
 - Only one process schedules at a time (a lock file in the data folder); if it stops,

@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .. import db
 from .extract import TYPES, extract, guess_type, normalize
 
 
@@ -62,8 +63,7 @@ class IntelStore:
                 c.execute("ALTER TABLE advisories ADD COLUMN hunt_id TEXT NOT NULL DEFAULT ''")
 
     def _conn(self):
-        c = sqlite3.connect(self.path, timeout=10)
-        c.row_factory = sqlite3.Row
+        c = db.connect(self.path)
         return c
 
     # ---- writes (user side only) ----

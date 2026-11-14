@@ -6,8 +6,8 @@ started it, and sends heartbeats; a job whose worker disappears is marked
 interrupted after ``jobs.stale_after_sec``. Stop and pause from the UI reach
 the worker through the database.
 
-With SQLite, every process must share one data folder on one machine. Several
-machines need a shared database (planned: PostgreSQL).
+With SQLite, every process must share one data folder on one machine. With
+PostgreSQL (``actaeon[postgres]``), workers can run on other machines.
 """
 
 from __future__ import annotations

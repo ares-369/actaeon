@@ -108,6 +108,13 @@ hunt:
 tickets:
   token_env: ""              # env var holding a bearer token the ticket system sends (valid on that path only)
 
+# Storage. Empty url: SQLite in the data folder (nothing to install). PostgreSQL is optional:
+# pip install 'actaeon[postgres]', then `actaeon init --database postgres --db-url ...` (writes ACTAEON_DB_URL
+# to .env), or set url here with the password from .env, e.g. "postgresql://actaeon:${DB_PASSWORD}@db/actaeon".
+database:
+  url: ""
+  schema: actaeon
+
 # Background jobs. local: the server runs them. queue: `actaeon worker` processes run them (docs/deploy.md).
 jobs:
   mode: local                # local | queue

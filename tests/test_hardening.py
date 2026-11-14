@@ -1,10 +1,9 @@
 """Note expiry, token budget, query time cap, wildcard guard, injection leads, audit chain, ticket replies."""
-import sqlite3
 import time
 
 import pytest
 
-from actaeon import config
+from actaeon import config, db
 from actaeon.bridges.common import ToolInputError
 from actaeon.connectors.audit import AuditLog
 from actaeon.connectors.hub import ToolCallError
@@ -23,7 +22,7 @@ def test_note_expiry(tmp_path):
     old = mem.add_note("backup01 svc.maint is benign", author="bob", expires_days=30)
     assert keep["expires"] is None and old["expires"]
     assert "by bob" in mem.context("backup01") and "until" in mem.context("backup01")
-    with sqlite3.connect(tmp_path / "m.sqlite") as c:
+    with db.connect(tmp_path / "m.sqlite") as c:
         c.execute("UPDATE notes SET expires='2000-01-01T00:00:00+00:00' WHERE id=?", (old["id"],))
     ctx = mem.context("backup01")
     assert "uploads nightly" in ctx and "svc.maint" not in ctx
@@ -132,6 +131,14 @@ def test_injection_becomes_lead(home):
 
 
 # ---- 6. audit hash chain ----
+def _allow_tamper(c, sqlite_trigger: str) -> None:
+    """Simulate someone with direct database access switching the append-only guard off."""
+    if db.is_pg():
+        c.execute("ALTER TABLE audit DISABLE TRIGGER audit_no_change")
+    else:
+        c.execute(f"DROP TRIGGER {sqlite_trigger}")
+
+
 def test_audit_chain(tmp_path):
     p = tmp_path / "a.sqlite"
     a = AuditLog(p)
@@ -139,8 +146,8 @@ def test_audit_chain(tmp_path):
         a.record(connector="c", tool=f"t{i}", arguments={"q": i}, decision="allowed", status="ok")
     r = a.verify()
     assert r["ok"] and r["rows_checked"] == 4 and len(r["head"]) == 64
-    with sqlite3.connect(p) as c:
-        c.execute("DROP TRIGGER audit_no_update")
+    with db.connect(p) as c:
+        _allow_tamper(c, "audit_no_update")
         c.execute("UPDATE audit SET arguments='{\"q\": 99}' WHERE id=2")
     r = AuditLog(p).verify()
     assert not r["ok"] and r["broken"][0]["id"] == 2
@@ -151,8 +158,8 @@ def test_audit_chain_detects_deleted_row(tmp_path):
     a = AuditLog(p)
     for i in range(3):
         a.record(connector="c", tool=f"t{i}", arguments={}, decision="allowed", status="ok")
-    with sqlite3.connect(p) as c:
-        c.execute("DROP TRIGGER audit_no_delete")
+    with db.connect(p) as c:
+        _allow_tamper(c, "audit_no_delete")
         c.execute("DELETE FROM audit WHERE id=2")
     r = AuditLog(p).verify()
     assert not r["ok"] and r["broken"][0]["id"] == 3

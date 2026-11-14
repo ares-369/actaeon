@@ -45,6 +45,22 @@ def run(cfg=None, *, offline: bool = False, models: bool = False) -> list[dict]:
     except OSError as exc:
         add("FAIL", "data", f"{cfg.data_dir} is not writable: {exc}", "fix permissions or actaeon.data_dir")
 
+    # storage
+    from . import db
+    if db.is_pg():
+        try:
+            with db.connect(cfg.data_dir / "doctor.sqlite") as c:
+                ver = c.execute("SHOW server_version").fetchone()[0]
+            add("OK", "storage", f"PostgreSQL {ver}, schema {db._settings['schema']}")
+        except Exception as exc:
+            add("FAIL", "storage", f"PostgreSQL: {str(exc)[:200]}",
+                "check ACTAEON_DB_URL / database.url, and pip install 'actaeon[postgres]'")
+    else:
+        add("OK", "storage", "SQLite in the data folder")
+    jm = ((cfg.raw or {}).get("jobs") or {}).get("mode", "local")
+    if jm == "queue" and not db.is_pg():
+        add("OK", "jobs", "queue mode on SQLite: workers must run on this machine, with this data folder")
+
     # auth posture
     from .server import startup_security_check
     errors, warnings = startup_security_check(cfg)

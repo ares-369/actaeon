@@ -13,8 +13,8 @@ the hunt to a person instead of guessing.
   edition, no licence key and no telemetry.
 
 > **Status: beta (0.1.0b1).** It has been tested in one home lab and on public and synthetic
-> benchmarks, but not yet in production. It runs on one machine (SQLite), with optional separate
-> worker processes. Read
+> benchmarks, but not yet in production. It runs on one machine with SQLite by default, with
+> PostgreSQL and separate worker processes as options. Read
 > [known limitations](docs/known-limitations.md) before relying on it.
 
 ![actaeon demo: scripted offline run against synthetic data](docs/demo.gif)
@@ -110,7 +110,7 @@ other models are welcome. Details, failures included, are in
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[all]'      # or just -e . ; extras add cloud SDKs, PDF/Word reports, Sigma
-actaeon init                 # writes config.yaml and .env
+actaeon init                 # writes config.yaml and .env (SQLite; add --database postgres to choose PostgreSQL)
 actaeon serve                # http://127.0.0.1:8601
 ```
 
@@ -166,8 +166,9 @@ not in this repository.
 
 - **Not a SIEM or SOAR.** It sits beside them as a read-only investigator, and takes no response
   actions.
-- **Not clustered.** Storage is SQLite on one machine. Hunts can run in separate worker processes
-  there, but several machines and high availability need PostgreSQL support, which is planned.
+- **Light by default.** SQLite on one machine, nothing else to install. PostgreSQL is an install-time
+  option for several machines. It is new: CI runs the test suite against it, and it has not run in
+  production yet.
 - **Measured with one model only.** Small local models were not good enough to hunt in testing.
 - **Not proven in production yet.**
 

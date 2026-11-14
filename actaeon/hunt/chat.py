@@ -11,11 +11,11 @@ removed. The model cannot change the verdict; analysts give feedback on findings
 from __future__ import annotations
 
 import json
-import sqlite3
 import threading
 import time
 from datetime import datetime, timezone
 
+from .. import db
 from ..connectors import ROLES
 from ..connectors.untrusted import SYSTEM_RULE
 from .prompts import catalogue
@@ -45,8 +45,7 @@ class ChatLog:
                       "ts TEXT NOT NULL, role TEXT NOT NULL, author TEXT, content TEXT NOT NULL, evidence TEXT)")
 
     def _conn(self):
-        c = sqlite3.connect(self.path, timeout=10)
-        c.row_factory = sqlite3.Row
+        c = db.connect(self.path)
         return c
 
     def add(self, hid: str, role: str, content: str, author: str = "", evidence: list | None = None) -> None:

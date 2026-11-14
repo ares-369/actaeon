@@ -94,7 +94,8 @@ class Sweep:
 
     def _set_last(self, ts: str) -> None:
         with self.intel._conn() as c:
-            c.execute("INSERT OR REPLACE INTO sweep_state VALUES ('last_sweep', ?)", (ts,))
+            c.execute("INSERT INTO sweep_state (k, v) VALUES ('last_sweep', ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+                      (ts,))
 
     def run(self, *, full: bool = False, actor: str = "scheduler", tag: str | None = None,
             origin: str = "sweep") -> dict:

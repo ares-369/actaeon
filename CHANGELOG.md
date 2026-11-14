@@ -30,6 +30,10 @@
   saying so.
 
 ### Running at scale
+- Storage choice at install: SQLite stays the default (nothing to install); PostgreSQL is optional
+  (`actaeon[postgres]`, `actaeon init --database postgres`, the installer asks). The stores share one
+  code path; PostgreSQL gets its own full-text search and audit-log triggers. CI runs the whole test
+  suite on PostgreSQL.
 - `jobs.mode: queue` and `actaeon worker`: the web server records jobs as named tasks and worker
   processes run them, as the person who started each one. Stop and pause work across processes,
   stale jobs are marked interrupted, and a lock file keeps a single scheduler. One machine (SQLite)

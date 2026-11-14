@@ -12,12 +12,12 @@ Everything is a DRAFT for a detection engineer to review and test before deployi
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 
 import yaml
 
+from .. import db
 from ..connectors.untrusted import SYSTEM_RULE
 from .jsonparse import first_object
 from .signals import hits
@@ -119,8 +119,7 @@ class DetectionStore:
                       "created TEXT, body TEXT)")
 
     def _conn(self):
-        c = sqlite3.connect(self.path, timeout=10)
-        c.row_factory = sqlite3.Row
+        c = db.connect(self.path)
         return c
 
     def save(self, d: dict) -> dict:

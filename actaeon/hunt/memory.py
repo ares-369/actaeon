@@ -19,6 +19,8 @@ import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .. import db
+
 _WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{2,}")
 _STOP = {"the", "and", "for", "any", "last", "days", "hours", "from", "with", "that", "this", "was", "were", "has",
          "have", "into", "host", "hosts", "user", "users", "or", "not", "are", "all", "one", "in", "on"}
@@ -28,9 +30,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _words(text: str) -> list[str]:
+    return list(dict.fromkeys(w.lower() for w in _WORD.findall(text or "") if w.lower() not in _STOP))[:30]
+
+
 def _fts_query(text: str) -> str:
-    words = [w.lower() for w in _WORD.findall(text or "") if w.lower() not in _STOP][:30]
-    return " OR ".join('"' + w.replace('"', "") + '"' for w in dict.fromkeys(words))
+    """SQLite FTS5 query: any of the words."""
+    return " OR ".join('"' + w.replace('"', "") + '"' for w in _words(text))
+
+
+def _ts_query(text: str) -> str:
+    """PostgreSQL tsquery: any of the words, each quoted as one lexeme."""
+    return " | ".join("'" + w.replace("'", "").replace("\\", "") + "'" for w in _words(text))
+
+
+# PostgreSQL: plain tables searched with to_tsvector (the 'simple' configuration: no stemming, like FTS5's default)
+_PG_HUNT_DOC = ("to_tsvector('simple', coalesce(hypothesis,'') || ' ' || coalesce(summary,'') || ' ' || "
+                "coalesce(findings,'') || ' ' || coalesce(attack,''))")
+_PG_NOTE_DOC = "to_tsvector('simple', coalesce(m.text,'') || ' ' || coalesce(m.tags,''))"
 
 
 class HuntMemory:
@@ -39,20 +56,30 @@ class HuntMemory:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         with self._conn() as c:
+            if db.is_pg():
+                c.executescript("""
+                CREATE TABLE IF NOT EXISTS mem_hunts (hunt_id TEXT, created TEXT, outcome TEXT, hypothesis TEXT,
+                    summary TEXT, findings TEXT, attack TEXT);
+                CREATE TABLE IF NOT EXISTS mem_notes (note_id INTEGER, text TEXT, tags TEXT);
+                CREATE INDEX IF NOT EXISTS mem_hunts_id ON mem_hunts(hunt_id);
+                CREATE INDEX IF NOT EXISTS mem_notes_id ON mem_notes(note_id);
+                """)
+            else:
+                c.executescript("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS mem_hunts USING fts5(hunt_id UNINDEXED, created UNINDEXED,
+                    outcome UNINDEXED, hypothesis, summary, findings, attack);
+                CREATE VIRTUAL TABLE IF NOT EXISTS mem_notes USING fts5(note_id UNINDEXED, text, tags);
+                """)
             c.executescript("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS mem_hunts USING fts5(hunt_id UNINDEXED, created UNINDEXED,
-                outcome UNINDEXED, hypothesis, summary, findings, attack);
             CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, created TEXT NOT NULL,
                 author TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]',
                 active INTEGER NOT NULL DEFAULT 1);
-            CREATE VIRTUAL TABLE IF NOT EXISTS mem_notes USING fts5(note_id UNINDEXED, text, tags);
             """)
             if "expires" not in {r[1] for r in c.execute("PRAGMA table_info(notes)")}:
                 c.execute("ALTER TABLE notes ADD COLUMN expires TEXT")
 
     def _conn(self):
-        c = sqlite3.connect(self.path, timeout=10)
-        c.row_factory = sqlite3.Row
+        c = db.connect(self.path)
         return c
 
     def remember(self, hunt: dict) -> None:
@@ -98,14 +125,31 @@ class HuntMemory:
         return ok
 
     def related(self, text: str, k: int = 3) -> dict:
-        q = _fts_query(text)
+        pg = db.is_pg()
+        q = _ts_query(text) if pg else _fts_query(text)
         if not q:
             return {"hunts": [], "notes": []}
         from ..access import can_see
+        if pg:
+            hunt_sql = (f"SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts WHERE "
+                        f"{_PG_HUNT_DOC} @@ to_tsquery('simple', ?) ORDER BY ts_rank({_PG_HUNT_DOC}, "
+                        f"to_tsquery('simple', ?)) DESC LIMIT ?")
+            hunt_args: tuple = (q, q, int(k) * 4)
+            note_sql = (f"SELECT n.id, n.text, n.tags, n.author, n.created, n.expires FROM mem_notes m JOIN notes n "
+                        f"ON n.id = m.note_id WHERE {_PG_NOTE_DOC} @@ to_tsquery('simple', ?) AND n.active=1 AND "
+                        f"(n.expires IS NULL OR n.expires > ?) ORDER BY ts_rank({_PG_NOTE_DOC}, "
+                        f"to_tsquery('simple', ?)) DESC LIMIT ?")
+            note_args: tuple = (q, _now(), q, int(k) + 2)
+        else:
+            hunt_sql = ("SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts WHERE mem_hunts "
+                        "MATCH ? ORDER BY rank LIMIT ?")
+            hunt_args = (q, int(k) * 4)
+            note_sql = ("SELECT n.id, n.text, n.tags, n.author, n.created, n.expires FROM mem_notes m "
+                        "JOIN notes n ON n.id = m.note_id WHERE mem_notes MATCH ? AND n.active=1 "
+                        "AND (n.expires IS NULL OR n.expires > ?) ORDER BY rank LIMIT ?")
+            note_args = (q, _now(), int(k) + 2)
         with self._conn() as c:
-            rows = [dict(r) for r in c.execute(
-                "SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts WHERE mem_hunts "
-                "MATCH ? ORDER BY rank LIMIT ?", (q, int(k) * 4))]
+            rows = [dict(r) for r in c.execute(hunt_sql, hunt_args)]
             hunts = []
             for h in rows:
                 try:
@@ -115,10 +159,7 @@ class HuntMemory:
                 if can_see(json.loads(r["restricted"]) if r and r["restricted"] else []):
                     hunts.append(h)
             hunts = hunts[:int(k)]
-            notes = [dict(r) for r in c.execute(
-                "SELECT n.id, n.text, n.tags, n.author, n.created, n.expires FROM mem_notes m "
-                "JOIN notes n ON n.id = m.note_id WHERE mem_notes MATCH ? AND n.active=1 "
-                "AND (n.expires IS NULL OR n.expires > ?) ORDER BY rank LIMIT ?", (q, _now(), int(k) + 2))]
+            notes = [dict(r) for r in c.execute(note_sql, note_args)]
         return {"hunts": hunts, "notes": notes}
 
     def context(self, text: str, exclude: str = "") -> str:

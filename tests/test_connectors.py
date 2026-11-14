@@ -164,7 +164,9 @@ def test_audit_append_only(tmp_path):
     a = AuditLog(tmp_path / "a.sqlite")
     a.record(connector="c", tool="t", arguments={}, decision="allowed", status="ok")
     import sqlite3
-    with sqlite3.connect(tmp_path / "a.sqlite") as c, pytest.raises(sqlite3.DatabaseError):
+
+    from actaeon import db
+    with db.connect(tmp_path / "a.sqlite") as c, pytest.raises(sqlite3.DatabaseError):
         c.execute("DELETE FROM audit")
 
 
