@@ -83,7 +83,17 @@ def test_worker_loop(tmp_path, fake_task):
 
 
 def test_scheduler_single_leader(tmp_path):
+    from actaeon import db
     from actaeon.hunt.scheduler import Scheduler
+    if db.is_pg():
+        # PostgreSQL: a session advisory lock; a second scheduler (its own connection) cannot take it
+        cfg = type("C", (), {"data_dir": tmp_path, "raw": {}, "intel": {}})()
+        a, b = Scheduler(cfg, None), Scheduler(cfg, None)
+        assert a.leader() and a.leader() and not b.leader()
+        a._pg_conn.close()
+        assert b.leader()                                  # the lock went with the first connection
+        b._pg_conn.close()
+        return
     cfg = type("C", (), {"data_dir": tmp_path, "raw": {}, "intel": {}})()
     a, b = Scheduler(cfg, None), Scheduler(cfg, None)
     assert a.leader() and a.leader()
