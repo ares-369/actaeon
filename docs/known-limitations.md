@@ -4,8 +4,9 @@ Actaeon is in beta (0.1.0b2). These are the limits we know about.
 
 ## Hunting quality
 
-- **Which model was tested.** Every result in the benchmarks and the field test used one fast cloud
-  model for all roles. Other providers work through the same interface but have no measured results yet.
+- **Which models were tested.** The benchmarks and the field test used Gemini models (gemini-3.5-flash,
+  gemini-3.8-flash, gemini-3.1-pro-preview, gemini-3.1-flash-lite). Other providers work through the same
+  interface but have no measured results yet.
 - **Small local models are not good enough to hunt.** Early on, a 7B local model was tried on the demo
   data, where the attack is present: its tool calls worked and the field guard corrected its made-up
   field names, but its query logic was wrong and it answered `no_results`, a false negative. Use a
@@ -35,6 +36,10 @@ Actaeon is in beta (0.1.0b2). These are the limits we know about.
 - Two newer models did not work with Actaeon when tested (2026-11-14): Gemini 4 Hydrogen blocks the
   analyst prompt with a safety filter that the API settings do not switch off, and Gemini 4 Argon returns
   malformed tool calls even when no tools are declared. Hunts with them end as `inconclusive`.
+- A cloud provider can refuse hunt prompts on policy grounds: they are full of attack techniques, malware
+  names and prompt-injection text. During benchmark runs on 2026-11-14 the cloud project began to reject
+  every request ("Request rejected in accordance with our terms of use and policies"). A local or
+  self-hosted model avoids this; with a cloud provider, expect to talk to them if it happens.
 
 - Host inventory is the last scan the agent sent. A machine that is switched off (a laptop, a
   dual-boot system) keeps months-old inventory and vulnerability data, and hunts cannot tell how old it

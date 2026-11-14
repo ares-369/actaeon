@@ -60,6 +60,9 @@ words when the cases are private.
 | Model | Cases | Correct | Threat precision | Threat recall | False positives | Time / case | Input tokens / case | Output tokens / case | Date | Version |
 |---|---|---|---|---|---|---|---|---|---|---|
 | fast cloud model (all roles) | built-in demo cases | 7/8 | 1.00 | 1.00 | 0 | 1-7 min | n/a | n/a | 2026-11-13 | 0.1.0-dev |
+| gemini/gemini-3.8-flash | built-in demo cases | 8/8 | 1.00 | 1.00 | 0 | 1-2 min | 52k (26% cached) | 2.8k | 2026-11-14 | 0.1.0b2+ |
+| gemini/gemini-3.1-pro-preview | built-in demo cases | 8/8 | 1.00 | 1.00 | 0 | 1-3 min | 23k (2% cached) | 3.2k | 2026-11-14 | 0.1.0b2+ |
+| gemini/gemini-3.1-flash-lite | built-in demo cases | 6/8 | 1.00 | 0.50 | 0 | under 1 min | 18k (28% cached) | 0.7k | 2026-11-14 | 0.1.0b2+ |
 
 ## Notes on interpreting scores
 
@@ -143,3 +146,58 @@ limits) is not counted; `actaeon bench` now reruns cases that die on service err
 
 Small and written by someone who knows the answers, so read it as "it checks and clears correctly" rather
 than proof that it finds stealthy attackers. See `benchmarks/lab/` to build one on your own data.
+
+### Three models on the lab benchmark (2026-11-14)
+
+The same 11 cases and frozen data, the current code, each model for every role, no fallback model.
+
+| Model | Correct | Threats found (of 5) | False positives | Input tokens per hunt | From the provider's cache | Output tokens per hunt | Model calls per hunt |
+|---|---|---|---|---|---|---|---|
+| gemini-3.8-flash | 10 / 11 | 5 | 0 | 247k | 58% | 4.2k | 19 |
+| gemini-3.1-pro-preview | 9 / 11 | 3 | 0 | 195k | 36% | 6.0k | 18 |
+| gemini-3.1-flash-lite | 8 / 11 | 2 | 0 | 70k | 58% | 1.1k | 9 |
+
+- **gemini-3.8-flash** was run four times while tuning: 11, 11, 11 and 10 correct. The one miss in the last
+  run was a hunt where the model gave three unusable replies in a row. That last run is the only one in
+  which the second look worked (see the fix below): it confirmed all five threats (confidence 80 to 95).
+- **gemini-3.1-pro-preview** found all five threats on its first pass, but its own second look talked it
+  out of two ("found a benign explanation"), so they ended as `inconclusive` and went to an analyst. This
+  run was before the second-look fix.
+- **gemini-3.1-flash-lite** uses far fewer tokens but missed three of the five threats, answering
+  `no_results` or `logs_missing` where the activity was there. It did not raise false alarms.
+- **Gemini 4 Hydrogen and Gemini 4 Argon** did not work: see
+  [known limitations](known-limitations.md). They are not scored here.
+- After these runs the cloud project began to reject every request on policy grounds ("Request rejected
+  in accordance with our terms of use and policies"), probably because hunt prompts are full of attack
+  techniques. A rerun of the ExCyTIn sample and of gemini-3.1-pro-preview after the fix could not be done.
+
+## Token usage
+
+Every hunt records model calls and tokens per model: input, the part of the input the provider served from
+its prompt cache, and output (thinking tokens included). The hunt page, reports and `actaeon bench` show
+them. Measured on the lab benchmark above with gemini-3.8-flash:
+
+| Version | Input tokens per hunt | From cache | Output tokens per hunt |
+|---|---|---|---|
+| 0.1.0b2 era, with gemini-3.5-flash (lab run 4 above) | 438k | not recorded | 7.7k |
+| Older results shortened in batches (prompt start stays the same) | 260k | 60% | 4.5k |
+| Plus: stop once the evidence answers the hypothesis, calls used shown on each result | 210k | 58% | 3.8k |
+| Same, with `hunt.prompt_mode: compact` | 177k | 49% | 4.4k |
+| Final: with the second look working on threats (extra calls on the five threats) | 247k | 58% | 4.2k |
+
+On the synthetic demo data a hunt uses about 20k to 50k input tokens, because the results are small.
+Prompt caching depends on the provider: Gemini served more than half of the input from its cache on real
+data, and almost none on the small demo prompts. Runs vary: the same model and cases ranged from 210k to
+247k input tokens per hunt across runs.
+
+To use fewer tokens:
+
+- `hunt.max_steps` (default 25): fewer tool calls per hunt.
+- `hunt.max_result_bytes` (default 8000): how much of each tool result the model sees. The lab scored the
+  same at 8,000 as at 20,000.
+- `hunt.prompt_mode: compact`: shorter tool descriptions and older results cut more; about 16% fewer input
+  tokens on the lab, with the same score in the one run measured.
+- `hunt.max_tokens`: a hard cap per hunt; when it is reached the model must give its verdict.
+- A smaller model: gemini-3.1-flash-lite used about a third of the tokens and missed three of five threats.
+- `hunt.verify: false` turns off the second look on threats. It saves the extra calls on every threat, and
+  loses the check that tries to prove the threat wrong.

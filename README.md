@@ -130,12 +130,14 @@ Details: [docs/threat-model.md](docs/threat-model.md), [docs/connectors.md](docs
 
 | Test | Result |
 |---|---|
-| Lab benchmark on a frozen week of real SIEM data (11 labelled cases) | 11 / 11; 5 of 5 threats found, no false positives |
+| Lab benchmark on a frozen week of real SIEM data (11 labelled cases) | gemini-3.8-flash: 10 to 11 / 11 over four runs, all 5 threats found, no false positives |
+| Same lab cases, other models | gemini-3.1-pro-preview 9 / 11, gemini-3.1-flash-lite 8 / 11, no false positives |
 | ExCyTIn-Bench sample (80 public investigation questions) | mean reward 0.512, 40 / 80 fully correct |
 | Field test: implant planted where no detection rule covered it | found from host inventory with no alert behind it |
+| Tokens per hunt on the lab data (gemini-3.8-flash) | about 210k to 250k input, more than half served from the provider's cache; about 4k output; about 20 model calls |
 
-These came from one model on small samples, and the cases were written by someone who knew the
-answers. Read them as "it checks and clears correctly", not as proof that it finds every attacker.
+The samples are small, the lab cases were written by someone who knew the answers, and only Gemini models
+have been measured. Read them as "it checks and clears correctly", not as proof that it finds every attacker.
 `actaeon bench --model <provider/model>` runs the built-in demo cases (or your own) with any model,
 and `benchmarks/` has the runners for the lab and ExCyTIn tests. Results from other models are
 welcome. Details, failures included, are in
@@ -216,7 +218,8 @@ not in this repository.
 - **Not clustered by default.** It uses SQLite on one machine, with nothing else to install.
   PostgreSQL is an install-time option for several machines; it is new and has not run in
   production yet.
-- **Measured with one model only.** Small local models were not good enough to hunt in testing.
+- **Measured with a few models only.** Three Gemini models were scored; other providers have no measured
+  results yet. Small local models were not good enough to hunt in testing.
 - **Not proven in production yet.**
 
 ## Contributing

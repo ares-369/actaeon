@@ -12,7 +12,32 @@
   phrasings. Measured on new scored sets in `benchmarks/injection/`: 24/24 on the set it was tuned on,
   9/10 on a held-out set scored once, 0 false alarms on both and on 9,459 real lab alerts.
 
+### Tokens
+- Token usage records the part of the input served from the provider's prompt cache (Gemini, Claude,
+  OpenAI-compatible) next to input and output; hunt pages, reports and `actaeon bench` show it.
+- Fewer tokens per hunt: older tool results are shortened in batches so the prompt start stays the same
+  (and can be cached), the analyst is told to stop once the evidence answers the hypothesis and sees the
+  calls used on each result, and tool results default to 8,000 bytes. On the lab benchmark with
+  gemini-3.8-flash: about 210k to 250k input tokens per hunt, down from about 440k, with the same score.
+- Gemini: optional `thinking_budget` / `thinking_level`.
+- Usage is reported in tokens only (the optional `llm.prices` setting was removed).
+
+### Fixes found by running the benchmarks
+- Chat and the second look on threats failed silently on newer Gemini models (every reply a malformed
+  tool call), so threats were never confirmed. Every tool loop now declares its final action as a native
+  tool next to `call_tool`, and requests without tools say so. With gemini-3.8-flash the second look now
+  confirms threats (confidence 80 to 95 instead of a cap of 60).
+- A malformed tool call that repeats after the retry is treated as an unusable reply (asked again), not
+  as an error that ends the hunt.
+- Parallel workers upgrading the same database could crash on "duplicate column"; column migrations are
+  now safe to run at the same time.
+- `actaeon bench`: one case raising an exception no longer ends the whole run.
+- Gemini: the civic-integrity and jailbreak filters are relaxed along with the others.
+
 ### Benchmarks
+- Three Gemini models on the lab benchmark, and the token usage per hunt, in docs/benchmarks.md.
+  gemini-3.8-flash 10 to 11 of 11 over four runs, gemini-3.1-pro-preview 9 of 11, gemini-3.1-flash-lite
+  8 of 11; no false positives. Gemini 4 Hydrogen and Argon did not work (known limitations).
 - `benchmarks/excytin/analyze.py` sorts every missed question by cause from its stored tool calls. On the
   recorded 80-question run: 18 ran out of tool calls (11 of them had already seen the answer), 8 were
   model service errors, 6 malformed tool calls, 5 never reached the evidence, 3 saw it and answered

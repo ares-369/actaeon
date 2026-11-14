@@ -95,6 +95,7 @@ autopilot:
 # Hunt safety limits.
 hunt:
   max_steps: 25
+  verify: true               # second look on threats: tries to prove each threat wrong (extra model calls)
   max_runtime_sec: 900
   max_result_bytes: 8000     # per tool result shown to the model (search hits are compacted)
   max_results: 200           # cap on size/limit arguments of any tool
