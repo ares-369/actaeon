@@ -48,6 +48,20 @@ def url() -> str | None:
     return _settings["url"] or os.getenv("ACTAEON_DB_URL") or None
 
 
+def schema() -> str:
+    return _settings["schema"] if _settings["url"] else (os.getenv("ACTAEON_DB_SCHEMA") or _settings["schema"])
+
+
+def child_env() -> dict[str, str]:
+    """Environment for Actaeon's own bridge processes (local intel), so they open the same database."""
+    if not is_pg():
+        return {}
+    env = {"ACTAEON_DB_URL": url() or "", "ACTAEON_DB_SCHEMA": schema()}
+    if os.getenv("ACTAEON_DB_SCHEMA_PER_DIR"):
+        env["ACTAEON_DB_SCHEMA_PER_DIR"] = "1"
+    return env
+
+
 def is_pg() -> bool:
     return bool(url())
 
@@ -60,7 +74,7 @@ def _schema_for(path) -> str:
     # Tests run the whole suite against one PostgreSQL database: give each data folder its own schema.
     if os.getenv("ACTAEON_DB_SCHEMA_PER_DIR"):
         return "t_" + hashlib.sha1(str(Path(path).resolve().parent).encode(), usedforsecurity=False).hexdigest()[:16]
-    return _settings["schema"]
+    return schema()
 
 
 def connect(path, timeout: float = 10):

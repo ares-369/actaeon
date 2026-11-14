@@ -82,12 +82,15 @@ class IntelStore:
             row = c.execute("SELECT * FROM indicators WHERE type=? AND value=?", (kind, v)).fetchone()
             if row:
                 merged = sorted(set(json.loads(row["tags"])) | set(tags))
+                # computed here, not in SQL, so the statement is the same on SQLite and PostgreSQL
+                new_conf = max(int(row["confidence"]), int(conf))
+                old_src = str(row["source"] or "")
+                new_src = old_src if source in old_src else (f"{old_src},{source}" if old_src else source)
                 c.execute("""UPDATE indicators SET last_seen=?, updated=?, seen_count=seen_count+1, active=1,
-                             confidence=MAX(confidence, ?), tags=?, source=CASE WHEN instr(source, ?) THEN source
-                             ELSE source || ',' || ? END, expires=COALESCE(?, expires),
+                             confidence=?, tags=?, source=?, expires=COALESCE(?, expires),
                              note=CASE WHEN ?<>'' THEN ? ELSE note END,
                              advisory_id=COALESCE(?, advisory_id) WHERE id=?""",
-                          (now, now, conf, json.dumps(merged), source, source, expires, note, note,
+                          (now, now, new_conf, json.dumps(merged), new_src, expires, note, note,
                            advisory_id, row["id"]))
                 status = "updated"
                 iid = row["id"]

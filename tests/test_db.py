@@ -85,3 +85,19 @@ def test_init_postgres_writes_env(tmp_path, monkeypatch, capsys):
     assert oct((tmp_path / ".env").stat().st_mode)[-3:] == "600"
     assert rc == 1 and "could not connect" in capsys.readouterr().out     # nothing listens there
     assert "u:secret@" not in (tmp_path / "config.yaml").read_text()
+
+
+def test_child_env(monkeypatch):
+    monkeypatch.delenv("ACTAEON_DB_URL", raising=False)
+    db.configure("")
+    assert db.child_env() == {}
+    from actaeon.connectors.hub import local_intel_connector
+    assert local_intel_connector(__import__("pathlib").Path("/tmp/x"))["env"] == {}
+    try:
+        db.configure("postgresql://u:p@h/d", schema="soc")
+        assert db.child_env() == {"ACTAEON_DB_URL": "postgresql://u:p@h/d", "ACTAEON_DB_SCHEMA": "soc"}
+    finally:
+        db.configure("")
+    monkeypatch.setenv("ACTAEON_DB_URL", "postgresql://h/d")
+    monkeypatch.setenv("ACTAEON_DB_SCHEMA", "other")
+    assert db.schema() == "other" and db.child_env()["ACTAEON_DB_SCHEMA"] == "other"

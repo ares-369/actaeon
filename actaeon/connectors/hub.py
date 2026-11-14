@@ -28,8 +28,12 @@ PROBE_TOOLS = ("list_indices", "list_collections", "intel_stats", "list_hunts")
 
 def local_intel_connector(data_dir) -> dict:
     """The built-in connector for Actaeon's own intel store (read-only bridge)."""
+    from .. import db
+    # The bridge runs with a minimal environment: hand it the database settings so that with PostgreSQL
+    # it reads the same intel store as the server.
+    env = db.child_env()
     return {"name": LOCAL_INTEL, "roles": ["intel"], "transport": "stdio", "command": "actaeon",
-            "args": ["bridge", "local-intel", "--db", str(data_dir / "intel.sqlite")],
+            "args": ["bridge", "local-intel", "--db", str(data_dir / "intel.sqlite")], "env": env,
             "description": "Indicators and advisories added in Actaeon", "rate_per_min": 600, "timeout_sec": 15}
 
 
