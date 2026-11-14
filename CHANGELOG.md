@@ -58,6 +58,9 @@
   recorded 80-question run: 18 ran out of tool calls (11 of them had already seen the answer), 8 were
   model service errors, 6 malformed tool calls, 5 never reached the evidence, 3 saw it and answered
   wrong. The runner now retries questions that die on a service error.
+- A second held-out prompt-injection set (multi-step, encoded, multilingual, email-borne), scored once:
+  11 of 16 attacks caught, 0 of 12 benign look-alikes flagged. Misses (non-English, non-Spanish text
+  and authority-style wording) are listed in docs/hunting.md and left unfixed in the score.
 
 ### Running it
 - `docker compose --profile demo up demo`: the synthetic demo in a container, in memory, on port 8611.
