@@ -37,6 +37,9 @@ or your final answer:
 Answer with the exact value the question asks for (a name, IP, hash, time, count...). Do not list many
 candidates. If you cannot find it, give your best supported answer.
 
+Answer as soon as a result contains the value the question asks for and you can tie it to this incident.
+More calls that only confirm what you already found cost time and tokens and do not improve the answer.
+
 Tools:
 {tools}"""
 

@@ -86,7 +86,7 @@ def _result_text(res: dict[str, Any]) -> str:
 
 
 class ConnectorHub:
-    def __init__(self, specs: list[ConnectorSpec], audit: AuditLog, *, max_result_bytes: int = 20_000,
+    def __init__(self, specs: list[ConnectorSpec], audit: AuditLog, *, max_result_bytes: int = 8_000,
                  pacer: Pacer | None = None, sleep=time.sleep, client_factory=McpClient,
                  max_query_sec: float = 0):
         self.specs = {s.name: s for s in specs}
