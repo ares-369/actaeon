@@ -5,10 +5,13 @@ PowerShell this week"). Actaeon plans the hunt, queries your own data sources, f
 writes a verdict that cites its evidence and maps to MITRE ATT&CK. When it cannot be sure, it hands
 the hunt to a person instead of guessing.
 
-- **Read-only.** It looks; it never isolates, deletes or changes anything.
+- **Read-only by default.** It searches and reads. Response actions (isolate, quarantine, delete,
+  disable, ...) are always blocked; the only writes are ones an admin explicitly allows, such as
+  opening a case.
 - **Works with what you already run.** Every data source is reached through the Model Context
   Protocol (MCP), so it is not tied to any product.
-- **Any model.** Use a cloud model or one on your own hardware. Each hunt step can use a different one.
+- **Your choice of model.** A cloud model or one on your own hardware; each role (planner, analyst,
+  reporter) can use a different one.
 - **Fully open source.** Apache-2.0. Every feature is in this repository. There is no paid
   edition, no licence key and no telemetry.
 
@@ -22,7 +25,8 @@ the hunt to a person instead of guessing.
 ## Try it in a minute
 
 ```bash
-pip install -e .
+git clone https://github.com/ares-369/actaeon.git && cd actaeon
+python -m venv .venv && . .venv/bin/activate && pip install -e .
 actaeon demo --offline --run                  # synthetic data, scripted run (no AI, no keys)
 ACTAEON_HOME=~/.actaeon-demo actaeon serve    # open http://127.0.0.1:8611
 ```
@@ -40,14 +44,17 @@ See [docs/demo.md](docs/demo.md).
 
 1. **Plan.** The planner model turns the hypothesis into steps, and asks for data by *role*
    (log search, endpoint, identity, email, asset, network, cloud, intel). It never asks for a product.
-2. **Query.** The analyst model calls connector tools. Before each call, a validator enforces a time
-   range, a result cap and known field names, and refuses any write. Pacing and time limits apply too.
-3. **Pivot.** It follows what it finds to the same host, user or destination, in other sources and
-   in intel.
+2. **Query.** The analyst model calls connector tools. Before each call a validator requires a time
+   range (when the tool takes one), caps result sizes, checks field names where the source lists them, and
+   refuses write and code patterns. Calls are paced and time-limited.
+3. **Pivot.** The model follows what it finds to the same host, user or destination, in other
+   sources and in intel. When a threat rests on thin evidence, it is asked to corroborate it first.
 4. **Verdict.** The outcome is one of `threat`, `no_results`, `telemetry_found_benign`, `logs_missing`
-   or `inconclusive`. Every claim must cite a successful result that contains the values it names.
-   Missing data is reported as missing, never as clean.
-5. **Second look.** Before a threat is reported, a separate pass tries to prove it wrong.
+   or `inconclusive`. Claims that do not cite a successful result are dropped, and claims whose
+   values do not appear in the cited evidence lower the confidence. Missing data is reported as
+   missing, never as clean.
+5. **Second look.** A threat verdict gets a separate pass that tries to prove it wrong; if that pass
+   cannot confirm it, the confidence is capped and the hunt goes to a person.
 6. **Hand-off.** When it cannot answer, a "needs analyst" lead opens. The lead says what was
    searched, what was missing and what to check next.
 
@@ -57,12 +64,12 @@ See [docs/demo.md](docs/demo.md).
 |---|---|
 | Hunting | Hypothesis hunts, saved hunts with scheduled replays, advisory-driven hunts, threat-actor and campaign hunts, an intel sweep over the indicator ledger |
 | Hunt library | 65 ATT&CK-mapped hypotheses as one YAML file per hunt, a validator, and your own private packs alongside ([hunt packs](docs/hunt-packs.md)) |
-| Sources | Any MCP server, plus built-in bridges for search indices, read-only SQL, STIX/TAXII 2.1 and any REST/OpenAPI service. Each connector gets query notes and examples in its own query language. `actaeon connectors check` tests a connector, and a one-file template helps you write your own |
+| Sources | Any MCP server, plus built-in bridges for search indices, read-only SQL, STIX/TAXII 2.1 and REST/OpenAPI services. Each connector can carry query notes and examples in its own query language. `actaeon connectors check` tests a connector, and a one-file template helps you write your own |
 | Intel | A local indicator and advisory store with first/last-seen tracking. Paste IOCs, import files, PDFs or URLs, or pull feeds. Export as STIX 2.1, or push a hunt's indicators to a TAXII 2.1 collection |
 | Analyst work | Leads with assignment, status, resolution and history; chat on a finished hunt; feedback on findings; a timeline view |
-| Detection | Draft rules from a hunt (Sigma, plus native queries), converted to each connector's query language with pySigma, and a backtest of how often they would have fired |
+| Detection | Draft rules from a hunt (Sigma, plus the native queries that found data), optionally converted to each connector's query language with pySigma, and a backtest of how often they would have fired |
 | Outputs | Email, webhook, or a write tool you explicitly allow (such as opening a case). A reply in the ticket can continue the hunt |
-| Reports | Markdown, CSV, PDF and Word, plus an ATT&CK coverage view |
+| Reports | Markdown, CSV and JSON; PDF and Word with the `reports` extra; an ATT&CK coverage view |
 | Access | `basic`, `local`, OIDC single sign-on or a trusted proxy; viewer, operator and admin roles, mapped from your identity provider's groups; per-source limits so only some people can query (and see hunts over) sensitive sources ([access](docs/access.md)). All of it is free |
 | Interfaces | Web UI, CLI, REST API, and Actaeon itself as an MCP server |
 | Running it | pip, Docker / compose (non-root, read-only filesystem) or systemd. Runs with no internet access, with local models ([air-gapped](docs/air-gapped.md)) |
@@ -74,11 +81,11 @@ in code, not only in prompts:
 
 - **Read-only by default.** Write-like tools are blocked. Response and destructive actions are
   always blocked, whatever the configuration says.
-- **Query guard.** Every query needs a time window. Results, runtime per query, steps and tokens
-  per hunt are all capped. Each connector is rate-limited. Costly leading wildcards are refused on
-  log indices.
+- **Query guard.** Queries need a time window when the tool takes one. Result sizes, time per query,
+  tool calls and runtime per hunt are capped, and tokens per hunt can be. Each connector is
+  rate-limited. Costly leading wildcards are refused on log indices.
 - **Untrusted data.** Every tool result is wrapped in random markers and treated as data. Text in
-  the logs that tries to instruct an AI becomes a high-severity lead of its own.
+  the logs that matches known prompt-injection patterns becomes a high-severity lead of its own.
 - **Evidence checks.** A claim that cites nothing real is dropped, and the verdict is downgraded.
 - **Memory only from people.** Models and data sources cannot write memory. "Benign" notes expire
   (90 days by default), so one wrong call cannot hide activity for good.
@@ -99,8 +106,9 @@ Details: [docs/threat-model.md](docs/threat-model.md), [docs/connectors.md](docs
 
 These came from one model on small samples, and the cases were written by someone who knew the
 answers. Read them as "it checks and clears correctly", not as proof that it finds every attacker.
-Run them yourself, with any model, with `actaeon bench --model <provider/model>`. Results from
-other models are welcome. Details, failures included, are in
+`actaeon bench --model <provider/model>` runs the built-in demo cases (or your own) with any model,
+and `benchmarks/` has the runners for the lab and ExCyTIn tests. Results from other models are
+welcome. Details, failures included, are in
 [docs/benchmarks.md](docs/benchmarks.md) and [docs/field-test-2026-11.md](docs/field-test-2026-11.md).
 
 ## Install
@@ -166,8 +174,8 @@ not in this repository.
 
 - **Not a SIEM or SOAR.** It sits beside them as a read-only investigator, and takes no response
   actions.
-- **Light by default.** SQLite on one machine, nothing else to install. PostgreSQL is an install-time
-  option for several machines. It is new: CI runs the test suite against it, and it has not run in
+- **Not clustered by default.** It uses SQLite on one machine, with nothing else to install.
+  PostgreSQL is an install-time option for several machines; it is new and has not run in
   production yet.
 - **Measured with one model only.** Small local models were not good enough to hunt in testing.
 - **Not proven in production yet.**

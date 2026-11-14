@@ -31,6 +31,12 @@ dependencies = [
     "python-dotenv>=1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/ares-369/actaeon"
+Documentation = "https://github.com/ares-369/actaeon/tree/main/docs"
+Issues = "https://github.com/ares-369/actaeon/issues"
+Changelog = "https://github.com/ares-369/actaeon/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 anthropic = ["anthropic>=0.40"]
 gemini = ["google-genai>=0.3"]

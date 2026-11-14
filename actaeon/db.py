@@ -59,7 +59,7 @@ def kind() -> str:
 def _schema_for(path) -> str:
     # Tests run the whole suite against one PostgreSQL database: give each data folder its own schema.
     if os.getenv("ACTAEON_DB_SCHEMA_PER_DIR"):
-        return "t_" + hashlib.sha1(str(Path(path).resolve().parent).encode()).hexdigest()[:16]
+        return "t_" + hashlib.sha1(str(Path(path).resolve().parent).encode(), usedforsecurity=False).hexdigest()[:16]
     return _settings["schema"]
 
 

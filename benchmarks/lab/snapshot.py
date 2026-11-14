@@ -1,4 +1,4 @@
-"""Freeze a copy of real SIEM data (OpenSearch/Elasticsearch-compatible indices) for a lab benchmark.
+"""Freeze a copy of real SIEM data (indices on a search-index API like the one the search-index bridge uses) for a lab benchmark.
 
 Run it on (or next to) the search cluster with an admin client certificate. It copies into
 ``actaeon-bench-*`` indices, outside any retention policy, keeping each source's field mappings, so

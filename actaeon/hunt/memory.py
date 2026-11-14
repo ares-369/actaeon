@@ -45,9 +45,6 @@ def _ts_query(text: str) -> str:
 
 
 # PostgreSQL: plain tables searched with to_tsvector (the 'simple' configuration: no stemming, like FTS5's default)
-_PG_HUNT_DOC = ("to_tsvector('simple', coalesce(hypothesis,'') || ' ' || coalesce(summary,'') || ' ' || "
-                "coalesce(findings,'') || ' ' || coalesce(attack,''))")
-_PG_NOTE_DOC = "to_tsvector('simple', coalesce(m.text,'') || ' ' || coalesce(m.tags,''))"
 
 
 class HuntMemory:
@@ -131,18 +128,24 @@ class HuntMemory:
             return {"hunts": [], "notes": []}
         from ..access import can_see
         if pg:
-            hunt_sql = (f"SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts WHERE "
-                        f"{_PG_HUNT_DOC} @@ to_tsquery('simple', ?) ORDER BY ts_rank({_PG_HUNT_DOC}, "
-                        f"to_tsquery('simple', ?)) DESC LIMIT ?")
+            hunt_sql = ("SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts "
+                        "WHERE to_tsvector('simple', coalesce(hypothesis,'') || ' ' || coalesce(summary,'') "
+                        "|| ' ' || coalesce(findings,'') || ' ' || coalesce(attack,'')) "
+                        "@@ to_tsquery('simple', ?) "
+                        "ORDER BY ts_rank(to_tsvector('simple', coalesce(hypothesis,'') || ' ' || "
+                        "coalesce(summary,'') || ' ' || coalesce(findings,'') || ' ' || coalesce(attack,'')), "
+                        "to_tsquery('simple', ?)) DESC LIMIT ?")
             hunt_args: tuple = (q, q, int(k) * 4)
-            note_sql = (f"SELECT n.id, n.text, n.tags, n.author, n.created, n.expires FROM mem_notes m JOIN notes n "
-                        f"ON n.id = m.note_id WHERE {_PG_NOTE_DOC} @@ to_tsquery('simple', ?) AND n.active=1 AND "
-                        f"(n.expires IS NULL OR n.expires > ?) ORDER BY ts_rank({_PG_NOTE_DOC}, "
-                        f"to_tsquery('simple', ?)) DESC LIMIT ?")
+            note_sql = ("SELECT n.id, n.text, n.tags, n.author, n.created, n.expires "
+                        "FROM mem_notes m JOIN notes n ON n.id = m.note_id "
+                        "WHERE to_tsvector('simple', coalesce(m.text,'') || ' ' || coalesce(m.tags,'')) "
+                        "@@ to_tsquery('simple', ?) AND n.active=1 AND (n.expires IS NULL OR n.expires > ?) "
+                        "ORDER BY ts_rank(to_tsvector('simple', coalesce(m.text,'') || ' ' || "
+                        "coalesce(m.tags,'')), to_tsquery('simple', ?)) DESC LIMIT ?")
             note_args: tuple = (q, _now(), q, int(k) + 2)
         else:
-            hunt_sql = ("SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts WHERE mem_hunts "
-                        "MATCH ? ORDER BY rank LIMIT ?")
+            hunt_sql = ("SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts "
+                        "WHERE mem_hunts MATCH ? ORDER BY rank LIMIT ?")
             hunt_args = (q, int(k) * 4)
             note_sql = ("SELECT n.id, n.text, n.tags, n.author, n.created, n.expires FROM mem_notes m "
                         "JOIN notes n ON n.id = m.note_id WHERE mem_notes MATCH ? AND n.active=1 "

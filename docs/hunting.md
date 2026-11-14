@@ -214,7 +214,8 @@ characters), and shorter query guides. `full` is the default.
 
 ## Known limitations
 
-- Small local models plan weaker hunts and can pick the wrong ATT&CK IDs.
-  IDs are checked for format only. Review them.
+- Small local models plan weaker hunts and can pick the wrong ATT&CK IDs. IDs
+  are checked against the bundled ATT&CK release (unknown ones dropped, revoked
+  ones mapped), but whether a technique fits is the model's judgement. Review them.
 - The verdict checks make sure claims point at real results. They cannot check
   that a claim reads the result correctly.
