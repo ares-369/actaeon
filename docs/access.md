@@ -58,13 +58,32 @@ For people outside the list:
   restricted connector the hunt read can list or open it, its lead, chat, reports, exports and
   detection drafts. It is left out of other people's hunt memory, and the hunt page shows which
   sources made it restricted.
+- Saved hunts made from a restricted hunt, and memory notes made from one (benign or false-positive
+  calls on its findings or lead), carry the same restriction.
 - With any access limits in place, assistant conversations are visible only to the person who
   had them (admins see all).
 - Outputs do not send restricted hunts unless the output has `include_restricted: true`.
 
 Hunts started by a person run with that person's access, and so do the second-look check and chat
-on them. Scheduled work (replays, sweeps, autopilot, web intel) has no person behind it
-and uses every connector; what it finds in a restricted source is restricted like any other hunt.
+on them.
+
+Scheduled work:
+
+- **Replays of saved hunts run as the person who saved the hunt.** A schedule never reaches more than its
+  owner could; calls to a source the owner may not use are recorded as blocked. A replay started by
+  hand runs as the person who started it.
+- **The scheduler's own work** (indicator sweeps, autopilot, web intel) runs as the identity in the
+  `scheduler` section, if there is one:
+
+  ```yaml
+  scheduler:
+    groups: [soc-automation]     # matched against connector access lists like a person's groups
+    role: operator
+  ```
+
+  Without it, that work has no person behind it and may use every connector; what it finds in a
+  restricted source is restricted like any other hunt.
+- The audit log names the identity each call ran as, for example `replay:3 (as jdoe)`.
 
 The tokens for `/mcp` and `/api/tickets/reply` act with their own role (`mcp.token_role`; operator
 for tickets) and the groups in `mcp.token_groups` / `tickets.token_groups`, not as the person who
@@ -74,7 +93,7 @@ wrote the ticket. Give the ticket token the groups of the team whose hunts it sh
 
 - It does not replace permissions on the source. Use a separate, read-only service account per
   connector, scoped on the source to what Actaeon should read.
-- Analyst notes in memory are not restricted: people write them, so keep sensitive detail out of
-  notes about restricted work.
+- Notes people type by hand (Settings, `actaeon note`) are not restricted: keep sensitive detail out
+  of them. Notes made from a restricted hunt are restricted automatically.
 - Counts in the coverage view include only hunts you can see; the audit log (admin only) shows
   every call.

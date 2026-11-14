@@ -63,7 +63,15 @@ class Scheduler:
                 log.exception("scheduler tick failed")
 
     def tick(self, now: datetime | None = None) -> list[str]:
-        """Queue whatever is due. Returns the job ids queued."""
+        """Queue whatever is due. Returns the job ids queued.
+
+        Saved-hunt replays are queued with no identity and run as the person who saved each hunt; the
+        scheduler's own work (sweep, web intel, autopilot) runs as ``scheduler_access`` (see access.py)."""
+        from ..access import run_as, scheduler_access
+        return run_as(None, self._tick_replays, now or datetime.now(timezone.utc)) + run_as(
+            scheduler_access(self.cfg), self._tick_system, now or datetime.now(timezone.utc))
+
+    def _tick_replays(self, now: datetime) -> list[str]:
         now = now or datetime.now(timezone.utc)
         queued = []
         for s in service.library_for(self.cfg).due(now):
@@ -74,6 +82,10 @@ class Scheduler:
                 task="replay", params={"saved_id": sid}))
             service.library_for(self.cfg).mark_run(sid, s.get("last_hits"), s.get("last_fingerprints") or [],
                                                    s.get("last_hunt_id") or "")
+        return queued
+
+    def _tick_system(self, now: datetime) -> list[str]:
+        queued = []
         sw = (self.cfg.intel or {}).get("sweep") or {}
         every = int(sw.get("interval_minutes", 0) or 0)
         if every > 0 and (self._last_sweep is None or (now - self._last_sweep).total_seconds() >= every * 60):

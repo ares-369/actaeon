@@ -186,7 +186,10 @@ class ConnectorHub:
         if name not in self.specs or not self.specs[name].enabled:
             raise ToolCallError(f"unknown or disabled connector {name!r}")
         spec = self.specs[name]
-        from ..access import can_use
+        from ..access import can_use, current
+        who = current()
+        if who is not None and who.user and who.user not in actor:
+            actor = f"{actor} (as {who.user})" if actor else who.user   # the identity the call ran as
         if not can_use(name):
             self.audit.record(connector=name, tool=tool, arguments=arguments, decision="caller may not use this "
                               "connector (access)", status="blocked", actor=actor, hunt_id=hunt_id)

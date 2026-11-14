@@ -412,7 +412,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
                     hs.memory_for(get_config()).add_note(
                         f"{label} (lead {cid}): {h.get('hypothesis', '')[:200]}. Analyst: {b.get('comment', '')}"[:2000],
                         author=who, tags=[out["resolution"], f"lead:{cid}"],
-                        expires_days=hs.benign_note_days(get_config(), b.get("expires_days")))
+                        expires_days=hs.benign_note_days(get_config(), b.get("expires_days")),
+                        restricted=h.get("restricted") or [])
             elif action == "reopen":
                 out = st.reopen(cid, who, str(b.get("comment", ""))[:4000])
             elif action == "comment":

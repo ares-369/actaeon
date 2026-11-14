@@ -73,6 +73,7 @@ class HuntMemory:
                 active INTEGER NOT NULL DEFAULT 1);
             """)
             db.add_column(c, "notes", "expires", "TEXT")
+            db.add_column(c, "notes", "restricted", "TEXT")   # restricted sources of the hunt a note came from
 
     def _conn(self):
         c = db.connect(self.path)
@@ -90,8 +91,10 @@ class HuntMemory:
                        " ".join(v.get("attack") or [])))
 
     def add_note(self, text: str, *, author: str = "", tags: list[str] | None = None,
-                 expires_days: int | None = None) -> dict:
-        """``expires_days``: the note stops being used after this many days (None or 0 = never)."""
+                 expires_days: int | None = None, restricted: list[str] | None = None) -> dict:
+        """``expires_days``: the note stops being used after this many days (None or 0 = never).
+        ``restricted``: the restricted connectors of the hunt the note came from; the note is then only
+        shown to, and only used in hunts of, people allowed to use all of them."""
         text = (text or "").strip()[:2000]
         if not text:
             raise ValueError("note text is required")
@@ -101,18 +104,27 @@ class HuntMemory:
             raise ValueError("expires_days must be between 0 and 3650")
         expires = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat(timespec="seconds") if days else None
         with self._lock, self._conn() as c:
-            cur = c.execute("INSERT INTO notes (created, author, text, tags, expires) VALUES (?,?,?,?,?)",
-                            (_now(), author[:100], text, json.dumps(tags), expires))
+            cur = c.execute("INSERT INTO notes (created, author, text, tags, expires, restricted) VALUES (?,?,?,?,?,?)",
+                            (_now(), author[:100], text, json.dumps(tags), expires,
+                             json.dumps(sorted(restricted)) if restricted else None))
             c.execute("INSERT INTO mem_notes VALUES (?,?,?)", (cur.lastrowid, text, " ".join(tags)))
-        return {"id": cur.lastrowid, "text": text, "tags": tags, "author": author[:100], "expires": expires}
+        return {"id": cur.lastrowid, "text": text, "tags": tags, "author": author[:100], "expires": expires,
+                "restricted": sorted(restricted or [])}
 
     def notes(self, limit: int = 100) -> list[dict]:
+        from ..access import can_see
         now = _now()
         with self._conn() as c:
-            return [{**dict(r), "tags": json.loads(r["tags"]),
-                     "expired": bool(r["expires"] and r["expires"] <= now),
-                     "active": bool(r["active"]) and not (r["expires"] and r["expires"] <= now)}
-                    for r in c.execute("SELECT * FROM notes ORDER BY id DESC LIMIT ?", (int(limit),))]
+            rows = list(c.execute("SELECT * FROM notes ORDER BY id DESC LIMIT ?", (int(limit),)))
+        out = []
+        for r in rows:
+            restricted = json.loads(r["restricted"]) if r["restricted"] else []
+            if not can_see(restricted):
+                continue
+            out.append({**dict(r), "tags": json.loads(r["tags"]), "restricted": restricted,
+                        "expired": bool(r["expires"] and r["expires"] <= now),
+                        "active": bool(r["active"]) and not (r["expires"] and r["expires"] <= now)})
+        return out
 
     def retire_note(self, nid: int) -> bool:
         with self._lock, self._conn() as c:
@@ -135,7 +147,7 @@ class HuntMemory:
                         "coalesce(summary,'') || ' ' || coalesce(findings,'') || ' ' || coalesce(attack,'')), "
                         "to_tsquery('simple', ?)) DESC LIMIT ?")
             hunt_args: tuple = (q, q, int(k) * 4)
-            note_sql = ("SELECT n.id, n.text, n.tags, n.author, n.created, n.expires "
+            note_sql = ("SELECT n.id, n.text, n.tags, n.author, n.created, n.expires, n.restricted "
                         "FROM mem_notes m JOIN notes n ON n.id = m.note_id "
                         "WHERE to_tsvector('simple', coalesce(m.text,'') || ' ' || coalesce(m.tags,'')) "
                         "@@ to_tsquery('simple', ?) AND n.active=1 AND (n.expires IS NULL OR n.expires > ?) "
@@ -146,7 +158,7 @@ class HuntMemory:
             hunt_sql = ("SELECT hunt_id, created, outcome, hypothesis, summary, findings FROM mem_hunts "
                         "WHERE mem_hunts MATCH ? ORDER BY rank LIMIT ?")
             hunt_args = (q, int(k) * 4)
-            note_sql = ("SELECT n.id, n.text, n.tags, n.author, n.created, n.expires FROM mem_notes m "
+            note_sql = ("SELECT n.id, n.text, n.tags, n.author, n.created, n.expires, n.restricted FROM mem_notes m "
                         "JOIN notes n ON n.id = m.note_id WHERE mem_notes MATCH ? AND n.active=1 "
                         "AND (n.expires IS NULL OR n.expires > ?) ORDER BY rank LIMIT ?")
             note_args = (q, _now(), int(k) + 2)
@@ -162,6 +174,7 @@ class HuntMemory:
                     hunts.append(h)
             hunts = hunts[:int(k)]
             notes = [dict(r) for r in c.execute(note_sql, note_args)]
+        notes = [n for n in notes if can_see(json.loads(n["restricted"]) if n.get("restricted") else [])]
         return {"hunts": hunts, "notes": notes}
 
     def context(self, text: str, exclude: str = "") -> str:

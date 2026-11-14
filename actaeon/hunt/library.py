@@ -45,6 +45,9 @@ class Library:
                 escalate INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1, created TEXT NOT NULL,
                 source_hunt_id TEXT, last_run TEXT, last_hits INTEGER, last_fingerprints TEXT,
                 last_hunt_id TEXT)""")
+            # who saved it (their access, used for scheduled replays) and the restricted sources it reads
+            db.add_column(c, "saved", "owner_access", "TEXT")
+            db.add_column(c, "saved", "restricted", "TEXT")
 
     def _conn(self):
         c = db.connect(self.path)
@@ -57,7 +60,15 @@ class Library:
         d["calls"] = json.loads(d["calls"])
         d["last_fingerprints"] = json.loads(d["last_fingerprints"]) if d["last_fingerprints"] else None
         d["enabled"], d["escalate"] = bool(d["enabled"]), bool(d["escalate"])
+        d["owner_access"] = json.loads(d["owner_access"]) if d.get("owner_access") else None
+        d["restricted"] = json.loads(d["restricted"]) if d.get("restricted") else []
+        d["owner"] = (d["owner_access"] or {}).get("user", "")
         return d
+
+    @staticmethod
+    def _visible(d: dict) -> bool:
+        from ..access import can_see
+        return can_see(d.get("restricted") or [])
 
     def save_from_hunt(self, hunt: dict, *, name: str = "", interval_minutes: int = 0, escalate: bool = False) -> dict:
         calls = [{"connector": s["connector"], "tool": s["tool"], "arguments": s["arguments"] or {}, "evidence": f"E{s['n']}"}
@@ -70,21 +81,27 @@ class Library:
                 if k.lower() in TIME_KEYS and isinstance(v, str) and not v.strip().startswith("now"):
                     warnings.append(f"{c['connector']}.{c['tool']} uses a fixed time {k}={v}; replays will not move it")
         attack = (hunt.get("verdict") or {}).get("attack") or (hunt.get("plan") or {}).get("attack") or []
+        from ..access import current
+        owner = current()
         with self._lock, self._conn() as c:
             cur = c.execute("INSERT INTO saved (name, hypothesis, attack, calls, interval_minutes, escalate, created, "
-                            "source_hunt_id) VALUES (?,?,?,?,?,?,?,?)",
+                            "source_hunt_id, owner_access, restricted) VALUES (?,?,?,?,?,?,?,?,?,?)",
                             ((name or hunt["hypothesis"])[:200], hunt["hypothesis"], json.dumps(attack),
-                             json.dumps(calls), max(0, int(interval_minutes)), int(escalate), _now(), hunt["id"]))
+                             json.dumps(calls), max(0, int(interval_minutes)), int(escalate), _now(), hunt["id"],
+                             json.dumps(owner.to_dict()) if owner else None,
+                             json.dumps(sorted(hunt.get("restricted") or []))))
         return {**self.get(cur.lastrowid), "warnings": warnings}
 
     def get(self, sid: int) -> dict | None:
         with self._conn() as c:
             r = c.execute("SELECT * FROM saved WHERE id=?", (int(sid),)).fetchone()
-        return self._row(r) if r else None
+        d = self._row(r) if r else None
+        return d if d and self._visible(d) else None
 
     def list(self) -> list[dict]:
         with self._conn() as c:
-            return [self._row(r) for r in c.execute("SELECT * FROM saved ORDER BY id")]
+            rows = [self._row(r) for r in c.execute("SELECT * FROM saved ORDER BY id")]
+        return [d for d in rows if self._visible(d)]
 
     def set(self, sid: int, **fields) -> dict | None:
         allowed = {k: v for k, v in fields.items() if k in ("name", "interval_minutes", "escalate", "enabled")}

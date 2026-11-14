@@ -116,6 +116,12 @@ database:
   url: ""
   schema: actaeon
 
+# Identity for the scheduler's own work (sweeps, autopilot, web intel); see docs/access.md.
+# Without it that work may use every connector. Saved-hunt replays always run as their owner.
+#scheduler:
+#  groups: [soc-automation]
+#  role: operator
+
 # Background jobs. local: the server runs them. queue: `actaeon worker` processes run them (docs/deploy.md).
 jobs:
   mode: local                # local | queue

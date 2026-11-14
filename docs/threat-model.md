@@ -57,8 +57,10 @@ the ticket-reply token (`tickets.token_env`) to `POST /api/tickets/reply` only.
 Connectors can be limited to groups, roles or users. Others' hunts cannot call them, and hunts
 that read them are hidden from people outside the list (hunts, leads, reports, exports, memory,
 assistant conversations, outputs). Roles can come from identity-provider groups.
-*Residual:* scheduled work reads every connector; analyst notes are not restricted; the source's own
-permissions remain the real boundary.
+Saved-hunt replays run as their owner, the scheduler's own work can be given an identity, and notes
+made from restricted hunts are restricted.
+*Residual:* without a `scheduler` identity, sweeps, autopilot and web intel read every connector; notes
+typed by hand are not restricted; the source's own permissions remain the real boundary.
 
 **T5. Cross-site scripting through data shown in the UI.**
 The UI only ever sets text, never HTML (a test enforces this), and the CSP

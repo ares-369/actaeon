@@ -102,6 +102,33 @@ def can_see(restricted) -> bool:
     return set(restricted) <= set(a.connectors)
 
 
+def scheduler_access(cfg) -> Access | None:
+    """The identity the scheduler's own work (sweeps, autopilot, web intel) runs as.
+
+        scheduler:
+          groups: [soc-automation]     # connector access lists are matched against these
+          role: operator
+
+    Without a ``scheduler`` section it runs with no person behind it and may use every connector
+    (what it reads from restricted sources is then restricted like any hunt). Saved-hunt replays always
+    run as the person who saved the hunt."""
+    s = ((getattr(cfg, "raw", None) or {}).get("scheduler") or {})
+    if not s:
+        return None
+    from .connectors.spec import parse_connectors
+    try:
+        specs = parse_connectors(list(getattr(cfg, "connectors", None) or []))
+    except Exception:
+        specs = []
+    role = str(s.get("role", "operator")).lower()
+    if role not in ROLE_RANK:
+        raise ValueError("scheduler.role must be viewer, operator or admin")
+    groups = s.get("groups") or []
+    if not isinstance(groups, list):
+        raise ValueError("scheduler.groups must be a list")
+    return build(specs, user=str(s.get("user", "scheduler")), role=role, groups=groups)
+
+
 def run_as(a: Access | None, fn, *args, **kw):
     tok = set_current(a)
     try:

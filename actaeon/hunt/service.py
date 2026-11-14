@@ -228,7 +228,8 @@ def add_feedback(cfg, hid: str, *, finding: int, kind: str, comment: str = "", a
         label = "Known benign" if kind == "benign" else "False positive"
         note = memory_for(cfg).add_note(f"{label}: {claim}" + (f" Analyst: {comment}" if comment else ""),
                                         author=author, tags=[kind, f"hunt:{hid}"],
-                                        expires_days=benign_note_days(cfg, expires_days))
+                                        expires_days=benign_note_days(cfg, expires_days),
+                                        restricted=h.get("restricted") or [])
     return {"feedback": entry, "note": note}
 
 
@@ -270,10 +271,21 @@ def advisory_hunt(cfg, aid: int) -> tuple[str, str]:
 
 
 def run_replay(cfg, sid: int, *, hub=None, llm=None, jobs=None, actor: str = "scheduler") -> dict:
+    """Replay a saved hunt. Started by a person: with their access. Started by the scheduler (no person):
+    with the access of whoever saved it, so a schedule never reaches more than its owner could."""
+    from ..access import Access, current, run_as
     lib = library_for(cfg)
     saved = lib.get(sid)
     if not saved:
         raise ValueError("no saved hunt with that id")
+    if current() is None and saved.get("owner_access"):
+        return run_as(Access.from_dict(saved["owner_access"]), _replay, cfg, saved, hub=hub, llm=llm, jobs=jobs,
+                      actor=actor)
+    return _replay(cfg, saved, hub=hub, llm=llm, jobs=jobs, actor=actor)
+
+
+def _replay(cfg, saved: dict, *, hub=None, llm=None, jobs=None, actor: str = "scheduler") -> dict:
+    lib = library_for(cfg)
     res = replay(saved, _hub(cfg, hub), store_for(cfg), lib, max_results=cfg.hunt.max_results, actor=actor)
     res = send_outputs(cfg, res, hub=hub)
     if saved["escalate"] and (res.get("verdict") or {}).get("needs_review") and jobs is not None:
