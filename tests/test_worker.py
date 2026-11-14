@@ -65,15 +65,22 @@ def test_local_mode_runs_tasks_too(tmp_path, fake_task):
     assert jm.get(jid)["status"] == "done" and fake_task[0]["p"] == {"n": 1}
 
 
-def test_worker_loop(tmp_path, fake_task):
+def test_worker_loop(tmp_path, fake_task, monkeypatch):
+    import threading
+
     from actaeon.worker import Worker
     cfg = type("C", (), {"data_dir": tmp_path, "raw": {}})()
     with pytest.raises(ValueError, match="queue"):
         Worker(cfg, JobManager(tmp_path / "l.sqlite"))
+    gate = threading.Event()
+    real = tasks.TASKS["fake"]
+    monkeypatch.setitem(tasks.TASKS, "fake", lambda p, ctl, jobs: (gate.wait(5), real(p, ctl, jobs))[1])
     jm = JobManager(tmp_path / "j.sqlite", mode="queue")
     ids = [jm.submit("k", {"i": i}, None, task="fake") for i in range(3)]
     w = Worker(cfg, jm, concurrency=2, poll_sec=0.05)
-    assert w.run_once() == 2
+    assert w.run_once() == 2          # both slots busy (the tasks wait on the gate), the third stays queued
+    assert w.run_once() == 0
+    gate.set()
     deadline = time.time() + 5
     while time.time() < deadline and any(jm.get(i)["status"] != "done" for i in ids):
         w.run_once()
