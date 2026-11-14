@@ -177,6 +177,14 @@ destinations and processes are listed with counts; click one to filter. It is
 built from the stored results with no model. Events with no readable time are
 counted and left out.
 
+## Investigation graph
+
+The hunt page draws **who did what where** from the stored results: users, hosts, parent processes,
+processes, destinations and intel matches, linked when they appear together in an event. Links and
+nodes that come from evidence a finding cites are drawn bold; click a node for its evidence ids and its
+history across hunts (see [entities.md](entities.md)). No model is used. Large hunts show the most
+frequent nodes per column (`GET /api/hunts/<id>/graph` has them all as data).
+
 ## Detection drafts
 
 **Draft a detection rule** on a finished hunt (`POST /api/hunts/<id>/detection`)

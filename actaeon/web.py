@@ -691,6 +691,12 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         days = int((request.get_json(silent=True) or {}).get("days", 14) or 14)
         return jsonify(backtest(hub(), h, days))
 
+    @app.route("/api/hunts/<hid>/graph")
+    def hunt_graph(hid):
+        from .hunt.graph import build
+        h = store_for(get_config()).get(hid)
+        return (jsonify(build(h)), 200) if h else (jsonify({"error": "not found"}), 404)
+
     @app.route("/api/hunts/<hid>/timeline")
     def hunt_timeline(hid):
         from .hunt.timeline import build

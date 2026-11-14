@@ -80,3 +80,14 @@ select,input,textarea{max-width:100%}
 meter{width:8rem;height:.7rem}
 .handoff{border:1px solid var(--amber);border-radius:8px;padding:.5rem .8rem;margin:.6rem 0}.handoff h4{margin:.4rem 0 .2rem;font-size:.85rem}
 th,.sev{white-space:nowrap}td code,td .small{overflow-wrap:anywhere}
+
+/* investigation graph */
+.graph-wrap { overflow-x: auto; }
+.graph .g-col { fill: var(--muted, #94a3b8); font-size: 12px; font-weight: 600; }
+.graph .g-edge { fill: none; stroke: #475569; stroke-width: 1.2; }
+.graph .g-edge.cited { stroke: #ef4444; stroke-width: 2.6; }
+.graph .g-node rect { fill: #1e293b; stroke: #334155; }
+.graph .g-node.cited rect { stroke: #ef4444; stroke-width: 2; }
+.graph .g-node text { fill: #e2e8f0; font-size: 12px; pointer-events: none; }
+.graph .g-node { cursor: pointer; }
+.graph .g-node:focus rect, .graph .g-node:hover rect { fill: #273449; }

@@ -370,7 +370,7 @@ function renderHunt(hu) {
       h("ul", {}, (hu.plan.steps || []).map((s) => h("li", {}, h("span", { class: "muted" }, `[${s.role}] `), s.goal))),
       (hu.plan.missing_roles || []).length ? h("p", { class: "warn" }, "No connector for: " + hu.plan.missing_roles.join(", ")) : null));
   }
-  if (!running) out.push(chatBox(hu), timelineBox(hu));
+  if (!running) out.push(chatBox(hu), graphBox(hu), timelineBox(hu));
   out.push(section("Steps", "format-list-numbered", (hu.steps || []).filter((s) => s.kind !== "verdict").map(stepView)));
   return h("div", {}, out);
 }
@@ -398,6 +398,58 @@ function stepView(s) {
     s.why && h("p", { class: "small" }, "Why: ", s.why),
     s.arguments && h("pre", {}, JSON.stringify(s.arguments, null, 1)),
     s.result && h("pre", {}, s.result));
+}
+
+const SVGNS = "http://www.w3.org/2000/svg";
+const svgEl = (tag, attrs, ...kids) => {
+  const el = document.createElementNS(SVGNS, tag);
+  Object.entries(attrs || {}).forEach(([k, v]) => el.setAttribute(k, v));
+  kids.flat().forEach((k) => k && el.append(typeof k === "string" ? document.createTextNode(k) : k));
+  return el;
+};
+
+function graphBox(hu) {
+  const box = h("div", { class: "graph-wrap" });
+  const info = h("p", { class: "muted small" }, "Click a node to see the evidence it came from.");
+  const COLW = 200, NODEW = 176, NODEH = 26, ROWH = 36, TOP = 28;
+  const TITLES = { user: "Users", host: "Hosts", parent: "Parent process", process: "Process", destination: "Destination", intel: "Intel" };
+  api(`/api/hunts/${hu.id}/graph`).then((g) => {
+    if (!g.nodes || !g.nodes.length) { fill(box, h("p", { class: "muted small" }, "No events with hosts, users or processes in this hunt's results.")); return; }
+    const cols = g.columns.filter((c) => g.nodes.some((n) => n.kind === c));
+    const pos = {};
+    let rows = 0;
+    cols.forEach((c, ci) => {
+      g.nodes.filter((n) => n.kind === c).forEach((n, ri) => { pos[n.id] = { x: 8 + ci * COLW, y: TOP + ri * ROWH, n }; rows = Math.max(rows, ri + 1); });
+    });
+    const W = cols.length * COLW, H = TOP + rows * ROWH + 8;
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, class: "graph", role: "img",
+      "aria-label": "Investigation graph" });
+    cols.forEach((c, ci) => svg.append(svgEl("text", { x: 8 + ci * COLW, y: 16, class: "g-col" }, TITLES[c] || c)));
+    g.edges.forEach((e) => {
+      const a = pos[e.from], b = pos[e.to];
+      if (!a || !b) return;
+      const x1 = a.x + NODEW, y1 = a.y + NODEH / 2, x2 = b.x, y2 = b.y + NODEH / 2, mx = (x1 + x2) / 2;
+      svg.append(svgEl("path", { d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`, class: e.cited ? "g-edge cited" : "g-edge" },
+        svgEl("title", {}, `${e.from} -> ${e.to}  (${e.evidence.join(", ")})`)));
+    });
+    Object.values(pos).forEach(({ x, y, n }) => {
+      const label = n.label.length > 24 ? n.label.slice(0, 23) + "…" : n.label;
+      const g1 = svgEl("g", { class: "g-node" + (n.cited ? " cited" : ""), tabindex: "0" },
+        svgEl("title", {}, `${n.kind}: ${n.label}\nseen ${n.count} time(s) in ${n.evidence.join(", ")}`),
+        svgEl("rect", { x, y, width: NODEW, height: NODEH, rx: 5 }),
+        svgEl("text", { x: x + 8, y: y + 17 }, label));
+      const show = () => fill(info, h("b", {}, `${n.kind}: ${n.label}`), ` · seen ${n.count} time(s) · evidence ${n.evidence.join(", ")}`,
+        n.cited ? " · cited by a finding" : "", " · ",
+        h("a", { href: `#entities/${n.kind === "parent" ? "process" : n.kind === "destination" ? (/^[\d.:a-f]+$/i.test(n.label) ? "ip" : "domain") : n.kind}:${encodeURIComponent(n.label)}` }, "history"));
+      g1.addEventListener("click", show);
+      g1.addEventListener("keydown", (ev) => { if (ev.key === "Enter") show(); });
+      svg.append(g1);
+    });
+    fill(box, svg);
+    if (g.dropped) info.append(h("span", {}, ` ${g.dropped} less frequent node(s) not shown.`));
+  });
+  return section("Investigation graph", "graph-outline",
+    h("p", { class: "muted small" }, "Who did what where, from the stored results. Bold links come from evidence a finding cites."), box, info);
 }
 
 function timelineBox(hu) {
