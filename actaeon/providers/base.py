@@ -82,6 +82,7 @@ class LLMResult:
     error: str | None = None
     tokens_in: int = 0
     tokens_out: int = 0
+    tokens_cached: int = 0      # part of tokens_in the provider served from its prompt cache (billed lower)
 
 
 class LLMProvider(ABC):

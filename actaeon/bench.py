@@ -68,6 +68,8 @@ def score(results: list[dict]) -> dict:
             "true_positives": tp, "false_positives": fp, "false_negatives": fn,
             "tokens_in": sum(r.get("tokens_in") or 0 for r in results),
             "tokens_out": sum(r.get("tokens_out") or 0 for r in results),
+            "tokens_cached": sum(r.get("tokens_cached") or 0 for r in results),
+            "llm_calls": sum(r.get("llm_calls") or 0 for r in results),
             "cost_usd": (round(sum(r["cost_usd"] for r in results), 4)
                          if results and all(r.get("cost_usd") is not None for r in results) else None),
             "seconds": sum(r.get("seconds") or 0 for r in results),
@@ -129,7 +131,10 @@ def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None, w
     def one(c):
         t0 = time.monotonic()
         for attempt in range(3):
-            h = run_hunt(cfg, c["hypothesis"], origin=f"bench:{c['id']}", max_steps=max_steps, llm=llm)
+            try:
+                h = run_hunt(cfg, c["hypothesis"], origin=f"bench:{c['id']}", max_steps=max_steps, llm=llm)
+            except Exception as exc:     # one broken case must not end the run (and waste the others)
+                h = {"status": "error", "error": f"{type(exc).__name__}: {exc}"[:500], "steps": [], "models": {}}
             # A hunt that died on the model service (rate limit, timeout) says nothing about Actaeon's
             # judgement: run it again instead of scoring it, and record that it happened.
             if h.get("status") != "error" or not _INFRA.search(h.get("error") or ""):
@@ -143,7 +148,8 @@ def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None, w
              "seconds": round(time.monotonic() - t0), "hunt_id": h.get("id"), "error": h.get("error"),
              "attempts": attempt + 1}
         u = (h.get("models") or {}).get("usage") or {}
-        r.update(tokens_in=u.get("tokens_in", 0), tokens_out=u.get("tokens_out", 0), cost_usd=u.get("cost_usd"))
+        r.update(tokens_in=u.get("tokens_in", 0), tokens_out=u.get("tokens_out", 0),
+                 tokens_cached=u.get("tokens_cached", 0), llm_calls=u.get("calls", 0), cost_usd=u.get("cost_usd"))
         if on_case:
             with lock:
                 on_case(r)

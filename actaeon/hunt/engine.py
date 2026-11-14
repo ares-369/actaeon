@@ -36,6 +36,7 @@ from ..connectors.spec import DATA_ROLES  # noqa: E402
 
 KEEP_FULL = 3          # newest results kept in full in the prompt
 TRIM_TO = 1500
+TRIM_BATCH = 4         # older results are shortened in groups of this many, and stay shortened (see _messages)
 
 
 @dataclass
@@ -182,6 +183,7 @@ class HuntEngine:
             models = None
         self.store.update(hid, status="running", models=models)
         self.n = 0
+        self._frozen: set[int] = set()
         self.evidence: dict[str, dict] = {}
         self.injections: list[dict] = []   # tool results that try to instruct the model
         self.data_ok = 0          # successful calls to non-intel roles
@@ -265,10 +267,20 @@ class HuntEngine:
                 "usage": self.llm.usage_summary() if hasattr(self.llm, "usage_summary") else None}
 
     def _messages(self, base: list[dict], transcript: list[dict]) -> list[dict]:
+        """The prompt for the next call. Older tool results are shortened so prompts stop growing, but in
+        batches: a result, once shortened, stays shortened, and nothing changes until ``TRIM_BATCH`` more
+        results have arrived. The start of the prompt therefore stays the same for several calls in a row,
+        so providers with prompt caching serve it from cache (billed at a fraction of normal input)."""
         msgs = list(base)
         keep, trim = (2, 600) if self.limits.compact else (KEEP_FULL, TRIM_TO)
         results = [i for i, m in enumerate(transcript) if m.get("_result")]
-        old = set(results[:-keep])
+        frozen = getattr(self, "_frozen", None)
+        if frozen is None:
+            frozen = self._frozen = set()
+        full = [i for i in results if i not in frozen]
+        if len(full) > keep + TRIM_BATCH - 1:
+            frozen.update(full[:-keep])
+        old = {i for i in results if i in frozen}
         for i, m in enumerate(transcript):
             content = m["content"]
             if self.limits.compact and m.get("_result") and i not in old and len(content) > 6000:

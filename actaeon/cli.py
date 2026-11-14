@@ -726,7 +726,9 @@ def cli_main(argv: list[str] | None = None) -> None:
             mark = "PASS" if r["correct"] else "FAIL"
             print(f"{mark} {r['id']:18} got {r['outcome']!s:22} want {'/'.join(r['expect']):30} "
                   f"conf {r['confidence']} calls {r['calls']} blocked {r['blocked']} {r['seconds']}s "
-                  f"tok {r.get('tokens_in', 0)}/{r.get('tokens_out', 0)}", flush=True)
+                  f"tok in {r.get('tokens_in', 0)} (cached {r.get('tokens_cached', 0)}) out {r.get('tokens_out', 0)} "
+                  f"llm {r.get('llm_calls', 0)}" + (f" ${r['cost_usd']:.4f}" if r.get("cost_usd") is not None else ""),
+                  flush=True)
         try:
             out = run_bench(get_config(), cases, max_steps=a.max_steps, on_case=show, workers=max(1, a.workers),
                             model=a.model, role_models=a.role_model)

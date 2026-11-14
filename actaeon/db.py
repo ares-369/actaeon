@@ -86,6 +86,23 @@ def connect(path, timeout: float = 10):
     return PgConnection(url(), _schema_for(path))
 
 
+def add_column(c, table: str, column: str, ddl: str) -> None:
+    """Add a column if it is missing. Safe when several processes upgrade the same database at once:
+    one of them adds it, the others see "duplicate column" (or "already exists") and carry on."""
+    if not re.fullmatch(r"\w+", table) or not re.fullmatch(r"\w+", column):
+        raise ValueError("bad table or column name")
+    if column in {r[1] for r in c.execute(f"PRAGMA table_info({table})")}:
+        return
+    try:
+        c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    except sqlite3.OperationalError as exc:
+        if "duplicate column" not in str(exc).lower() and "already exists" not in str(exc).lower():
+            raise
+    except sqlite3.DatabaseError as exc:      # PostgreSQL errors arrive as DatabaseError through the adapter
+        if "already exists" not in str(exc).lower():
+            raise
+
+
 # ---------------------------------------------------------------- PostgreSQL
 
 

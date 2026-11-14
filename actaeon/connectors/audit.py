@@ -52,10 +52,8 @@ class AuditLog:
                 status TEXT NOT NULL, attempts INTEGER, duration_ms INTEGER, result_bytes INTEGER,
                 error TEXT)""")
             c.execute("CREATE INDEX IF NOT EXISTS audit_ts ON audit(ts)")
-            cols = {r[1] for r in c.execute("PRAGMA table_info(audit)")}
             for col in ("prev_hash", "hash"):
-                if col not in cols:
-                    c.execute(f"ALTER TABLE audit ADD COLUMN {col} TEXT")
+                db.add_column(c, "audit", col, "TEXT")
             # append-only: refuse updates and deletes at the database level
             if db.is_pg():
                 c.execute("CREATE OR REPLACE FUNCTION audit_append_only() RETURNS trigger LANGUAGE plpgsql AS "

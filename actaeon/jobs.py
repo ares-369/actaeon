@@ -130,13 +130,10 @@ class JobManager:
                 result TEXT,
                 error TEXT
             )""")
-            cols = {r[1] for r in conn.execute("PRAGMA table_info(jobs)").fetchall()}
-            if "heartbeat" not in cols:
-                conn.execute("ALTER TABLE jobs ADD COLUMN heartbeat TEXT DEFAULT ''")
-            for col, ddl in (("task", "TEXT"), ("params", "TEXT"), ("control", "TEXT DEFAULT 'run'"),
-                             ("worker", "TEXT")):
-                if col not in cols:
-                    conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ddl}")
+            from .db import add_column
+            for col, ddl in (("heartbeat", "TEXT DEFAULT ''"), ("task", "TEXT"), ("params", "TEXT"),
+                             ("control", "TEXT DEFAULT 'run'"), ("worker", "TEXT")):
+                add_column(conn, "jobs", col, ddl)
             conn.execute("CREATE INDEX IF NOT EXISTS jobs_queue ON jobs(status, created)")
             conn.commit()
 

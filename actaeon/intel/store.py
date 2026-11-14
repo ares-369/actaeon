@@ -56,11 +56,9 @@ class IntelStore:
                 techniques TEXT NOT NULL DEFAULT '[]', cves TEXT NOT NULL DEFAULT '[]',
                 indicator_count INTEGER NOT NULL DEFAULT 0);
             """)
-            cols = {r[1] for r in c.execute("PRAGMA table_info(advisories)")}
-            if "relevance" not in cols:   # ledger of the relevance decision per advisory (added later)
-                c.execute("ALTER TABLE advisories ADD COLUMN relevance TEXT NOT NULL DEFAULT ''")
-            if "hunt_id" not in cols:
-                c.execute("ALTER TABLE advisories ADD COLUMN hunt_id TEXT NOT NULL DEFAULT ''")
+            # ledger of the relevance decision per advisory, and the hunt it started (added later)
+            db.add_column(c, "advisories", "relevance", "TEXT NOT NULL DEFAULT ''")
+            db.add_column(c, "advisories", "hunt_id", "TEXT NOT NULL DEFAULT ''")
 
     def _conn(self):
         c = db.connect(self.path)

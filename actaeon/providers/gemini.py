@@ -13,12 +13,15 @@
 
 Other settings: ``location`` (default ``global``), ``base_url`` (send requests through an AI
 gateway or proxy), ``headers`` (extra headers for that gateway, values may use ``${VAR}``),
-``min_output_tokens`` (default 8192, since thinking models spend tokens before answering).
+``min_output_tokens`` (default 8192, since thinking models spend tokens before answering),
+``thinking_budget`` (tokens the model may spend thinking per reply; unset = the model's default) or
+``thinking_level`` (``low`` / ``high`` on models that take a level). Thinking is billed as output.
 The SDK (``google-genai``) is only imported when this provider is used.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from typing import Any
@@ -27,6 +30,7 @@ from .base import ACTION_TOOLS, LLMProvider, LLMResult, Message, action_json, is
 
 AUTH_MODES = ("auto", "api_key", "vertex", "vertex_api_key")
 
+_log = logging.getLogger("actaeon.providers.gemini")
 _USAGE = threading.local()   # per-thread token totals for one chat() call (it may retry)
 
 
@@ -89,13 +93,18 @@ class GeminiProvider(LLMProvider):
         if u is not None and acc is not None:
             acc[0] += int(getattr(u, "prompt_token_count", 0) or 0)
             acc[1] += int(getattr(u, "candidates_token_count", 0) or 0) + int(getattr(u, "thoughts_token_count", 0) or 0)
+            acc[2] += int(getattr(u, "cached_content_token_count", 0) or 0)
+        if u is not None:
+            _log.debug("gemini %s prompt=%s cached=%s out=%s thoughts=%s", kw.get("model"),
+                       getattr(u, "prompt_token_count", 0), getattr(u, "cached_content_token_count", 0),
+                       getattr(u, "candidates_token_count", 0), getattr(u, "thoughts_token_count", 0))
         return resp
 
     def chat(self, messages: list[Message], *, model=None, temperature=0.2, max_tokens=900) -> LLMResult:
-        _USAGE.acc = [0, 0]
+        _USAGE.acc = [0, 0, 0]
         try:
             res = self._chat(messages, model=model, temperature=temperature, max_tokens=max_tokens)
-            res.tokens_in, res.tokens_out = _USAGE.acc
+            res.tokens_in, res.tokens_out, res.tokens_cached = _USAGE.acc
             return res
         finally:
             _USAGE.acc = None
@@ -114,6 +123,19 @@ class GeminiProvider(LLMProvider):
                 "system_instruction": system or None, "temperature": temperature,
                 "max_output_tokens": max(int(max_tokens), int(self.cfg.get("min_output_tokens", 8192))),
             }
+            tb, tl = self.cfg.get("thinking_budget"), self.cfg.get("thinking_level")
+            if (tb not in (None, "") or tl) and hasattr(types, "ThinkingConfig"):
+                tk: dict[str, Any] = {}
+                if tb not in (None, ""):
+                    tk["thinking_budget"] = int(tb)
+                if tl:
+                    tk["thinking_level"] = str(tl)
+                try:
+                    cfg_kw["thinking_config"] = types.ThinkingConfig(**tk)
+                except Exception:     # an SDK without thinking_level: keep only the budget
+                    tk.pop("thinking_level", None)
+                    if tk:
+                        cfg_kw["thinking_config"] = types.ThinkingConfig(**tk)
             if hasattr(types, "SafetySetting"):
                 default_thresh = "OFF" if self.mode() in ("vertex", "vertex_api_key") else "BLOCK_NONE"
                 thresh = str(self.cfg.get("safety_threshold", default_thresh))
@@ -162,6 +184,10 @@ class GeminiProvider(LLMProvider):
                 if not text:
                     # Not an error: the hunt engine treats it as an unusable reply and asks again.
                     return LLMResult(text="", model=use_model)
+            if not text and "MALFORMED_FUNCTION_CALL" in str(_finish_reason(resp)):
+                # Still a broken tool call after the retry without tools. Not a service error: return an empty
+                # reply, which the hunt loop treats as an unusable answer and asks again (a few times at most).
+                return LLMResult(text="", model=use_model)
             if not text:
                 fb = getattr(getattr(resp, "prompt_feedback", None), "block_reason", None)
                 cands = getattr(resp, "candidates", None) or []

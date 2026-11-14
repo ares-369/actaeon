@@ -35,9 +35,12 @@ TRIM_TO = 800       # older results are cut to this, with a note; their evidence
 
 
 def _prompt(transcript: list[dict]) -> list[dict]:
-    """The transcript as sent to the model: older tool results trimmed so prompts stop growing."""
+    """The transcript as sent to the model: older tool results trimmed so prompts stop growing. Trimming
+    happens in batches of 4 (positions fixed by count), so the prompt start stays the same for several
+    calls and can be served from the provider's prompt cache."""
     results = [i for i, m in enumerate(transcript) if m.get("_result")]
-    old = set(results[:-KEEP_FULL])
+    n_old = max(0, ((len(results) - KEEP_FULL) // 4) * 4)
+    old = set(results[:n_old])
     out = []
     for i, m in enumerate(transcript):
         c = m["content"]

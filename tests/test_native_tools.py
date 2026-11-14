@@ -98,3 +98,34 @@ def test_gemini_empty_stop_reply_is_retried():
     p._client = NS(models=Models())
     r = p.chat(_msgs())
     assert r.error is None and r.text == '{"action": "verdict"}' and len(n) == 2
+
+
+def test_gemini_repeated_malformed_call_is_an_unusable_reply_not_an_error():
+    import pytest
+    pytest.importorskip("google.genai")
+    from actaeon.providers.gemini import GeminiProvider
+
+    class Models:
+        def generate_content(self, model, contents, config):
+            return NS(function_calls=None, text=None, prompt_feedback=None,
+                      candidates=[NS(finish_reason="FinishReason.MALFORMED_FUNCTION_CALL")])
+    p = GeminiProvider({"default_model": "m", "auth": "api_key"}, "k")
+    p._client = NS(models=Models())
+    r = p.chat(_msgs())
+    assert r.error is None and r.text == ""      # the hunt loop asks again instead of failing the hunt
+
+
+def test_gemini_thinking_config_is_passed():
+    import pytest
+    pytest.importorskip("google.genai")
+    from actaeon.providers.gemini import GeminiProvider
+    seen = []
+
+    class Models:
+        def generate_content(self, model, contents, config):
+            seen.append(config)
+            return NS(function_calls=None, text='{"action": "verdict"}', prompt_feedback=None, candidates=[])
+    p = GeminiProvider({"default_model": "m", "auth": "api_key", "thinking_budget": 512}, "k")
+    p._client = NS(models=Models())
+    p.chat(_msgs())
+    assert seen[0].thinking_config.thinking_budget == 512

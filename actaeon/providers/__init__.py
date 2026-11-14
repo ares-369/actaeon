@@ -95,10 +95,12 @@ class BoundModel:
     def _count(self, b, res) -> None:
         if self.meter is None:
             return
-        m = self.meter.setdefault(f"{b.provider.name}/{b.model}", {"calls": 0, "tokens_in": 0, "tokens_out": 0})
+        m = self.meter.setdefault(f"{b.provider.name}/{b.model}",
+                                  {"calls": 0, "tokens_in": 0, "tokens_out": 0, "tokens_cached": 0})
         m["calls"] += 1
         m["tokens_in"] += int(getattr(res, "tokens_in", 0) or 0)
         m["tokens_out"] += int(getattr(res, "tokens_out", 0) or 0)
+        m["tokens_cached"] = m.get("tokens_cached", 0) + int(getattr(res, "tokens_cached", 0) or 0)
 
     def chat(self, messages: list[Message], **kw) -> LLMResult:
         chain = [self, *(self.fallbacks or [])]
@@ -141,8 +143,9 @@ class LLM:
 
     def usage_summary(self, usage: dict | None = None) -> dict:
         """Calls and tokens per model, plus an estimated cost when ``llm.prices`` lists the model
-        (USD per million tokens: {model: {in: x, out: y}}). ``usage``: a meter to summarise instead of
-        this LLM's running total (each hunt keeps its own)."""
+        (USD per million tokens: {model: {in: x, out: y, cached: z}}; ``cached`` is the price of input
+        served from the provider's prompt cache, defaulting to ``in``). ``usage``: a meter to summarise
+        instead of this LLM's running total (each hunt keeps its own)."""
         usage = self.usage if usage is None else usage
         prices = ((self.cfg.raw or {}).get("llm") or {}).get("prices") or {}
         out, total_cost, priced = {}, 0.0, True
@@ -150,7 +153,9 @@ class LLM:
             row = dict(u)
             p = prices.get(key.split("/", 1)[-1]) or prices.get(key)
             if isinstance(p, dict):
-                row["cost_usd"] = round(u["tokens_in"] / 1e6 * float(p.get("in", 0))
+                cached = min(int(u.get("tokens_cached", 0) or 0), int(u["tokens_in"]))
+                row["cost_usd"] = round((u["tokens_in"] - cached) / 1e6 * float(p.get("in", 0))
+                                        + cached / 1e6 * float(p.get("cached", p.get("in", 0)))
                                         + u["tokens_out"] / 1e6 * float(p.get("out", 0)), 5)
                 total_cost += row["cost_usd"]
             else:
@@ -160,6 +165,7 @@ class LLM:
                 "calls": sum(u["calls"] for u in usage.values()),
                 "tokens_in": sum(u["tokens_in"] for u in usage.values()),
                 "tokens_out": sum(u["tokens_out"] for u in usage.values()),
+                "tokens_cached": sum(int(u.get("tokens_cached", 0) or 0) for u in usage.values()),
                 "cost_usd": round(total_cost, 5) if out and priced else None}
 
     def provider(self, name: str) -> LLMProvider:

@@ -49,7 +49,10 @@ class AnthropicProvider(LLMProvider):
                 kw.pop("tools", None)  # model or gateway without tool support: fall back to the JSON protocol
                 resp = self._client().messages.create(**kw)
             u = getattr(resp, "usage", None)
-            tok = {"tokens_in": int(getattr(u, "input_tokens", 0) or 0), "tokens_out": int(getattr(u, "output_tokens", 0) or 0)}
+            cached = int(getattr(u, "cache_read_input_tokens", 0) or 0)
+            # Anthropic reports cache reads apart from input_tokens; count them in tokens_in as other providers do
+            tok = {"tokens_in": int(getattr(u, "input_tokens", 0) or 0) + cached,
+                   "tokens_out": int(getattr(u, "output_tokens", 0) or 0), "tokens_cached": cached}
             for b in resp.content:
                 if getattr(b, "type", "") == "tool_use":
                     return LLMResult(text=action_json(b.name, dict(getattr(b, "input", None) or {})), model=use_model, **tok)

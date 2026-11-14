@@ -66,7 +66,9 @@ class OpenAICompatProvider(LLMProvider):
                 kw.pop("tools", None)  # many local models reject tools: fall back to the JSON protocol
                 resp = client.chat.completions.create(**kw)
             u = getattr(resp, "usage", None)
-            tok = {"tokens_in": int(getattr(u, "prompt_tokens", 0) or 0), "tokens_out": int(getattr(u, "completion_tokens", 0) or 0)}
+            det = getattr(u, "prompt_tokens_details", None)
+            tok = {"tokens_in": int(getattr(u, "prompt_tokens", 0) or 0), "tokens_out": int(getattr(u, "completion_tokens", 0) or 0),
+                   "tokens_cached": int(getattr(det, "cached_tokens", 0) or 0)}
             msg = resp.choices[0].message
             tcs = getattr(msg, "tool_calls", None) or []
             if tcs:

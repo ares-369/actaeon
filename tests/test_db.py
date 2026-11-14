@@ -103,3 +103,30 @@ def test_child_env(monkeypatch):
     monkeypatch.setenv("ACTAEON_DB_URL", "postgresql://h/d")
     monkeypatch.setenv("ACTAEON_DB_SCHEMA", "other")
     assert db.schema() == "other" and db.child_env()["ACTAEON_DB_SCHEMA"] == "other"
+
+
+def test_add_column_is_safe_when_racing(tmp_path):
+    import threading
+    p = tmp_path / "r.sqlite"
+    with db.connect(p) as c:
+        c.execute("CREATE TABLE t (id INTEGER)")
+    errors = []
+
+    def go():
+        try:
+            with db.connect(p) as c:
+                db.add_column(c, "t", "extra", "TEXT")
+        except Exception as exc:     # pragma: no cover - the bug this guards against
+            errors.append(exc)
+    ts = [threading.Thread(target=go) for _ in range(8)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    with db.connect(p) as c:
+        assert errors == [] and "extra" in {r[1] for r in c.execute("PRAGMA table_info(t)")}
+
+
+def test_add_column_ignores_duplicate(tmp_path):
+    p = tmp_path / "d.sqlite"
+    with db.connect(p) as c:
+        c.execute("CREATE TABLE t (id INTEGER, extra TEXT)")
+        db.add_column(c, "t", "extra", "TEXT")     # already there: nothing happens

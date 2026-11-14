@@ -38,10 +38,8 @@ class HuntStore:
                 arguments TEXT, why TEXT, ok INTEGER, ms INTEGER, result TEXT, note TEXT);
             CREATE INDEX IF NOT EXISTS steps_hunt ON steps(hunt_id, n);
             """)
-            cols = {r[1] for r in c.execute("PRAGMA table_info(hunts)")}
             for col in ("job_id", "narrative", "feedback", "restricted"):
-                if col not in cols:
-                    c.execute(f"ALTER TABLE hunts ADD COLUMN {col} TEXT")
+                db.add_column(c, "hunts", col, "TEXT")
 
     def _conn(self):
         c = db.connect(self.path)

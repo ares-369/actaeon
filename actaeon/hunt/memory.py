@@ -72,8 +72,7 @@ class HuntMemory:
                 author TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]',
                 active INTEGER NOT NULL DEFAULT 1);
             """)
-            if "expires" not in {r[1] for r in c.execute("PRAGMA table_info(notes)")}:
-                c.execute("ALTER TABLE notes ADD COLUMN expires TEXT")
+            db.add_column(c, "notes", "expires", "TEXT")
 
     def _conn(self):
         c = db.connect(self.path)

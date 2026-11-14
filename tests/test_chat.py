@@ -120,7 +120,10 @@ def test_tool_loop_asks_again_after_invalid_json(home):
 
 def test_tool_loop_trims_older_results():
     from actaeon.hunt.toolloop import KEEP_FULL, _prompt
-    t = [{"role": "user", "content": f"E{i} result:\n" + "x" * 5000, "_result": True} for i in range(6)]
+    t = [{"role": "user", "content": f"E{i} result:\n" + "x" * 5000, "_result": True} for i in range(7)]
     p = _prompt(t)
     assert all(len(m["content"]) < 1000 for m in p[:-KEEP_FULL]) and all(len(m["content"]) > 5000 for m in p[-KEEP_FULL:])
+    # until the next batch (4 more results), earlier messages stay exactly as they were
+    p2 = _prompt([*t, {"role": "user", "content": "E7 result:\n" + "y" * 5000, "_result": True}])
+    assert p2[:len(p)] == p
     assert all("_result" not in m for m in p)

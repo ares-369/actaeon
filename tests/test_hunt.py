@@ -229,13 +229,19 @@ def test_unknown_outcome(tmp_path):
 def test_old_results_trimmed(tmp_path):
     big = "x" * 5000
     hub = Hub(results={"search": big})
-    acts = [call(index="e", time_from=f"now-{i}h") for i in range(1, 7)]
+    acts = [call(index="e", time_from=f"now-{i}h") for i in range(1, 9)]
     acts.append({"action": "verdict", "outcome": "no_results", "summary": "x"})
-    _, llm = run(tmp_path, acts, hub=hub, limits=HuntLimits(max_steps=10))
-    prompt = llm.roles["analyst"].seen[-1]
-    trimmed = [m for m in prompt if "older result trimmed" in m["content"]]
-    from actaeon.hunt.engine import KEEP_FULL
-    assert len(trimmed) == 6 - KEEP_FULL
+    _, llm = run(tmp_path, acts, hub=hub, limits=HuntLimits(max_steps=12))
+    from actaeon.hunt.engine import KEEP_FULL, TRIM_BATCH
+    seen = llm.roles["analyst"].seen
+
+    def trimmed(prompt):
+        return sum("older result trimmed" in m["content"] for m in prompt)
+    # after 8 results: one batch shortened (all but the newest KEEP_FULL once KEEP_FULL+TRIM_BATCH arrived)
+    assert trimmed(seen[-1]) == KEEP_FULL + TRIM_BATCH - KEEP_FULL
+    # cache-friendly: between batches, each prompt starts with the whole previous prompt unchanged
+    grew = [i for i in range(1, len(seen)) if trimmed(seen[i]) == trimmed(seen[i - 1])]
+    assert grew and all(seen[i][:len(seen[i - 1])] == seen[i - 1] for i in grew)
 
 
 # ---- service / API ----
