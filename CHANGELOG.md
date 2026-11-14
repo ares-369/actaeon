@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.0b2 (2026-11-14), second beta
+
+Still a beta: tested in one home lab, on public and synthetic benchmarks, and in CI (the whole test
+suite on SQLite and on PostgreSQL), not yet in production.
 
 ### Safety and cost
 - `hunt.max_tokens`: a token budget per hunt; when it is used up the model must give its verdict.
@@ -36,8 +39,9 @@
   suite on PostgreSQL.
 - `jobs.mode: queue` and `actaeon worker`: the web server records jobs as named tasks and worker
   processes run them, as the person who started each one. Stop and pause work across processes,
-  stale jobs are marked interrupted, and a lock file keeps a single scheduler. One machine (SQLite)
-  for now.
+  stale jobs are marked interrupted, and a lock file keeps a single scheduler. With SQLite, workers
+  run on the same machine as the server; with PostgreSQL they can run elsewhere (tested in CI on one
+  machine, not yet across several).
 
 ### Detection
 - Sigma drafts are converted with pySigma (optional `actaeon[sigma]` plus your platform's backend) into

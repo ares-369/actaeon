@@ -15,7 +15,7 @@ the hunt to a person instead of guessing.
 - **Fully open source.** Apache-2.0. Every feature is in this repository. There is no paid
   edition, no licence key and no telemetry.
 
-> **Status: beta (0.1.0b1).** It has been tested in one home lab and on public and synthetic
+> **Status: beta (0.1.0b2).** It has been tested in one home lab and on public and synthetic
 > benchmarks, but not yet in production. It runs on one machine with SQLite by default, with
 > PostgreSQL and separate worker processes as options. Read
 > [known limitations](docs/known-limitations.md) before relying on it.

@@ -18,8 +18,8 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip && pip install -e '.[dev]'
@@ -44,8 +44,8 @@ jobs:
       ACTAEON_DB_URL: postgresql://actaeon:actaeon@localhost:5432/actaeon
       ACTAEON_DB_SCHEMA_PER_DIR: "1"     # each test's data folder gets its own schema
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip && pip install -e '.[dev,postgres]'
@@ -55,8 +55,8 @@ jobs:
     name: Wheel install smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Build and install outside the checkout
@@ -77,7 +77,7 @@ jobs:
     name: Container build and health check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build image
         run: docker build -t actaeon:ci .
       - name: Start and check
@@ -100,8 +100,8 @@ jobs:
     name: Security scans (bandit, pip-audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip bandit pip-audit
@@ -116,7 +116,7 @@ jobs:
   secret-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
