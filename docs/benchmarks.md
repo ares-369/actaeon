@@ -90,10 +90,32 @@ graded with the benchmark's published judge prompts by the same fast cloud model
 | With query notes describing the tables (`--notes`) | 0.512 | 40 / 80 | 3 | 29 |
 
 Query notes made the investigations shorter (fewer questions ran out of calls) but barely changed the
-score: two incidents improved a lot, three got worse, which is within run-to-run noise. The misses are
-about following long alert chains, not about knowing the tables. Indicative only: the judge model and the
-sample differ from the paper. `benchmarks/excytin/run.py --quick --workers 4` runs a 16-question
-regression subset in about 10 to 15 minutes.
+score: two incidents improved a lot, three got worse, which is within run-to-run noise. Indicative only:
+the judge model and the sample differ from the paper. `benchmarks/excytin/run.py --quick --workers 4`
+runs a 16-question regression subset in about 10 to 15 minutes.
+
+**Why the 40 misses of the second run failed** (`benchmarks/excytin/analyze.py`, decided from each
+question's stored tool calls, not by a model):
+
+| Cause | Questions | What it means |
+|---|---|---|
+| Ran out of tool calls, answer already in a result | 11 (4 weak matches) | It had seen the value and kept searching instead of answering |
+| Model service error (quota limit, outage) | 8 | Not a hunting failure; the runner did not retry these |
+| Ran out of tool calls, answer never retrieved | 7 | The searches did not reach the evidence within 25 calls |
+| Model produced a malformed tool call | 6 | A real model failure: the provider rejected the call |
+| Answer never retrieved | 5 | It answered without the searches reaching the evidence |
+| Answer retrieved, wrong final answer | 3 | It saw the evidence and did not connect it |
+
+"Answer in a result" means the whole expected value appears as a token in a successful tool result. A
+weak match is a value that can appear by chance (a short number, `SYSTEM`, a common process name).
+Only 13 of the 532 tool calls in the missed questions failed, so broken queries were not the problem.
+Leaving out the 8 service errors, the run scores a mean reward of 0.569 over 72 questions (40 fully
+correct); the scores in the first table keep them in, as recorded.
+
+What this points to: the biggest group is investigations that had the answer and did not stop. That
+is a loop-control problem (when to answer), not a data-access problem, and it is the first thing to
+work on. The runner now retries a question that dies on a service error (up to two more times) and
+records the trace folder of each question for this analysis.
 
 ### Lab benchmark on real data (2026-11-13)
 

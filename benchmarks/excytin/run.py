@@ -149,7 +149,7 @@ def answer_one(cfg, llm, db: Path, q: dict, max_calls: int, notes: str = "") -> 
     final = final or {}
     ans = str(final.get("answer") or final.get("text") or final.get("error") or "")
     return {"answer": ans[:2000], "calls": calls, "seconds": round(time.monotonic() - t0, 1),
-            "error": final.get("error")}
+            "error": final.get("error"), "trace": str(work)}   # the tool calls, for analyze.py
 
 
 def main() -> None:
@@ -201,7 +201,15 @@ def main() -> None:
 
     def one(item):
         inc, db, i, q = item
-        r = answer_one(cfg, llm, db, q, a.max_calls, notes)
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from analyze import _SERVICE
+        for attempt in range(3):
+            # a question that dies on the model service (quota, outage) says nothing about the hunting: retry it
+            r = answer_one(cfg, llm, db, q, a.max_calls, notes)
+            if not (r.get("error") and _SERVICE.search(r["error"])) or attempt == 2:
+                break
+            time.sleep(60 * (attempt + 1))
+        r["attempts"] = attempt + 1
         r.update(judge(llm, q, r["answer"]))
         r.update(incident=inc, index=i, golden=q["answer"])
         with lock:
