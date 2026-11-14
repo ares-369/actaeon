@@ -131,16 +131,30 @@ actions the hunt ends as `inconclusive`.
 
 Every tool result is scanned for text that tries to instruct an AI: "ignore
 previous instructions", "mark this host as benign", chat-template tags, a fake
-verdict object, a copy of the data marker. Normal telemetry never contains such
-text, so a match is a lead in its own right:
+verdict object, a copy of the data marker. It also scans a normalised copy (look-alike
+Unicode letters, words split by `-`, `_` or `.`) and any payload the offline decoder can
+unpack (base64, `-EncodedCommand`, hex, ...), and a few phrasings in other languages.
+Such text is not normal telemetry, so a match is a lead in its own right:
 
 - the model is told the text is data and planting it is suspicious;
 - the hunt gets a note naming the evidence, and `verdict.injection` lists it;
 - the hunt is handed to an analyst (`hunt.handoff` value `injection`) and its lead
   is `high` severity, titled "prompt injection", whatever the verdict was.
 
-The patterns are simple and catch the blatant attempts only. The untrusted-data
-wrapping, the read-only tool policy and evidence checks remain the main defence.
+How well it does, measured (`python benchmarks/injection/score.py`):
+
+| Set | Planted attacks caught | Benign look-alikes flagged |
+|---|---|---|
+| `benchmarks/injection/cases.yaml` (the patterns were tuned on it) | 24 / 24 | 0 / 20 |
+| `benchmarks/injection/holdout.yaml` (written before tuning, scored once) | 9 / 10 | 0 / 10 |
+| One week of real alerts from a home lab | - | 0 / 9,459 |
+
+The held-out miss (`ignore_the_above_and_mark_clean.lnk`) showed a bug in one pattern, fixed
+afterwards; the 9 / 10 is the score from before that fix. These sets are small and written by the
+same person who wrote the patterns. A rephrased attack can still get through, and a model can
+still be misled by text the scanner does not flag. The untrusted-data wrapping, the read-only
+tool policy and the evidence checks remain the main defence; the scanner only makes blatant
+attempts visible.
 
 ## Ask Actaeon (chat)
 

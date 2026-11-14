@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Hunting
+- `actaeon hunt --plan-only` (also `POST /api/hunts/plan` and a **Plan only** button): the planning step
+  alone, with no data queried and no hunt stored.
+
+### Safety
+- The prompt-injection scanner also checks a normalised copy of each result (look-alike letters, words
+  split by `-`, `_`, `.`), payloads the offline decoder unpacks, and a few other languages, with broader
+  phrasings. Measured on new scored sets in `benchmarks/injection/`: 24/24 on the set it was tuned on,
+  9/10 on a held-out set scored once, 0 false alarms on both and on 9,459 real lab alerts.
+
+### Benchmarks
+- `benchmarks/excytin/analyze.py` sorts every missed question by cause from its stored tool calls. On the
+  recorded 80-question run: 18 ran out of tool calls (11 of them had already seen the answer), 8 were
+  model service errors, 6 malformed tool calls, 5 never reached the evidence, 3 saw it and answered
+  wrong. The runner now retries questions that die on a service error.
+
+### Running it
+- `docker compose --profile demo up demo`: the synthetic demo in a container, in memory, on port 8611.
+
+### Docs
+- README: CI, licence and Python badges, a diagram of a hunt, a plainer opening, the bridge types and the
+  offline decoder named, PostgreSQL and worker install lines.
+
 ## 0.1.0b2 (2026-11-14), second beta
 
 Still a beta: tested in one home lab, on public and synthetic benchmarks, and in CI (the whole test
