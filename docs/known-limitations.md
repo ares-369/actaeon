@@ -29,7 +29,12 @@ Actaeon is in beta (0.1.0b2). These are the limits we know about.
   protocol when a model rejects tools (`native_tools: false` turns it off). It has been exercised live
   with one cloud provider so far. Ollama and the `cli` provider always use the JSON protocol, which
   costs more tokens.
-- A hunt uses roughly 400k to 500k input tokens with the fast cloud model (about 25 tool calls).
+- Token use per hunt is measured in [benchmarks.md](benchmarks.md#token-usage). On the frozen lab data
+  it is roughly 200k to 450k input tokens per hunt, more than half of them served from the provider's
+  prompt cache when the provider has one.
+- Two newer models did not work with Actaeon when tested (2026-11-14): Gemini 4 Hydrogen blocks the
+  analyst prompt with a safety filter that the API settings do not switch off, and Gemini 4 Argon returns
+  malformed tool calls even when no tools are declared. Hunts with them end as `inconclusive`.
 
 - Host inventory is the last scan the agent sent. A machine that is switched off (a laptop, a
   dual-boot system) keeps months-old inventory and vulnerability data, and hunts cannot tell how old it

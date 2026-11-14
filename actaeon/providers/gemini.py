@@ -95,9 +95,10 @@ class GeminiProvider(LLMProvider):
             acc[1] += int(getattr(u, "candidates_token_count", 0) or 0) + int(getattr(u, "thoughts_token_count", 0) or 0)
             acc[2] += int(getattr(u, "cached_content_token_count", 0) or 0)
         if u is not None:
-            _log.debug("gemini %s prompt=%s cached=%s out=%s thoughts=%s", kw.get("model"),
+            _log.debug("gemini %s prompt=%s cached=%s out=%s thoughts=%s finish=%s block=%s", kw.get("model"),
                        getattr(u, "prompt_token_count", 0), getattr(u, "cached_content_token_count", 0),
-                       getattr(u, "candidates_token_count", 0), getattr(u, "thoughts_token_count", 0))
+                       getattr(u, "candidates_token_count", 0), getattr(u, "thoughts_token_count", 0),
+                       _finish_reason(resp), getattr(getattr(resp, "prompt_feedback", None), "block_reason", None))
         return resp
 
     def chat(self, messages: list[Message], *, model=None, temperature=0.2, max_tokens=900) -> LLMResult:
@@ -139,10 +140,15 @@ class GeminiProvider(LLMProvider):
             if hasattr(types, "SafetySetting"):
                 default_thresh = "OFF" if self.mode() in ("vertex", "vertex_api_key") else "BLOCK_NONE"
                 thresh = str(self.cfg.get("safety_threshold", default_thresh))
+                # Hunt prompts are full of attack techniques and talk about prompt injection, which newer models'
+                # filters (dangerous content, jailbreak) block. Categories the SDK does not know are skipped.
+                known = set(getattr(types.HarmCategory, "__members__", {}))
                 cfg_kw["safety_settings"] = [
                     types.SafetySetting(category=c, threshold=thresh)
                     for c in ("HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_DANGEROUS_CONTENT",
-                              "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_SEXUALLY_EXPLICIT")
+                              "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                              "HARM_CATEGORY_CIVIC_INTEGRITY", "HARM_CATEGORY_JAILBREAK")
+                    if not known or c in known
                 ]
             native = is_tool_loop_system(system) and self.cfg.get("native_tools", True)
             if native:
