@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .base import ACTION_TOOLS, LLMProvider, LLMResult, Message, action_json, is_tool_loop_system
+from .base import LLMProvider, LLMResult, Message, action_json, action_tools, is_tool_loop_system
 
 
 def _split_system(messages: list[Message]) -> tuple[str, list[Message]]:
@@ -40,7 +40,7 @@ class AnthropicProvider(LLMProvider):
             native = is_tool_loop_system(system) and self.cfg.get("native_tools", True)
             if native:
                 kw["tools"] = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]}
-                               for t in ACTION_TOOLS]
+                               for t in action_tools(system)]
             try:
                 resp = self._client().messages.create(**kw)
             except Exception:

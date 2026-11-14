@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .base import ACTION_TOOLS, LLMProvider, LLMResult, Message, action_json, is_tool_loop_system
+from .base import LLMProvider, LLMResult, Message, action_json, action_tools, is_tool_loop_system
 
 
 class OpenAICompatProvider(LLMProvider):
@@ -56,7 +56,7 @@ class OpenAICompatProvider(LLMProvider):
             }
             native = is_tool_loop_system(system) and self.cfg.get("native_tools", True)
             if native:
-                kw["tools"] = [{"type": "function", "function": t} for t in ACTION_TOOLS]
+                kw["tools"] = [{"type": "function", "function": t} for t in action_tools(system)]
             client = self._client()
             try:
                 resp = client.chat.completions.create(**kw)

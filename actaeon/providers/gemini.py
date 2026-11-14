@@ -26,11 +26,20 @@ import os
 import threading
 from typing import Any
 
-from .base import ACTION_TOOLS, LLMProvider, LLMResult, Message, action_json, is_tool_loop_system
+from .base import LLMProvider, LLMResult, Message, action_json, action_tools, is_tool_loop_system
 
 AUTH_MODES = ("auto", "api_key", "vertex", "vertex_api_key")
 
 _log = logging.getLogger("actaeon.providers.gemini")
+
+
+def _no_function_calls(types, cfg_kw: dict) -> None:
+    """With no tools declared, say so: newer models otherwise try to call the tools the prompt describes in
+    text and fail with MALFORMED_FUNCTION_CALL. Older SDKs without ToolConfig are left as they are."""
+    try:
+        cfg_kw["tool_config"] = types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="NONE"))
+    except Exception:
+        cfg_kw.pop("tool_config", None)
 _USAGE = threading.local()   # per-thread token totals for one chat() call (it may retry)
 
 
@@ -153,8 +162,10 @@ class GeminiProvider(LLMProvider):
             native = is_tool_loop_system(system) and self.cfg.get("native_tools", True)
             if native:
                 cfg_kw["tools"] = [types.Tool(function_declarations=[
-                    types.FunctionDeclaration(**t) for t in ACTION_TOOLS
+                    types.FunctionDeclaration(**t) for t in action_tools(system)
                 ])]
+            else:
+                _no_function_calls(types, cfg_kw)
             try:
                 resp = self._gen(
                     model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
@@ -162,11 +173,13 @@ class GeminiProvider(LLMProvider):
                 if not native:
                     raise
                 cfg_kw.pop("tools", None)  # model without function calling: fall back to the JSON protocol
+                _no_function_calls(types, cfg_kw)
                 resp = self._gen(
                     model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
             if native and "MALFORMED_FUNCTION_CALL" in str(_finish_reason(resp)):
                 # The model produced a broken tool call: ask again without tools (JSON action protocol).
                 cfg_kw.pop("tools", None)
+                _no_function_calls(types, cfg_kw)
                 resp = self._gen(
                     model=use_model, contents=contents, config=types.GenerateContentConfig(**cfg_kw))
             fcs = getattr(resp, "function_calls", None) or []

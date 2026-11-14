@@ -129,3 +129,22 @@ def test_gemini_thinking_config_is_passed():
     p._client = NS(models=Models())
     p.chat(_msgs())
     assert seen[0].thinking_config.thinking_budget == 512
+
+
+def test_final_action_tools_for_every_loop():
+    import json as _j
+
+    from actaeon.hunt.chat import CHAT_SYSTEM
+    from actaeon.hunt.verify import VERIFY_SYSTEM
+    from actaeon.providers.base import action_json, action_tools, is_tool_loop_system, loop_final_action
+    assert loop_final_action('{"action": "call"} or {"action": "verdict"}') == "verdict"
+    assert loop_final_action('{"action": "call"} ... {"action": "answer"}') == "answer"
+    assert loop_final_action('{"action": "start_hunt"} {"action": "answer"}') is None    # no call: not a tool loop
+    for system, final in ((CHAT_SYSTEM, "answer"), (VERIFY_SYSTEM, "verify")):
+        assert is_tool_loop_system(system) and loop_final_action(system) == final
+        names = [t["name"] for t in action_tools(system)]
+        assert names == ["call_tool", f"submit_{final}"]
+    assert [t["name"] for t in action_tools('{"action": "call"} {"action": "verdict"}')] == ["call_tool", "submit_verdict"]
+    assert _j.loads(action_json("submit_answer", {"text": "x", "evidence": ["E2"]})) == {
+        "action": "answer", "text": "x", "evidence": ["E2"]}
+    assert _j.loads(action_json("submit_verdict", {"outcome": "threat"}))["action"] == "verdict"

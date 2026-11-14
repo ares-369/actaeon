@@ -9,6 +9,7 @@ to a ReAct-style prompt.
 from __future__ import annotations
 
 import json
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
@@ -52,16 +53,49 @@ ACTION_TOOLS: list[dict[str, Any]] = [
 ]
 
 
+_ACTION_RE = re.compile(r'"action":\s*"(\w+)"')
+
+
+def loop_final_action(system: str) -> str | None:
+    """The action that ends a tool loop ("verdict" for hunts, "answer" for chat, "verify" for the second
+    look), or None when the prompt does not use Actaeon's call/<final> action protocol."""
+    acts = _ACTION_RE.findall(system or "")
+    if "call" not in acts:
+        return None
+    others = [a for a in acts if a != "call"]
+    return others[0] if others else None
+
+
 def is_tool_loop_system(system: str) -> bool:
-    """True when the system prompt uses Actaeon's call/verdict action protocol."""
-    return '"action": "call"' in system and '"action": "verdict"' in system
+    """True when the system prompt uses Actaeon's call/<final action> protocol."""
+    return loop_final_action(system) is not None
+
+
+def action_tools(system: str) -> list[dict[str, Any]]:
+    """Native tool declarations for a tool loop: call_tool plus the loop's final action. Declaring the final
+    action as a tool matters: newer models, given tools described only in text, emit their own tool calls
+    and fail with a malformed function call."""
+    final = loop_final_action(system) or "verdict"
+    if final == "verdict":
+        return ACTION_TOOLS
+    return [ACTION_TOOLS[0], {
+        "name": f"submit_{final}",
+        "description": f"Give the final {final}. This ends the investigation.",
+        "parameters": {"type": "object", "properties": {
+            "text": {"type": "string", "description": "the answer in plain language"},
+            "answer": {"type": "string", "description": "the specific value asked for, if any"},
+            "result": {"type": "string", "description": "for a second look: confirmed, refuted or unconfirmed"},
+            "reason": {"type": "string"},
+            "evidence": {"type": "array", "items": {"type": "string"}, "description": "evidence ids such as E3"},
+        }},
+    }]
 
 
 def action_json(tool_name: str, args: dict[str, Any] | None) -> str:
-    """Translate a native call_tool / submit_verdict call into Actaeon's JSON action."""
+    """Translate a native call_tool / submit_<final> call into Actaeon's JSON action."""
     args = dict(args or {})
-    if tool_name == "submit_verdict":
-        return json.dumps({"action": "verdict", **args})
+    if tool_name.startswith("submit_") and len(tool_name) > 7:
+        return json.dumps({"action": tool_name[7:], **args})
     if tool_name != "call_tool":
         # The model called a connector tool by its own name instead of call_tool.
         args = {"tool": tool_name, "arguments": args}
