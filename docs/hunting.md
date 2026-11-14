@@ -221,7 +221,7 @@ version; install the backend after Actaeon's extra and let pip choose.
 
 ## Prompt size
 
-`hunt.prompt_mode: compact` is for cheaper or smaller models. The analyst sees
+`hunt.prompt_mode: compact` uses fewer tokens and suits smaller models. The analyst sees
 only the tools for the roles in the plan (plus intel and analysis), short tool
 descriptions, the two newest results in full (others trimmed to 600
 characters), and shorter query guides. `full` is the default.

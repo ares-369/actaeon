@@ -70,8 +70,6 @@ def score(results: list[dict]) -> dict:
             "tokens_out": sum(r.get("tokens_out") or 0 for r in results),
             "tokens_cached": sum(r.get("tokens_cached") or 0 for r in results),
             "llm_calls": sum(r.get("llm_calls") or 0 for r in results),
-            "cost_usd": (round(sum(r["cost_usd"] for r in results), 4)
-                         if results and all(r.get("cost_usd") is not None for r in results) else None),
             "seconds": sum(r.get("seconds") or 0 for r in results),
             "infra_errors": sum(1 for r in results if r.get("status") == "error"),
             "reruns": sum((r.get("attempts") or 1) - 1 for r in results)}
@@ -149,7 +147,7 @@ def run(cfg, cases: list[dict], *, max_steps: int | None = None, on_case=None, w
              "attempts": attempt + 1}
         u = (h.get("models") or {}).get("usage") or {}
         r.update(tokens_in=u.get("tokens_in", 0), tokens_out=u.get("tokens_out", 0),
-                 tokens_cached=u.get("tokens_cached", 0), llm_calls=u.get("calls", 0), cost_usd=u.get("cost_usd"))
+                 tokens_cached=u.get("tokens_cached", 0), llm_calls=u.get("calls", 0))
         if on_case:
             with lock:
                 on_case(r)
@@ -177,10 +175,12 @@ def markdown_row(out: dict) -> str:
     roles = {f"{v.get('provider')}/{v.get('model')}" for v in m.values()}
     who = next(iter(roles)) if len(roles) == 1 else "; ".join(f"{k}: {v.get('provider')}/{v.get('model')}"
                                                              for k, v in m.items())
+
     def pct(x):
         return "n/a" if x is None else f"{x:.2f}"
-    cost = "n/a" if s.get("cost_usd") is None else f"${s['cost_usd'] / max(1, s['cases']):.3f}"
+    n = max(1, s["cases"])
+    cached = s.get("tokens_cached", 0) / max(1, s["tokens_in"])
     return (f"| {who} | {out.get('cases_file', '')} | {s['correct']}/{s['cases']} | {pct(s['threat_precision'])} | "
-            f"{pct(s['threat_recall'])} | {s['false_positives']} | {round(s['seconds'] / max(1, s['cases']))} s | "
-            f"{round((s['tokens_in'] + s['tokens_out']) / max(1, s['cases']) / 1000)}k | {cost} | "
+            f"{pct(s['threat_recall'])} | {s['false_positives']} | {round(s['seconds'] / n)} s | "
+            f"{round(s['tokens_in'] / n / 1000)}k ({cached:.0%} cached) | {round(s['tokens_out'] / n / 1000, 1)}k | "
             f"{out['when'][:10]} | {out.get('actaeon', '')} |")

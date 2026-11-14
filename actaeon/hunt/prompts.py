@@ -42,6 +42,9 @@ Rules:
 - For "unusual", "new" or "rare" hypotheses, stack first: least common values (top_values with rare) or values
   first seen against a baseline (first_seen), then look closer at the few outliers.
 - Prefer few, precise queries. Do not repeat a call you already made.
+- Stop as soon as the evidence answers the hypothesis either way: once you have the activity plus the
+  corroboration above, or you have searched the data the hypothesis needs and found nothing, give the verdict.
+  More calls that only confirm what you already know cost time and tokens and do not make the verdict better.
 {OUTCOME_HELP}
 {SYSTEM_RULE}"""
 

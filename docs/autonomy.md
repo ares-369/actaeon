@@ -48,7 +48,7 @@ environment:
 intel:
   web:
     auto_hunt: true
-    max_hunts_per_pull: 3                   # cost cap; the rest are recorded as relevant but not hunted
+    max_hunts_per_pull: 3                   # hunt limit; the rest are recorded as relevant but not hunted
     relevance:
       model: true                           # false: the term match alone decides
       min_score: 50

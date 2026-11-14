@@ -56,16 +56,9 @@ Prompts to cloud providers are masked by default. See [privacy.md](privacy.md).
 
 Claude, Gemini and OpenAI-compatible providers offer the hunt actions as native tools. If the model or gateway rejects tools, Actaeon retries the same request without them and uses the JSON action protocol. Set `native_tools: false` on a provider to always use the JSON protocol.
 
-## Usage and cost
+## Token usage
 
-Every hunt records model calls and tokens (in and out) per model; the hunt page, the
-reports and `actaeon bench` show them. To see an estimated cost, list your prices in
-USD per million tokens:
-
-```yaml
-llm:
-  prices:
-    "<model name>": { in: 0.30, out: 2.50 }
-```
-
-Prices are yours to keep current; Actaeon does not look them up.
+Every hunt records, per model, the model calls and the tokens: input, the part of the input the
+provider served from its prompt cache (Gemini, Claude and OpenAI-compatible providers report it),
+and output (with any thinking tokens). The hunt page, the reports and `actaeon bench` show them.
+Gemini's thinking can be limited with `thinking_budget` or `thinking_level` on the provider.

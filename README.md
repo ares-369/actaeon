@@ -113,7 +113,7 @@ in code, not only in prompts:
   always blocked, whatever the configuration says.
 - **Query guard.** Queries need a time window when the tool takes one. Result sizes, time per query,
   tool calls and runtime per hunt are capped, and tokens per hunt can be. Each connector is
-  rate-limited. Costly leading wildcards are refused on log indices.
+  rate-limited. Leading wildcards, which force the index to scan every value, are refused on log indices.
 - **Untrusted data.** Every tool result is wrapped in random markers and treated as data. Text in
   the logs that matches known prompt-injection patterns becomes a high-severity lead of its own.
 - **Evidence checks.** A claim that cites nothing real is dropped, and the verdict is downgraded.

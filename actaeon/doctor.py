@@ -1,7 +1,7 @@
 """``actaeon doctor``: check a deployment end to end and say what to fix.
 
 Each check returns OK, WARN or FAIL with a hint. Network checks (connector probes)
-run unless ``offline``; model checks only with ``models=True`` because they cost
+run unless ``offline``; model checks only with ``models=True`` because they use
 a model call per role.
 """
 

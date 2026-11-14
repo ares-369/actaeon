@@ -45,7 +45,7 @@ class HuntLimits:
     max_runtime_sec: int = 900
     max_results: int = 200
     max_parse_failures: int = 3
-    compact: bool = False          # shorter prompts for cheaper or smaller models
+    compact: bool = False          # shorter prompts (fewer tokens) for smaller models
     max_tokens: int = 0            # model tokens (in + out) per hunt before it must give a verdict; 0 = no cap
 
 
@@ -443,7 +443,9 @@ class HuntEngine:
                                 why=str(action.get("thought", "")), ok=ok, ms=ms, result=content,
                                 note="; ".join(notes))
             self._emit({"type": "step", "hunt_id": hid, "n": n, "tool": f"{connector}.{tool}", "ok": ok})
-            head = f"{eid} result of {connector}.{tool}" + (f" ({'; '.join(notes)})" if notes else "") + ":\n"
+            used = calls
+            budget = f" [tool calls used {used} of {self.limits.max_steps}]"
+            head = f"{eid} result of {connector}.{tool}" + (f" ({'; '.join(notes)})" if notes else "") + budget + ":\n"
             transcript.append({"role": "user", "content": head + content, "_result": True})
             inj = scan_injection(content) if ok else []
             if inj:

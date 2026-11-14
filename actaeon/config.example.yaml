@@ -101,7 +101,7 @@ hunt:
   max_query_sec: 120         # one tool call, retries included (also never past max_runtime_sec); 0 = no cap
   library_dirs: []           # extra hunt-pack folders (one YAML per hunt, see docs/hunt-packs.md)
   max_tokens: 0              # model tokens (in + out) per hunt; when reached the hunt must give its verdict. 0 = no cap
-  prompt_mode: full          # full | compact (shorter prompts for cheaper models)
+  prompt_mode: full          # full | compact (shorter prompts, fewer tokens, for small models)
   handoff: [inconclusive, logs_missing, unverified_threat, error, known_good_threat, injection]   # hand these to an analyst
 
 # Replies from a ticket system continue a hunt: POST /api/tickets/reply (see docs/outputs.md).
@@ -138,7 +138,7 @@ intel:
   web:                        # web intel (see docs/autonomy.md)
     interval_minutes: 0       # > 0: pull sources on a schedule
     auto_hunt: false          # start an advisory hunt for each new advisory that is relevant here
-    max_hunts_per_pull: 3     # cost cap per pull
+    max_hunts_per_pull: 3     # at most this many hunts per pull
     relevance: {model: true, min_score: 50, terms: []}   # see docs/autonomy.md
     tools: false              # give hunts public-web lookups (fetch_page, search_web)
     search_url: ""            # JSON search endpoint for search_web (optional)

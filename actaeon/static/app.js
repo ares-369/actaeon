@@ -54,8 +54,8 @@ const post = (url, body) => api(url, body || {}, "POST");
 const usageText = (hu) => {
   const u = hu.models && hu.models.usage;
   if (!u || !u.calls) return "";
-  const cost = u.cost_usd !== null && u.cost_usd !== undefined ? ", about " + "$" + u.cost_usd.toFixed(4) : "";
-  return `  model: ${u.calls} calls, ${u.tokens_in + u.tokens_out} tokens${cost}`;
+  const cached = u.tokens_cached ? ` (${u.tokens_cached} cached)` : "";
+  return `  model: ${u.calls} calls, ${u.tokens_in} tokens in${cached}, ${u.tokens_out} out`;
 };
 const when = (s) => (s || "").replace("T", " ").slice(0, 16);
 

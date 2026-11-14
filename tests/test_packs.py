@@ -215,8 +215,7 @@ def test_bench_model_overrides(home):
     with pytest.raises(ValueError):
         with_models(cfg, role_models=["boss=ollama/x"])
     row = markdown_row({"score": {"cases": 8, "correct": 7, "threat_precision": 1.0, "threat_recall": 0.75,
-                                  "false_positives": 0, "seconds": 800, "tokens_in": 400000, "tokens_out": 8000,
-                                  "cost_usd": None},
+                                  "false_positives": 0, "seconds": 800, "tokens_in": 400000, "tokens_out": 8000},
                         "models": {r: {"provider": "ollama", "model": "q"} for r in ("planner", "analyst")},
                         "when": "2026-11-14T00:00:00", "actaeon": "0.1.0b1", "cases_file": "built-in demo cases"})
-    assert row.startswith("| ollama/q | built-in demo cases | 7/8 | 1.00 | 0.75 | 0 | 100 s | 51k | n/a |")
+    assert row.startswith("| ollama/q | built-in demo cases | 7/8 | 1.00 | 0.75 | 0 | 100 s | 50k (0% cached) | 1.0k |")

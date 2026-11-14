@@ -74,8 +74,9 @@ def hunt_doc(h: dict, *, lead: dict | None = None) -> dict:
                                          if isinstance(m, dict) and "provider" in m)))
         u = h["models"].get("usage") or {}
         if u.get("calls"):
-            meta.append(("Model use", f"{u['calls']} calls, {u['tokens_in']:,} tokens in, {u['tokens_out']:,} out"
-                         + (f", about ${u['cost_usd']:.4f}" if u.get("cost_usd") is not None else "")))
+            meta.append(("Model use", f"{u['calls']} calls, {u['tokens_in']:,} tokens in"
+                         + (f" ({u['tokens_cached']:,} cached)" if u.get("tokens_cached") else "")
+                         + f", {u['tokens_out']:,} out"))
     if lead:
         meta.append(("Lead", f"#{lead['id']} {lead['status']} {lead.get('resolution') or ''}".strip()))
     return {"title": f"Hunt report: {h['hypothesis'][:120]}", "blocks": [("kv", meta), *_hunt_blocks(h)]}

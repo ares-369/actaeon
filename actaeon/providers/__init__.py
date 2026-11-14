@@ -142,31 +142,14 @@ class LLM:
         self.usage: dict[str, dict] = {}   # totals for everything asked through this LLM
 
     def usage_summary(self, usage: dict | None = None) -> dict:
-        """Calls and tokens per model, plus an estimated cost when ``llm.prices`` lists the model
-        (USD per million tokens: {model: {in: x, out: y, cached: z}}; ``cached`` is the price of input
-        served from the provider's prompt cache, defaulting to ``in``). ``usage``: a meter to summarise
-        instead of this LLM's running total (each hunt keeps its own)."""
+        """Model calls and tokens per model (input, of which cached by the provider's prompt cache, and
+        output). ``usage``: a meter to summarise instead of this LLM's running total (each hunt keeps its own)."""
         usage = self.usage if usage is None else usage
-        prices = ((self.cfg.raw or {}).get("llm") or {}).get("prices") or {}
-        out, total_cost, priced = {}, 0.0, True
-        for key, u in usage.items():
-            row = dict(u)
-            p = prices.get(key.split("/", 1)[-1]) or prices.get(key)
-            if isinstance(p, dict):
-                cached = min(int(u.get("tokens_cached", 0) or 0), int(u["tokens_in"]))
-                row["cost_usd"] = round((u["tokens_in"] - cached) / 1e6 * float(p.get("in", 0))
-                                        + cached / 1e6 * float(p.get("cached", p.get("in", 0)))
-                                        + u["tokens_out"] / 1e6 * float(p.get("out", 0)), 5)
-                total_cost += row["cost_usd"]
-            else:
-                priced = False
-            out[key] = row
-        return {"models": out,
+        return {"models": {k: dict(v) for k, v in usage.items()},
                 "calls": sum(u["calls"] for u in usage.values()),
                 "tokens_in": sum(u["tokens_in"] for u in usage.values()),
                 "tokens_out": sum(u["tokens_out"] for u in usage.values()),
-                "tokens_cached": sum(int(u.get("tokens_cached", 0) or 0) for u in usage.values()),
-                "cost_usd": round(total_cost, 5) if out and priced else None}
+                "tokens_cached": sum(int(u.get("tokens_cached", 0) or 0) for u in usage.values())}
 
     def provider(self, name: str) -> LLMProvider:
         if name not in self._cache:
