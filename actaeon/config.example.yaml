@@ -116,6 +116,18 @@ database:
   url: ""
   schema: actaeon
 
+# Inventory drift: what is new on each host since the last snapshot (no model). See docs/drift.md.
+drift:
+  interval_minutes: 0
+  escalate: false
+  targets: []
+#    - name: listening-ports
+#      connector: inventory
+#      index: "inventory-ports-*"
+#      host_field: host.name
+#      item_fields: [source.port, network.transport, process.name]
+#      query: "interface.state:listening"
+
 # Identity for the scheduler's own work (sweeps, autopilot, web intel); see docs/access.md.
 # Without it that work may use every connector. Saved-hunt replays always run as their owner.
 #scheduler:

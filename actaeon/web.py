@@ -336,6 +336,22 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
                            task="autopilot", params={})
         return jsonify({"job_id": jid}), 202
 
+    @app.route("/api/drift")
+    def drift_status():
+        from .hunt.drift import DriftStore, targets
+        c = get_config()
+        return jsonify({"targets": targets(c), "status": DriftStore(store_for(c).path).status(),
+                        "runs": [h for h in store_for(c).list(limit=20, origin="drift:")]})
+
+    @app.route("/api/drift/run", methods=["POST"])
+    def drift_run():
+        c = get_config()
+        only = str((request.get_json(silent=True) or {}).get("name", "") or "") or None
+        jid = hs.start_job(jobs, "drift", {"drift": True, "only": only},
+                           lambda: hs.run_drift(c, only=only, jobs=jobs, actor=_actor() or "manual"),
+                           task="drift", params={"only": only, "actor": _actor() or "manual"})
+        return jsonify({"job_id": jid}), 202
+
     @app.route("/api/intel/sweep", methods=["POST"])
     def intel_sweep():
         c = get_config()

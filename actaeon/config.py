@@ -180,6 +180,9 @@ def load_config() -> Config:
     validate_privacy(data.get("privacy") or {})
     from .outputs import validate as validate_outputs
     validate_outputs(list(data.get("outputs") or []))
+    from .hunt.drift import validate_target
+    for t in ((data.get("drift") or {}).get("targets") or []):
+        validate_target(t)
     env = data.get("environment") or {}
     if not isinstance(env, dict):
         raise ValueError("environment: must be a mapping (summary, platforms, crown_jewels, not_present, notes)")

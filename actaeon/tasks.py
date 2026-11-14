@@ -37,6 +37,11 @@ def actor_sweep(p: dict, ctl, jobs) -> dict:
     return {"hunt_id": run(_cfg(), p["slug"], actor=p.get("actor", "campaign")).get("id")}
 
 
+def drift(p: dict, ctl, jobs) -> dict:
+    from .hunt.service import run_drift
+    return {"hunt_id": run_drift(_cfg(), only=p.get("only"), jobs=jobs, actor=p.get("actor", "scheduler")).get("id")}
+
+
 def web_intel(p: dict, ctl, jobs) -> dict:
     from .hunt.service import run_web_intel
     return {"hunt_id": run_web_intel(_cfg(), jobs=jobs, only=p.get("only")).get("id")}
@@ -63,7 +68,7 @@ def ticket_reply(p: dict, ctl, jobs) -> dict:
 
 
 TASKS: dict[str, Any] = {"hunt": hunt, "replay": replay, "sweep": sweep, "actor-sweep": actor_sweep,
-                         "web-intel": web_intel, "autopilot": autopilot, "chat": chat, "ask": assistant,
+                         "web-intel": web_intel, "drift": drift, "autopilot": autopilot, "chat": chat, "ask": assistant,
                          "ticket-reply": ticket_reply}
 
 

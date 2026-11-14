@@ -519,6 +519,22 @@ async function library() {
     h("p", { class: "muted small" }, "Replays run the saved searches again without a model and flag matches for review."),
     h("table", {}, h("thead", {}, h("tr", {}, ["Name", "Every (min)", "On", "Last run", "Hits", ""].map((x) => h("th", {}, x)))),
       h("tbody", {}, rows.length ? rows : h("tr", {}, h("td", { colspan: 6, class: "muted" }, "Nothing saved yet. Open a finished hunt and save it."))))));
+  const dr = await api("/api/drift");
+  const stat = Object.fromEntries((dr.status || []).map((x) => [x.target, x]));
+  main.append(section("Inventory drift", "compare-horizontal",
+    h("p", { class: "muted small" }, "What is new on each host since the last snapshot (processes, ports, accounts, services...). No model is used. Set targets under drift: in config.yaml."),
+    (dr.targets || []).length
+      ? h("table", {}, h("thead", {}, h("tr", {}, ["Target", "Source", "Hosts", "Items stored", "Last snapshot", ""].map((x) => h("th", {}, x)))),
+          h("tbody", {}, dr.targets.map((t) => h("tr", {},
+            h("td", {}, h("b", {}, t.label), h("div", { class: "muted small" }, t.item_fields.join(", "))),
+            h("td", { class: "small" }, `${t.connector} ${t.index}`),
+            h("td", {}, (stat[t.name] || {}).hosts ?? "-"),
+            h("td", {}, (stat[t.name] || {}).items ?? "-"),
+            h("td", { class: "small" }, when((stat[t.name] || {}).last_seen) || "never"),
+            h("td", {}, h("button", { "data-need": "op", class: "ghost", onclick: async () => { await post("/api/drift/run", { name: t.name }); toast("Drift run queued"); } }, icon("play"), "Run"))))))
+      : h("p", { class: "muted small" }, "No drift targets configured."),
+    (dr.runs || []).length ? [h("h3", {}, "Recent runs"), h("ul", {}, dr.runs.slice(0, 8).map((r) => h("li", { class: "small" },
+      h("a", { href: "#hunt/" + r.id }, when(r.created)), ` ${r.origin.replace("drift:", "")}: ${(r.verdict || {}).summary || r.status}`)))] : null));
   main.append(section("Starter hypotheses", "lightbulb-outline",
     h("table", {}, h("tbody", {}, d.starters.map((s) => h("tr", {},
       h("td", {}, h("b", {}, s.name), h("div", { class: "small" }, s.hypothesis)),

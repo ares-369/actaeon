@@ -294,6 +294,24 @@ def _replay(cfg, saved: dict, *, hub=None, llm=None, jobs=None, actor: str = "sc
     return res
 
 
+def run_drift(cfg, *, only: str | None = None, hub=None, jobs=None, actor: str = "scheduler", llm=None) -> dict:
+    """Inventory drift for every target (or one): store each run as a hunt, open leads for what is new,
+    and with ``drift.escalate`` start a model hunt for the new items. Returns the last hunt."""
+    from .drift import run as drift_run
+    hunts = drift_run(cfg, _hub(cfg, hub), store_for(cfg), only=only, actor=actor)
+    last: dict = {"id": None}
+    for h in hunts:
+        h = send_outputs(cfg, handoff(cfg, h), hub=hub)
+        last = h
+        v = h.get("verdict") or {}
+        if ((cfg.raw or {}).get("drift") or {}).get("escalate") and v.get("findings") and jobs is not None:
+            items = "\n".join(f"- {f['claim']}" for f in v["findings"][:40])
+            start_hunt(jobs, cfg, "Something new appeared in the host inventory since the last snapshot; decide "
+                       "whether any of it is malicious persistence or access.", actor=actor,
+                       origin=f"escalated:{h['id']}", context=f"New since the last snapshot:\n{items}", llm=llm, hub=hub)
+    return last
+
+
 def run_sweep(cfg, *, full: bool = False, hub=None, actor: str = "scheduler", llm=None) -> dict:
     settings = (cfg.intel or {}).get("sweep") or {}
     if settings.get("triage") == "model" and llm is None:

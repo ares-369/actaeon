@@ -178,7 +178,7 @@ class ConnectorHub:
 
     # ---- calls ----
     def call(self, name: str, tool: str, arguments: dict[str, Any], *, actor: str = "", hunt_id: str = "",
-             deadline: float | None = None) -> dict:
+             deadline: float | None = None, max_bytes: int | None = None) -> dict:
         """Call one tool. Returns the output wrapped as untrusted data.
 
         Time: every attempt (retries included) must finish within ``hunt.max_query_sec`` of the first,
@@ -224,7 +224,8 @@ class ConnectorHub:
                        else client.call_tool(tool, arguments, timeout=left))
                 text = _result_text(res)
                 status = "tool_error" if res.get("isError") else "ok"
-                out = wrap(name, tool, text, self.max_result_bytes)
+                # max_bytes: callers that do not show the result to a model (drift) may read more
+                out = wrap(name, tool, text, max(self.max_result_bytes, int(max_bytes or 0)))
                 out["is_error"] = bool(res.get("isError"))
                 if spec.access and hunt_id:
                     self._mark_restricted(hunt_id, name)

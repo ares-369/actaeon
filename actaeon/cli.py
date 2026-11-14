@@ -346,6 +346,20 @@ def cmd_phase5(a) -> int:
     from .hunt import service as hs
     from .hunt.library import starters
     cfg = get_config()
+    if a.cmd == "drift":
+        from .hunt.drift import DriftStore, targets
+        if not targets(cfg):
+            print("no drift targets configured (drift.targets in config.yaml; see docs/drift.md)")
+            return 1
+        if a.action == "status":
+            for r in DriftStore(hs.store_for(cfg).path).status():
+                print(f"{r['target']:20} hosts {r['hosts']:>4}  items {r['items'] or 0:>6}  last {r['last_seen']}")
+            return 0
+        h = hs.run_drift(cfg, only=a.name, actor="cli")
+        if h.get("id"):
+            _print_verdict(h["verdict"])
+            print(f"\nhunt id {h['id']}")
+        return 0
     if a.cmd == "sweep":
         h = hs.run_sweep(cfg, full=a.full, actor="cli")
         _print_verdict(h["verdict"])
@@ -654,6 +668,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_r.add_argument("--format", default="pdf", choices=["pdf", "docx", "md"])
     p_r.add_argument("--days", type=int, default=7)
     p_r.add_argument("-o", "--output", default="")
+    p_dr = sub.add_parser("drift", help="inventory drift: what is new on each host since the last snapshot (no model)")
+    p_dr.add_argument("action", nargs="?", choices=["run", "status"], default="run")
+    p_dr.add_argument("name", nargs="?", help="run one target only")
     p_sw = sub.add_parser("sweep", help="search logs for new or changed intel indicators (no model)")
     p_sw.add_argument("--full", action="store_true", help="sweep every indicator, not only changed ones")
     p_note = sub.add_parser("note", help="add an analyst note to hunt memory")
@@ -814,7 +831,7 @@ def cli_main(argv: list[str] | None = None) -> None:
         return
     if a.cmd == "library" and a.action == "validate":
         sys.exit(cmd_validate_pack(a.id))
-    if a.cmd in ("library", "sweep", "note"):
+    if a.cmd in ("library", "sweep", "note", "drift"):
         sys.exit(cmd_phase5(a))
     if a.cmd == "connectors":
         if a.action == "login":

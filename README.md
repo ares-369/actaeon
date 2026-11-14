@@ -93,6 +93,7 @@ flowchart TD
 | Area | What you get |
 |---|---|
 | Hunting | Hypothesis hunts, saved hunts with scheduled replays, advisory-driven hunts, threat-actor and campaign hunts, an intel sweep over the indicator ledger |
+| Inventory drift | What is new on each host since the last snapshot (listening ports, accounts, services, processes), with no model; new items open a lead ([drift](docs/drift.md)) |
 | Hunt library | 65 ATT&CK-mapped hypotheses as one YAML file per hunt, a validator, and your own private packs alongside ([hunt packs](docs/hunt-packs.md)) |
 | Sources | Any MCP server, plus built-in bridges for search indices, read-only SQL, STIX/TAXII 2.1 and REST/OpenAPI services. Each connector can carry query notes and examples in its own query language. `actaeon connectors check` tests a connector, and a one-file template helps you write your own |
 | Intel | A local indicator and advisory store with first/last-seen tracking. Paste IOCs, import files, PDFs or URLs, or pull feeds. Export as STIX 2.1, or push a hunt's indicators to a TAXII 2.1 collection |
@@ -198,6 +199,7 @@ not in this repository.
 |---|---|
 | Hunting, limits, verdicts, chat | [docs/hunting.md](docs/hunting.md) |
 | Saved hunts, schedules, sweeps, memory | [docs/library.md](docs/library.md) |
+| Inventory drift | [docs/drift.md](docs/drift.md) |
 | Hunt packs (writing and sharing hypotheses) | [docs/hunt-packs.md](docs/hunt-packs.md) |
 | Connectors and bridges | [docs/connectors.md](docs/connectors.md), [docs/bridges.md](docs/bridges.md) |
 | Intel store and feeds | [docs/intel.md](docs/intel.md) |

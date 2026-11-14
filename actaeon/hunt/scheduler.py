@@ -24,6 +24,7 @@ class Scheduler:
         self._last_sweep: datetime | None = None
         self._last_web: datetime | None = None
         self._last_autopilot: datetime | None = None
+        self._last_drift: datetime | None = None
         self._thread: threading.Thread | None = None
         self._lockfile = None
 
@@ -99,6 +100,14 @@ class Scheduler:
             queued.append(service.start_job(self.jobs, "web-intel", {"web": True},
                                             lambda: service.run_web_intel(self.cfg, jobs=self.jobs),
                                             task="web-intel", params={}))
+        dr = (self.cfg.raw or {}).get("drift") or {}
+        devery = int(dr.get("interval_minutes", 0) or 0)
+        if devery > 0 and dr.get("targets") and (self._last_drift is None
+                                                 or (now - self._last_drift).total_seconds() >= devery * 60):
+            self._last_drift = now
+            queued.append(service.start_job(self.jobs, "drift", {"drift": True},
+                                            lambda: service.run_drift(self.cfg, jobs=self.jobs),
+                                            task="drift", params={}))
         ap = (self.cfg.raw or {}).get("autopilot") or {}
         aevery = int(ap.get("interval_minutes", 0) or 0)
         if aevery > 0 and (self._last_autopilot is None
