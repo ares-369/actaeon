@@ -65,6 +65,11 @@ jobs:
           python -m build -o dist .
           python -m twine check dist/*
           python -m venv /tmp/v && /tmp/v/bin/pip install dist/*.whl
+          # stay light: five required packages, and a small wheel
+          core=$(/tmp/v/bin/python -c "import importlib.metadata as m; print(sum('extra ==' not in r for r in m.requires('actaeon')))")
+          size=$(stat -c %s dist/*.whl)
+          echo "required packages: $core, wheel: $size bytes"
+          test "$core" -eq 5 && test "$size" -lt 1500000
           cd /tmp && export HOME=/tmp/home
           /tmp/v/bin/actaeon version
           /tmp/v/bin/actaeon init
@@ -72,6 +77,7 @@ jobs:
           for i in $(seq 1 30); do curl -fs http://127.0.0.1:8697/healthz && break; sleep 1; done
           curl -fs -o /dev/null http://127.0.0.1:8697/
           curl -fs -o /dev/null http://127.0.0.1:8697/static/mdi/LICENSE
+          curl -fs -o /dev/null http://127.0.0.1:8697/static/mdi/fonts/icons.woff2
 
   docker:
     name: Container build and health check

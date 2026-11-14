@@ -66,7 +66,7 @@ def test_ui_loads_nothing_from_outside():
         assert not re.search(r"(src|href)\s*=\s*[\"']https?://", text), p
         assert not re.search(r"url\(\s*[\"']?https?://", text), p
         assert not re.search(r"\b(fetch|import)\(\s*[\"'`]https?://", text), p
-    css = (ROOT / "actaeon/static/mdi/css/materialdesignicons.min.css").read_text()
+    css = (ROOT / "actaeon/static/mdi/css/icons.css").read_text()
     assert not re.search(r"url\(\s*[\"']?https?://", css)
 
 
