@@ -89,6 +89,8 @@ def test_init_postgres_writes_env(tmp_path, monkeypatch, capsys):
 
 def test_child_env(monkeypatch):
     monkeypatch.delenv("ACTAEON_DB_URL", raising=False)
+    monkeypatch.delenv("ACTAEON_DB_SCHEMA_PER_DIR", raising=False)
+    monkeypatch.delenv("ACTAEON_DB_SCHEMA", raising=False)
     db.configure("")
     assert db.child_env() == {}
     from actaeon.connectors.hub import local_intel_connector
