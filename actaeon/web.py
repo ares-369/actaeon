@@ -336,6 +336,19 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
                            task="autopilot", params={})
         return jsonify({"job_id": jid}), 202
 
+    @app.route("/api/entities")
+    def entities_list():
+        a = request.args
+        c = get_config()
+        return jsonify(hs.entities_for(c).summary(c, type_=a.get("type") or None, q=a.get("q", ""),
+                                                  recurring_only=a.get("recurring") in ("1", "true"),
+                                                  limit=min(1000, int(a.get("limit", 200)))))
+
+    @app.route("/api/entities/<etype>/<path:value>")
+    def entity_history(etype, value):
+        rows = hs.entities_for(get_config()).history(etype, value)
+        return (jsonify(rows), 200) if rows else (jsonify({"error": "not found"}), 404)
+
     @app.route("/api/drift")
     def drift_status():
         from .hunt.drift import DriftStore, targets

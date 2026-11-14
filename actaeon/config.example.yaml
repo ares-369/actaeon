@@ -116,6 +116,11 @@ database:
   url: ""
   schema: actaeon
 
+# Entities across hunts: "recurring" = in this many hunts within the window, at least one unresolved.
+entities:
+  recurring_hunts: 3
+  window_days: 14
+
 # Inventory drift: what is new on each host since the last snapshot (no model). See docs/drift.md.
 drift:
   interval_minutes: 0

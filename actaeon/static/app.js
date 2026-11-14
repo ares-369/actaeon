@@ -66,7 +66,7 @@ function route() {
   const navTab = { hunt: "hunts", lead: "leads" }[tab] || tab;
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === navTab));
   const pages = { leads, lead: () => leadDetail(arg), hunts, hunt: () => huntDetail(arg), ask, library, intel,
-    coverage, reports, connectors, settings };
+    entities: () => entities(arg), coverage, reports, connectors, settings };
   const token = ++navToken;
   const view = h("div");
   main = view;
@@ -627,6 +627,47 @@ async function intel() {
 }
 
 // ---------------- Coverage ----------------
+// ---------------- Entities ----------------
+async function entities(arg) {
+  if (arg) {
+    const [type, ...rest] = arg.split(":");
+    const value = decodeURIComponent(rest.join(":"));
+    const rows = await api(`/api/entities/${encodeURIComponent(type)}/${encodeURIComponent(value)}`);
+    main.append(section(`${type}: ${value}`, "account-network-outline",
+      h("p", { class: "muted small" }, h("a", { href: "#entities" }, "All entities"), " · every hunt whose findings relied on it, newest first."),
+      Array.isArray(rows) && rows.length
+        ? h("table", {}, h("thead", {}, h("tr", {}, ["When", "Outcome", "Origin", "Evidence", ""].map((x) => h("th", {}, x)))),
+            h("tbody", {}, rows.map((r) => h("tr", {},
+              h("td", { class: "small" }, when(r.created)), h("td", {}, badge(r.outcome), r.needs_review ? h("span", { class: "small muted" }, " review") : null),
+              h("td", { class: "small muted" }, r.origin || "-"), h("td", { class: "small" }, (r.evidence || []).join(", ")),
+              h("td", {}, h("a", { href: "#hunt/" + r.hunt_id }, "open"))))))
+        : h("p", { class: "muted" }, "No hunts you can see relied on this entity.")));
+    return;
+  }
+  const q = h("input", { placeholder: "search, e.g. a host name, user or IP", class: "grow" });
+  const type = h("select", {}, ["", "host", "user", "process", "ip", "domain", "url", "hash", "email"].map((t) => h("option", { value: t }, t || "any type")));
+  const only = h("input", { type: "checkbox" });
+  const box = h("div");
+  const load = async () => {
+    const p = new URLSearchParams({ q: q.value, type: type.value, recurring: only.checked ? "1" : "" });
+    const rows = await api("/api/entities?" + p.toString());
+    fill(box, rows.length
+      ? h("table", {}, h("thead", {}, h("tr", {}, ["", "Type", "Value", "Hunts", "Recent", "Unresolved", "Last seen"].map((x) => h("th", {}, x)))),
+          h("tbody", {}, rows.map((e) => h("tr", {},
+            h("td", {}, e.recurring ? h("span", { class: "badge b-inconclusive", title: "In several recent hunts, at least one unresolved" }, "recurring") : null),
+            h("td", { class: "small" }, e.type),
+            h("td", {}, h("a", { href: `#entities/${e.type}:${encodeURIComponent(e.value)}` }, e.value)),
+            h("td", {}, e.hunts), h("td", {}, e.recent), h("td", {}, e.unresolved_recent),
+            h("td", { class: "small" }, when(e.last_seen))))))
+      : h("p", { class: "muted" }, "No entities yet. They are recorded from the findings of finished hunts."));
+  };
+  main.append(section("Entities", "account-network-outline",
+    h("p", { class: "muted small" }, "Hosts, users, processes, IPs, domains and hashes that hunt findings relied on. 'Recurring' means seen in several recent hunts with at least one unresolved: spread-out activity a single hunt can miss."),
+    h("div", { class: "row" }, q, type, h("label", { class: "small" }, only, " recurring only"),
+      h("button", { class: "ghost", onclick: load }, icon("magnify"), "Search")), box));
+  await load();
+}
+
 async function coverage() {
   const c = await api("/api/coverage");
   const s = c.summary;

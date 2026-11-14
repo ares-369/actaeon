@@ -346,6 +346,20 @@ def cmd_phase5(a) -> int:
     from .hunt import service as hs
     from .hunt.library import starters
     cfg = get_config()
+    if a.cmd == "entities":
+        es = hs.entities_for(cfg)
+        if a.value:
+            rows = es.history(a.type or "host", a.value) if a.type else next(
+                (r for r in (es.history(t, a.value) for t in ("host", "user", "ip", "domain", "process", "hash",
+                                                               "url", "email")) if r), [])
+            for r in rows:
+                print(f"{r['created'][:16]}  {r['outcome'] or '-':22} {r['origin'][:24]:24} hunt {r['hunt_id']} "
+                      f"{','.join(r['evidence'])}")
+            return 0 if rows else 1
+        for e in es.summary(cfg, type_=a.type, recurring_only=a.recurring):
+            print(f"{'RECURRING ' if e['recurring'] else '          '}{e['type']:8} {e['value'][:50]:50} "
+                  f"hunts {e['hunts']:>3} (recent {e['recent']}, unresolved {e['unresolved_recent']})")
+        return 0
     if a.cmd == "drift":
         from .hunt.drift import DriftStore, targets
         if not targets(cfg):
@@ -668,6 +682,10 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_r.add_argument("--format", default="pdf", choices=["pdf", "docx", "md"])
     p_r.add_argument("--days", type=int, default=7)
     p_r.add_argument("-o", "--output", default="")
+    p_en = sub.add_parser("entities", help="hosts, users, IPs... that hunts relied on, and which keep recurring")
+    p_en.add_argument("value", nargs="?", help="show one entity's history")
+    p_en.add_argument("--type", default=None)
+    p_en.add_argument("--recurring", action="store_true")
     p_dr = sub.add_parser("drift", help="inventory drift: what is new on each host since the last snapshot (no model)")
     p_dr.add_argument("action", nargs="?", choices=["run", "status"], default="run")
     p_dr.add_argument("name", nargs="?", help="run one target only")
@@ -831,7 +849,7 @@ def cli_main(argv: list[str] | None = None) -> None:
         return
     if a.cmd == "library" and a.action == "validate":
         sys.exit(cmd_validate_pack(a.id))
-    if a.cmd in ("library", "sweep", "note", "drift"):
+    if a.cmd in ("library", "sweep", "note", "drift", "entities"):
         sys.exit(cmd_phase5(a))
     if a.cmd == "connectors":
         if a.action == "login":

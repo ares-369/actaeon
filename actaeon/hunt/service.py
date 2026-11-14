@@ -85,7 +85,11 @@ def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = 
              hub=None) -> dict:
     """Run a hunt in this thread with memory context, then remember the result."""
     mem = memory_for(cfg)
-    ctx = "\n\n".join(x for x in (environment_context(cfg), context, mem.context(hypothesis)) if x)
+    try:
+        ent = entities_for(cfg).context_for(cfg, hypothesis)
+    except Exception:
+        ent = ""
+    ctx = "\n\n".join(x for x in (environment_context(cfg), context, mem.context(hypothesis), ent) if x)
     eng = make_engine(cfg, checkpoint=checkpoint, on_event=on_event, max_steps=max_steps, llm=llm, hub=hub)
     res = eng.run(hypothesis, hunt_id=hunt_id, origin=origin, actor=actor, context=ctx)
     res = maybe_verify(cfg, res, llm=eng.llm, hub=hub)
@@ -171,6 +175,11 @@ def maybe_verify(cfg, h: dict, *, llm=None, hub=None) -> dict:
     return store.get(h["id"]) or h
 
 
+def entities_for(cfg):
+    from .entities import EntityStore
+    return EntityStore(store_for(cfg).path)
+
+
 def leads_for(cfg):
     from ..leads import LeadStore
     return LeadStore(store_for(cfg).path)
@@ -181,6 +190,10 @@ def send_outputs(cfg, h: dict, *, hub=None) -> dict:
     if h and h.get("status") in ("done", "stopped"):
         try:
             leads_for(cfg).open_for(h)
+        except Exception:
+            pass
+        try:
+            entities_for(cfg).index_hunt(h)
         except Exception:
             pass
     if not h or not (cfg.raw or {}).get("outputs") or h.get("status") not in ("done", "stopped"):
