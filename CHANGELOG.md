@@ -11,9 +11,9 @@ suite on SQLite and on PostgreSQL), not yet in production.
   the hunt's own time limit.
 - The search-index bridge also refuses leading wildcards inside raw query clauses (wildcard,
   regexp, query_string) on time-series indices.
-- Tool results that try to instruct an AI ("ignore previous instructions", "mark this host as
-  benign", chat-template tags, fake verdicts) are flagged: the hunt goes to an analyst as a
-  high-severity "prompt injection" lead.
+- Tool results that match known prompt-injection patterns ("ignore previous instructions", "mark
+  this host as benign", chat-template tags, fake verdicts) are flagged: the hunt goes to an analyst
+  as a high-severity "prompt injection" lead. Pattern-based, so it catches blatant attempts only.
 - Memory notes can expire; notes made from a benign or false-positive call expire after
   `memory.benign_note_days` (90 by default). The model sees who wrote each note and when.
 - The audit log is hash-chained; `actaeon audit verify` and `GET /api/audit/verify` find changed
