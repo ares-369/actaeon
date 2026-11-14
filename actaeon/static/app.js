@@ -255,8 +255,24 @@ async function hunts() {
     const r = await api("/api/hunts", { hypothesis: hyp.value, max_steps: steps.value ? +steps.value : undefined });
     location.hash = "#hunt/" + r.hunt_id;
   };
+  const planBox = h("div");
+  const planOnly = async (e) => {
+    if (!hyp.value.trim()) return toast("Write a hypothesis first.");
+    e.target.disabled = true; fill(planBox, h("p", { class: "muted small" }, "Planning (no data is queried)..."));
+    try {
+      const r = await api("/api/hunts/plan", { hypothesis: hyp.value });
+      if (r.error) { fill(planBox, h("p", { class: "warn small" }, r.error)); return; }
+      const p = r.plan;
+      fill(planBox, h("p", { class: "small" }, p.summary, " ", h("span", { class: "muted" }, (p.attack || []).join(", "))),
+        h("ul", {}, p.steps.map((s) => h("li", { class: "small" }, h("code", {}, s.role), " ", s.goal))),
+        (p.missing_roles || []).length ? h("p", { class: "warn small" }, "No connector for: " + p.missing_roles.join(", ") + " (that part would be logs_missing)") : null,
+        h("p", { class: "muted small" }, "Nothing was queried and no hunt was stored. The queries are written during the hunt."));
+    } finally { e.target.disabled = false; }
+  };
   main.append(section("New hunt", "target", hyp,
-    h("div", { class: "row" }, pick, steps, h("button", { "data-need": "op", onclick: start }, icon("play"), "Start hunt"))));
+    h("div", { class: "row" }, pick, steps,
+      h("button", { "data-need": "op", class: "ghost", onclick: planOnly, title: "Show the plan without querying any data" }, icon("map-search-outline"), "Plan only"),
+      h("button", { "data-need": "op", onclick: start }, icon("play"), "Start hunt")), planBox));
   const sug = h("div");
   main.append(section("Autopilot", "robot-outline",
     h("p", { class: "muted small" }, "Proposes hypotheses from new advisories, coverage gaps and follow-ups. Nothing starts until you choose."),

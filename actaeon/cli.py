@@ -304,6 +304,23 @@ def cmd_hunt(a) -> int:
     if not a.hypothesis:
         print("give a hypothesis, --advisory ID, --show ID or --list")
         return 2
+    if a.plan_only:
+        from .hunt.service import plan_hunt
+        r = plan_hunt(cfg, a.hypothesis, context=context)
+        if a.json:
+            print(_json.dumps(r, indent=2))
+            return 0
+        p = r["plan"]
+        print(f"plan: {p['summary']}  ATT&CK {', '.join(p['attack']) or '-'}")
+        for s in p["steps"]:
+            print(f"  [{s['role']}] {s['goal']}")
+        print("data sources it would use:")
+        for role, tools in r["tools_by_role"].items():
+            print(f"  {role:11} {', '.join(tools)}")
+        if p.get("missing_roles"):
+            print(f"no connector for: {', '.join(p['missing_roles'])} (that part of the hunt would be logs_missing)")
+        print("Nothing was queried and no hunt was stored. The queries themselves are written during the hunt.")
+        return 0
 
     def ev(e):
         if e["type"] == "plan":
@@ -590,6 +607,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_h.add_argument("--json", action="store_true")
     p_h.add_argument("--advisory", type=int, metavar="ID", help="hunt the activity in a stored advisory")
     p_h.add_argument("--actor", metavar="NAME", help="campaign: sweep an actor's indicators and hunt its techniques")
+    p_h.add_argument("--plan-only", action="store_true",
+                     help="show the plan (roles, steps, missing data) without querying any data or storing a hunt")
     p_lib = sub.add_parser("library", help="saved hunts: list, save a finished hunt, replay, starters; "
                                            "validate hunt-pack files")
     p_lib.add_argument("action", choices=["list", "save", "run", "starters", "delete", "validate"])

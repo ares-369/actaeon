@@ -1,15 +1,23 @@
 # Actaeon
 
+[![CI](https://github.com/ares-369/actaeon/actions/workflows/ci.yml/badge.svg)](https://github.com/ares-369/actaeon/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
 **An open-source AI threat hunter.** You give it a hypothesis ("an Office app started encoded
 PowerShell this week"). Actaeon plans the hunt, queries your own data sources, follows pivots, and
 writes a verdict that cites its evidence and maps to MITRE ATT&CK. When it cannot be sure, it hands
 the hunt to a person instead of guessing.
 
+It does not replace your SIEM or EDR. It works on top of them, reading what they already collect.
+
 - **Read-only by default.** It searches and reads. Response actions (isolate, quarantine, delete,
   disable, ...) are always blocked; the only writes are ones an admin explicitly allows, such as
   opening a case.
 - **Works with what you already run.** Every data source is reached through the Model Context
-  Protocol (MCP), so it is not tied to any product.
+  Protocol (MCP), so it is not tied to any product. It ships with bridges for search-index APIs,
+  read-only SQL databases, STIX/TAXII 2.1 servers and REST/OpenAPI services, and works with any
+  other MCP server.
 - **Your choice of model.** A cloud model or one on your own hardware; each role (planner, analyst,
   reporter) can use a different one.
 - **Fully open source.** Apache-2.0. Every feature is in this repository. There is no paid
@@ -29,6 +37,13 @@ git clone https://github.com/ares-369/actaeon.git && cd actaeon
 python -m venv .venv && . .venv/bin/activate && pip install -e .
 actaeon demo --offline --run                  # synthetic data, scripted run (no AI, no keys)
 ACTAEON_HOME=~/.actaeon-demo actaeon serve    # open http://127.0.0.1:8611
+```
+
+Or with Docker, no Python needed (nothing is kept when it stops):
+
+```bash
+git clone https://github.com/ares-369/actaeon.git && cd actaeon
+docker compose --profile demo up demo         # open http://127.0.0.1:8611
 ```
 
 The demo has a planted attack and a harmless look-alike, and all of its data is labelled SAMPLE.
@@ -58,6 +73,21 @@ See [docs/demo.md](docs/demo.md).
 6. **Hand-off.** When it cannot answer, a "needs analyst" lead opens. The lead says what was
    searched, what was missing and what to check next.
 
+```mermaid
+flowchart TD
+    H["Hypothesis<br/>(analyst, hunt pack, advisory, autopilot)"] --> P["Planner model<br/>asks for data by role"]
+    P --> A["Analyst model<br/>chooses the next tool call"]
+    A --> V["Query validator<br/>time range, result caps, field names, no writes"]
+    V --> G["Connector policy<br/>read-only tools, per-person access, pacing, time limit"]
+    G --> C["MCP connectors and bridges<br/>your SIEM, EDR, identity, intel, ..."]
+    C --> W["Untrusted-data wrapper<br/>random markers, prompt-injection scan"]
+    W --> A
+    G -. every call .-> L[("Hash-chained audit log")]
+    A --> X["Verdict checks<br/>cited evidence, values present, missing data = missing"]
+    X --> S["Second look on threats"]
+    S --> O["Verdict, lead or hand-off,<br/>Sigma draft, outputs"]
+```
+
 ## What is included
 
 | Area | What you get |
@@ -66,7 +96,7 @@ See [docs/demo.md](docs/demo.md).
 | Hunt library | 65 ATT&CK-mapped hypotheses as one YAML file per hunt, a validator, and your own private packs alongside ([hunt packs](docs/hunt-packs.md)) |
 | Sources | Any MCP server, plus built-in bridges for search indices, read-only SQL, STIX/TAXII 2.1 and REST/OpenAPI services. Each connector can carry query notes and examples in its own query language. `actaeon connectors check` tests a connector, and a one-file template helps you write your own |
 | Intel | A local indicator and advisory store with first/last-seen tracking. Paste IOCs, import files, PDFs or URLs, or pull feeds. Export as STIX 2.1, or push a hunt's indicators to a TAXII 2.1 collection |
-| Analyst work | Leads with assignment, status, resolution and history; chat on a finished hunt; feedback on findings; a timeline view |
+| Analyst work | Leads with assignment, status, resolution and history; chat on a finished hunt; feedback on findings; a timeline view; an offline decoder for obfuscated command lines (base64, `-EncodedCommand`, gzip, hex, char codes, concatenation) that never runs them (`actaeon decode`, also a tool hunts can use) |
 | Detection | Draft rules from a hunt (Sigma, plus the native queries that found data), optionally converted to each connector's query language with pySigma, and a backtest of how often they would have fired |
 | Outputs | Email, webhook, or a write tool you explicitly allow (such as opening a case). A reply in the ticket can continue the hunt |
 | Reports | Markdown, CSV and JSON; PDF and Word with the `reports` extra; an ATT&CK coverage view |
@@ -120,6 +150,15 @@ python -m venv .venv && . .venv/bin/activate
 pip install -e '.[all]'      # or just -e . ; extras add cloud SDKs, PDF/Word reports, Sigma
 actaeon init                 # writes config.yaml and .env (SQLite; add --database postgres to choose PostgreSQL)
 actaeon serve                # http://127.0.0.1:8601
+```
+
+**PostgreSQL and separate workers (optional)**
+
+```bash
+pip install -e '.[postgres]'
+actaeon init --database postgres --db-url 'postgresql://actaeon:PASSWORD@db-host:5432/actaeon'
+actaeon serve                # with jobs.mode: queue in config.yaml, the server only records jobs
+actaeon worker               # run one or more of these, on this or other machines
 ```
 
 **Docker**

@@ -92,9 +92,15 @@ jobs:
           test "$(docker exec actaeon-ci id -u)" = "10001"
           docker exec actaeon-ci actaeon version
           docker exec actaeon-ci actaeon demo --dir /data/demo --offline --run | grep -q "verdict: threat"
+      - name: Demo profile (docker compose --profile demo up demo)
+        run: |
+          docker compose --profile demo up -d demo
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8611/healthz && break; sleep 2; done
+          curl -fs http://127.0.0.1:8611/api/hunts | grep -q threat
+          docker compose --profile demo down
       - name: Logs on failure
         if: failure()
-        run: docker logs actaeon-ci || true
+        run: docker logs actaeon-ci || true; docker compose --profile demo logs demo || true
 
   security:
     name: Security scans (bandit, pip-audit)

@@ -1,4 +1,5 @@
 # docker compose up -d   ->  http://127.0.0.1:8601
+# Demo with synthetic data, no keys, nothing kept:  docker compose --profile demo up demo  ->  http://127.0.0.1:8611
 # Config and data live in ./actaeon-data (config.yaml, .env, databases). Edit them there.
 services:
   actaeon:
@@ -24,6 +25,31 @@ services:
       - no-new-privileges:true
     mem_limit: 2g
     pids_limit: 256
+
+  # Demo: synthetic sample data and a scripted run (not AI). Everything lives in memory and is gone on stop.
+  demo:
+    profiles: ["demo"]
+    build: .
+    image: actaeon:local
+    command: ["sh", "-c", "actaeon demo --dir /demo --offline --run && ACTAEON_HOME=/demo ACTAEON_CONFIG=/demo/config.yaml exec actaeon serve"]
+    ports:
+      - "127.0.0.1:8611:8611"
+    environment:
+      ACTAEON_BIND_HOST: "0.0.0.0"
+      ACTAEON_BIND_PORT: "8611"
+      ACTAEON_ALLOW_UNAUTHENTICATED_NETWORK: "true"   # the port is still published on loopback only
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /demo:uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8611/healthz',timeout=4).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
 
   # Queue mode (jobs.mode: queue in config.yaml): hunts run here instead of in the web server.
   # Scale with: docker compose up -d --scale worker=3

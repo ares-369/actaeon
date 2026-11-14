@@ -220,9 +220,18 @@ class HuntEngine:
         except Exception as exc:
             self.store.add_step(hid, self._next(), "plan", ok=False, note=f"planner failed: {exc}")
             return None
-        plan = first_object(text)
+        plan = self._clean_plan(first_object(text), roles)
         if not plan:
             self.store.add_step(hid, self._next(), "plan", ok=False, note="planner reply was not JSON", result=text[:2000])
+            return None
+        self.store.update(hid, plan=plan)
+        self.store.add_step(hid, self._next(), "plan", ok=True, note=json.dumps(plan))
+        self._emit({"type": "plan", "hunt_id": hid, "plan": plan})
+        return plan
+
+    @staticmethod
+    def _clean_plan(plan: dict | None, roles: dict) -> dict | None:
+        if not plan:
             return None
         plan = {"summary": _clip(plan.get("summary", ""), 400),
                 "attack": attack_check(plan.get("attack"))[0][:20],
@@ -231,10 +240,29 @@ class HuntEngine:
                 "data_needed": [r for r in plan.get("data_needed") or [] if r in ROLES]}
         plan["missing_roles"] = sorted({s["role"] for s in plan["steps"] if s["role"] in ROLES} - set(roles)
                                        | set(plan["data_needed"]) - set(roles))
-        self.store.update(hid, plan=plan)
-        self.store.add_step(hid, self._next(), "plan", ok=True, note=json.dumps(plan))
-        self._emit({"type": "plan", "hunt_id": hid, "plan": plan})
         return plan
+
+    def plan_only(self, hypothesis: str, *, context: str = "") -> dict:
+        """Run only the planning step: no hunt is stored and no data is queried.
+
+        Listing each connector's tools does contact it (tools/list), but no tool is called. The plan says
+        which roles and steps the hunt would use; the exact queries are written later, from what the
+        first results show, so they cannot be known in advance."""
+        hypothesis = (hypothesis or "").strip()
+        if not hypothesis:
+            raise ValueError("a hypothesis is required")
+        self._t0 = self._clock()
+        tools = self._tools()
+        roles = self._roles(tools)
+        text = self._ask("planner", [{"role": "system", "content": PLANNER_SYSTEM},
+                                     {"role": "user", "content": planner_user(hypothesis, roles, context)}], 900)
+        plan = self._clean_plan(first_object(text), roles)
+        if plan is None:
+            raise RuntimeError("the planner did not return a plan")
+        return {"hypothesis": hypothesis, "plan": plan, "roles_available": roles,
+                "tools_by_role": {r: sorted(f"{t['connector']}.{t['name']}" for t in tools
+                                            if r in t["role"].split(",")) for r in roles},
+                "usage": self.llm.usage_summary() if hasattr(self.llm, "usage_summary") else None}
 
     def _messages(self, base: list[dict], transcript: list[dict]) -> list[dict]:
         msgs = list(base)

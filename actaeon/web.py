@@ -581,6 +581,17 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
                                        strict_links=True)
         return jsonify({**r, "title": title, "chars": len(doc["text"])})
 
+    @app.route("/api/hunts/plan", methods=["POST"])
+    def hunt_plan():
+        """The planning step only: no data queried, no hunt stored (operator role, like starting a hunt)."""
+        b = request.get_json(silent=True) or {}
+        try:
+            return jsonify(hs.plan_hunt(get_config(), str(b.get("hypothesis", "")), context=str(b.get("context", ""))))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except RuntimeError as exc:
+            return jsonify({"error": str(exc)[:300]}), 502
+
     @app.route("/api/tickets/reply", methods=["POST"])
     def ticket_reply():
         from .tickets import ReplyError, handle_reply

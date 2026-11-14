@@ -74,6 +74,12 @@ def make_engine(cfg, *, checkpoint=None, on_event=None, max_steps: int | None = 
                       known_good=kg if isinstance(kg, list) else [kg])
 
 
+def plan_hunt(cfg, hypothesis: str, *, context: str = "", llm=None, hub=None) -> dict:
+    """The planning step alone, with the same context a real hunt gets. Nothing is stored or queried."""
+    ctx = "\n\n".join(x for x in (environment_context(cfg), context, memory_for(cfg).context(hypothesis)) if x)
+    return make_engine(cfg, llm=llm, hub=hub).plan_only(hypothesis, context=ctx)
+
+
 def run_hunt(cfg, hypothesis: str, *, hunt_id: str | None = None, origin: str = "manual", actor: str = "",
              context: str = "", max_steps: int | None = None, checkpoint=None, on_event=None, llm=None,
              hub=None) -> dict:
