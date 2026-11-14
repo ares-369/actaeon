@@ -1,6 +1,7 @@
 """Demo bridge: the search-index tools over built-in SAMPLE events (see actaeon/demo/data.py).
 
 Supports a small subset of query_string syntax: ``field:value`` (``*`` wildcards),
+ranges (``field:[a TO b]``, ``{a TO b}``, with ``now-7d`` style times on ``@timestamp``),
 bare words, quoted phrases, ``AND`` / ``OR`` / ``NOT`` and parentheses. Matching
 is case-insensitive. It is for trying Actaeon, not a search engine.
 """
@@ -14,12 +15,13 @@ from collections import Counter
 from datetime import datetime
 
 from ..demo.data import LABEL, events
-from .common import baseline_window, cap, compact_hits, time_window
+from .common import baseline_window, cap, compact_hits, parse_time, time_window
 from .search_index import TIME_SCHEMA
 from .server import McpServer, ToolInputError
 
 INDEX = "demo-events"
-_TOKEN = re.compile(r'\s*(\(|\)|"[^"]*"|[^\s()]+)')
+_TOKEN = re.compile(r'\s*([A-Za-z0-9_.@]+:[\[{][^\]}]*[\]}]|\(|\)|"[^"]*"|[^\s()]+)')
+_RANGE = re.compile(r'^([A-Za-z0-9_.@]+):([\[{])\s*(\S+)\s+TO\s+(\S+)\s*([\]}])$', re.I)
 
 
 def _flat(d: dict, prefix: str = "") -> dict:
@@ -87,6 +89,10 @@ class _Q:
         neg = t.startswith("-") and len(t) > 1
         if neg:
             t = t[1:]
+        r = _RANGE.match(t)
+        if r:
+            f = _range(*r.groups())
+            return (lambda e: not f(e)) if neg else f
         m = re.match(r'^([A-Za-z0-9_.@]+):(.+)$', t)
         if m:
             field, val = m.group(1), m.group(2).strip('"').lower()
@@ -101,6 +107,39 @@ class _Q:
                 pat = val if "*" in val else f"*{val}*"
                 return any(fnmatch.fnmatchcase(str(v).lower(), pat) for v in e.values())
         return (lambda e: not f(e)) if neg else f
+
+
+def _range(field: str, open_: str, lo: str, hi: str, close: str):
+    """``field:[lo TO hi]`` (inclusive) or ``{lo TO hi}`` (exclusive); ``*`` leaves an end open."""
+    is_time = field == "@timestamp"
+
+    def conv(v: str):
+        if v == "*":
+            return None
+        if is_time:
+            return parse_time(v, default="now")
+        try:
+            return float(v)
+        except ValueError:
+            return v.lower()
+
+    a, b = conv(lo.strip('"')), conv(hi.strip('"'))
+
+    def f(e):
+        v = e.get(field)
+        if v is None:
+            return False
+        if is_time:
+            v = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        else:
+            try:
+                v = float(v) if isinstance(a or b, float) else str(v).lower()
+            except ValueError:
+                return False
+        if a is not None and (v < a if open_ == "[" else v <= a):
+            return False
+        return not (b is not None and (v > b if close == "]" else v >= b))
+    return f
 
 
 class DemoBridge:

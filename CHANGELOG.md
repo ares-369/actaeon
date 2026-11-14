@@ -62,6 +62,9 @@ behaviour may still change between releases.
   offline decoder named, PostgreSQL and worker install lines.
 
 ### Fixed
+- The demo data source read a range such as `@timestamp:[now-7d TO now]` as three loose words and
+  matched nothing; it now supports ranges, as real search indexes do. Found by a local 7B model that
+  writes its time window into the query.
 - Local models: Ollama was called with its own default context window (2,048 to 4,096 tokens), which
   silently drops the start of a longer prompt. Actaeon now asks for `num_ctx` tokens (default 8192,
   `llm.providers.ollama.num_ctx`) and reports a prompt that still fills the window as an error instead of

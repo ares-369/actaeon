@@ -72,3 +72,19 @@ def test_demo_banner(tmp_path, monkeypatch):
         assert b"synthetic sample data" in r.data
     finally:
         c._CONFIG = None
+
+
+def test_demo_query_ranges():
+    from actaeon.bridges.demo import _Q, DemoBridge
+    flat = DemoBridge().flat
+
+    def n(q):
+        m = _Q(q).parse()
+        return sum(1 for e in flat if m(e))
+
+    total = n("event.category:network")
+    assert total and n("event.category:network AND @timestamp:[now-30d TO now]") == total
+    assert n("event.category:network AND @timestamp:{now TO *}") == 0
+    assert 0 < n("destination.port:[443 TO 443]") <= total
+    assert n("destination.port:{443 TO 443}") == 0
+    assert n("NOT destination.port:[443 TO 443] AND event.category:network") == total - n("destination.port:[443 TO 443]")
