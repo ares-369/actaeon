@@ -73,7 +73,8 @@ def index_traces(pattern: str, before: float) -> dict[str, str]:
         if mtime > before:
             continue
         try:
-            with sqlite3.connect(db) as c:
+            from actaeon import db as store_db
+            with store_db.connect(db) as c:
                 row = c.execute("SELECT hypothesis FROM hunts LIMIT 1").fetchone()
         except sqlite3.Error:
             continue
@@ -84,7 +85,8 @@ def index_traces(pattern: str, before: float) -> dict[str, str]:
 
 def trace_text(folder: str) -> tuple[str, int, int]:
     """(text of every successful tool result, successful calls, failed calls)."""
-    with sqlite3.connect(os.path.join(folder, "hunts.sqlite")) as c:
+    from actaeon import db  # the same storage the runner wrote with (SQLite, or PostgreSQL if configured)
+    with db.connect(os.path.join(folder, "hunts.sqlite")) as c:
         rows = c.execute("SELECT ok, result FROM steps WHERE kind='call'").fetchall()
     good = [r[1] or "" for r in rows if r[0]]
     return "\n".join(good), len(good), len(rows) - len(good)
