@@ -569,6 +569,11 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_sg.add_argument("--backend", default="", help="convert with this backend instead of the connectors' sigma: blocks")
     p_sg.add_argument("--pipeline", action="append", default=[])
     p_sg.add_argument("--format", default="default")
+    p_db = sub.add_parser("db", help="storage: copy a SQLite data folder into PostgreSQL")
+    p_db.add_argument("action", choices=["migrate"])
+    p_db.add_argument("--to", required=True, help="postgresql://user:password@host:5432/dbname")
+    p_db.add_argument("--schema", default="actaeon")
+    p_db.add_argument("--force", action="store_true", help="copy even if the target already has hunts")
     p_ret = sub.add_parser("retention", help="delete finished hunts older than retention.hunts_days")
     p_ret.add_argument("--dry-run", action="store_true", help="only count what would be deleted")
     p_aud = sub.add_parser("audit", help="check the audit log's hash chain")
@@ -869,6 +874,19 @@ def cli_main(argv: list[str] | None = None) -> None:
         return
     if a.cmd == "sigma":
         sys.exit(cmd_sigma(a))
+    if a.cmd == "db":
+        import json
+
+        from .config import get_config
+        from .db_migrate import migrate
+        try:
+            out = migrate(get_config().data_dir, a.to, schema=a.schema, force=a.force)
+        except (RuntimeError, ValueError) as exc:
+            print(f"error: {exc}")
+            sys.exit(1)
+        print(json.dumps(out, indent=2))
+        print("next: put the URL in .env as ACTAEON_DB_URL (or database.url), restart, run actaeon audit verify")
+        return
     if a.cmd == "retention":
         import json
 

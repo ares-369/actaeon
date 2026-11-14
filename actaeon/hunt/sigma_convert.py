@@ -138,6 +138,22 @@ def _count(hub, connector, query, h, days, hits, ToolCallError, datetime, timede
         r = hub.call(connector, "count", args, actor="sigma-backtest", hunt_id=h.get("id", ""))
     except ToolCallError as exc:
         return {"error": str(exc)[:200]}
+    if r.get("is_error") and "leading wildcards" in r["content"] and "time_from" in props:
+        # The index allows leading wildcards (Sigma "contains") only over short windows: count day by day.
+        total = 0
+        for d in range(days, 0, -1):
+            day = {**args, "time_from": (now - timedelta(days=d)).isoformat(),
+                   "time_to": (now - timedelta(days=d - 1)).isoformat()}
+            try:
+                rd = hub.call(connector, "count", day, actor="sigma-backtest", hunt_id=h.get("id", ""))
+            except ToolCallError as exc:
+                return {"error": str(exc)[:200]}
+            if rd.get("is_error"):
+                return {"error": "leading wildcards are refused on this index even over one day; start the "
+                                 "bridge with --leading-wildcard-hours 24, or change the rule to startswith/exact "
+                                 "values: " + rd["content"][-200:]}
+            total += hits(rd["content"]) or 0
+        return {"days": days, "matches": total, "index": args.get("index"), "counted": "day by day"}
     if r.get("is_error"):
         return {"error": "the count failed (often a field-mapping or syntax problem): " + r["content"][-300:]}
     return {"days": days, "matches": hits(r["content"]), "index": args.get("index")}

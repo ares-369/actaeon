@@ -81,11 +81,9 @@ Actaeon is in beta (0.1.0b2). These are the limits we know about.
   separate `actaeon worker` processes there. For several machines, choose PostgreSQL at
   install (`actaeon[postgres]`). It is new: CI runs the whole test suite against
   PostgreSQL, and it has not been used in a production deployment.
-- With PostgreSQL, the scheduler lock is still a file in the data folder: run the
-  scheduler (the server, or one `worker --scheduler`) on one machine only.
-- A hunt that is running when its process stops is marked stopped or interrupted; it
-  does not resume where it was.
-- Only one process schedules at a time (a lock file in the data folder); if it stops,
-  another server or `worker --scheduler` takes over at its next tick.
+- A hunt interrupted by a restart continues from its stored steps (at most twice), but the model may
+  take a different path from there than it would have without the interruption.
+- Only one process schedules at a time (a lock file in the data folder, or a database lock with
+  PostgreSQL); if it stops, another server or `worker --scheduler` takes over at its next tick.
 - Hit counts for replays are read from common keys (`total`, `count`, `matches`,
   ...). Other result shapes fall back to "changed since last time".

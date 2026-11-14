@@ -27,8 +27,10 @@ TIME_SCHEMA = {
 class SearchIndexBridge:
     def __init__(self, url: str, indices: list[str], time_field: str = "@timestamp", max_days: int = 30,
                  max_size: int = 500, verify_tls: bool = True, ca_bundle: str = "", timeout: float = 30,
-                 session=None, snapshot: bool = False, compact: bool = True):
+                 session=None, snapshot: bool = False, compact: bool = True, leading_wildcard_hours: float = 0):
         self.url = url.rstrip("/")
+        # Leading wildcards scan every value of a field. Allowed only over short windows when set (0 = never).
+        self.leading_wildcard_hours = max(0.0, float(leading_wildcard_hours or 0))
         self.indices = indices or ["*"]
         # Snapshot indices (inventory / current-state) have no per-event time; searches are not time-bounded.
         self.snapshot = snapshot
@@ -97,15 +99,18 @@ class SearchIndexBridge:
 
     def _query(self, args: dict, window=None) -> dict:
         start, end = (None, None) if self.snapshot else (window or time_window(args, self.max_days))
+        short = bool(not self.snapshot and self.leading_wildcard_hours and start and end
+                     and (end - start).total_seconds() <= self.leading_wildcard_hours * 3600)
         must: list[dict] = []
         q = str(args.get("query", "") or "").strip()
-        if q and not self.snapshot:
+        if q and not self.snapshot and not short:
             self._query_string_ok(q)
         if q:
             # Leading wildcards are costly on large time-series indices but cheap on small snapshot
-            # (inventory) indices, where matching a process path or command substring needs them.
+            # (inventory) indices, where matching a process path or command substring needs them, and
+            # acceptable on a time-series index over a short window when the operator allows it.
             must.append({"query_string": {"query": q, "analyze_wildcard": True,
-                                          "allow_leading_wildcard": self.snapshot}})
+                                          "allow_leading_wildcard": self.snapshot or short}})
         dsl = args.get("dsl")
         if dsl:
             if isinstance(dsl, str):
@@ -116,7 +121,7 @@ class SearchIndexBridge:
             if not isinstance(dsl, dict):
                 raise ToolInputError("dsl must be a JSON object (a query clause)")
             self._no_scripts(dsl)
-            if not self.snapshot:
+            if not self.snapshot and not short:
                 self._no_leading_wildcards(dsl)
             must.append(dsl)
         if self.snapshot:
@@ -287,9 +292,12 @@ def add_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--max-size", type=int, default=500)
     p.add_argument("--insecure", action="store_true", help="skip TLS verification (lab only)")
     p.add_argument("--ca-bundle", default="")
+    p.add_argument("--leading-wildcard-hours", type=float, default=0,
+                   help="allow leading wildcards (*foo) on time-series indices when the window is at most this many "
+                        "hours (0 = never); lets converted Sigma 'contains' rules run over short backtests")
 
 
 def run(a: argparse.Namespace) -> None:
     SearchIndexBridge(a.url, a.index, a.time_field, a.max_days, a.max_size,
                       verify_tls=not a.insecure, ca_bundle=a.ca_bundle, snapshot=a.snapshot,
-                      compact=not a.raw_hits).build().serve()
+                      compact=not a.raw_hits, leading_wildcard_hours=a.leading_wildcard_hours).build().serve()

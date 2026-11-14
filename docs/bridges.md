@@ -117,3 +117,11 @@ top_values, get_fields, index allowlist, caps) works the same. Example (host inv
 
 This gives a hunter visibility into where dropped implants, backdoor ports, persistence and
 new accounts appear, even when no alert fired.
+
+
+### Leading wildcards on log indices
+
+A query such as `cmd:*-enc*` (a leading wildcard) makes the index scan every value of the field, and with
+the index's default settings it silently matches nothing. The search-index bridge therefore refuses it on
+time-series indices. `--leading-wildcard-hours N` allows it when the query's time window is at most N
+hours; inventory indices (`--snapshot`) always allow it.

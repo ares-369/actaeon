@@ -64,7 +64,8 @@ actaeon worker --concurrency 1 --scheduler     # one of them (or the server) run
 - On SIGTERM a worker takes no new jobs and finishes the ones it has.
 - Only one process schedules at a time: the first to hold `<data>/scheduler.lock`.
 - With SQLite (the default), all processes must use the same data folder on the same machine. With
-  PostgreSQL (below), servers and workers can run on different machines; keep the scheduler on one.
+  PostgreSQL (below), servers and workers can run on different machines, and the scheduler lock is held in
+  the database.
 
 With compose, uncomment the `worker` service in `docker-compose.yml`.
 
@@ -84,8 +85,18 @@ The URL (with its password) goes into `.env` as `ACTAEON_DB_URL`. Tables are cre
 `database.schema` (default `actaeon`) on first start. The installer asks which one you want
 (`scripts/install.sh`, or `ACTAEON_DATABASE=postgres` to skip the question).
 
-Use a database account that owns that schema and nothing else. There is no migration tool from an
-existing SQLite data folder yet: choose before you start.
+Use a database account that owns that schema and nothing else.
+
+To move an existing SQLite installation, copy it once into an empty schema, then switch:
+
+```bash
+actaeon db migrate --to 'postgresql://actaeon:PASSWORD@db-host:5432/actaeon'   # reads data/*.sqlite, changes nothing there
+# put the URL in .env as ACTAEON_DB_URL, restart, then:
+actaeon audit verify
+```
+
+With PostgreSQL, the scheduler lock is a database advisory lock, so only one server or
+`worker --scheduler` schedules, whichever machine it is on; if it stops, another takes over.
 
 ## Retention
 

@@ -251,8 +251,10 @@ for an edited rule. Each connector's result shows the converted query or the con
 
 Read the counts with care. Zero matches can mean the field mapping is wrong, not that the rule is
 quiet. Sigma's `contains` and `endswith` become leading wildcards, which the search-index bridge
-refuses on log indices (they would silently match nothing). The backtest then reports that error:
-use `startswith`, an exact value or a keyword field instead. Backends pin their own pySigma
+refuses on log indices (they would silently match nothing and can be slow). Start the bridge with
+`--leading-wildcard-hours 24` to allow them over windows of up to 24 hours; the backtest then counts
+day by day instead of over the whole period. Without it the backtest reports the refusal: use
+`startswith`, an exact value or a keyword field instead. Backends pin their own pySigma
 version; install the backend after Actaeon's extra and let pip choose.
 
 ## Prompt size

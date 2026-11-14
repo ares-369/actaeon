@@ -283,3 +283,42 @@ def test_snapshot_index_allows_leading_wildcard():
     b = SearchIndexBridge("https://idx.example", ["inv-*"], snapshot=True,
                           session=FakeSession({"_count": {"count": 2}}))
     b.count({"index": "inv-x", "query": "process.command_line:*rclone*"})
+
+
+def test_leading_wildcard_allowed_over_short_windows():
+    from actaeon.bridges.search_index import SearchIndexBridge
+    from tests.test_bridges import FakeSession
+    b = SearchIndexBridge("https://idx.example", ["events-*"], leading_wildcard_hours=24,
+                          session=FakeSession({"_count": {"count": 3}}))
+    b.count({"index": "events-*", "query": "cmd:*-enc*", "time_from": "now-12h"})      # short window: allowed
+    body = b.http.calls[-1][2]["json"]["query"]["bool"]["must"][0]["query_string"]
+    assert body["allow_leading_wildcard"] is True
+    with pytest.raises(ToolInputError, match="silently match nothing"):
+        b.count({"index": "events-*", "query": "cmd:*-enc*", "time_from": "now-3d"})    # long window: refused
+
+
+def test_sigma_backtest_counts_day_by_day():
+    from actaeon.hunt.sigma_convert import _count
+    from actaeon.hunt.signals import hits
+
+    class H:
+        def __init__(self):
+            self.n = 0
+
+        def tools(self, c):
+            return [{"name": "count", "allowed": True, "inputSchema": {"properties": {"query": {}, "time_from": {}}}}]
+
+        def call(self, c, tool, args, **kw):
+            self.n += 1
+            from datetime import datetime
+            span = datetime.fromisoformat(args["time_to"]) - datetime.fromisoformat(args["time_from"])
+            if span.days > 1:
+                return {"content": "<<UNTRUSTED-DATA a>>\nleading wildcards (*foo) are not allowed\n<<END-UNTRUSTED-DATA a>>",
+                        "is_error": True}
+            return {"content": '<<UNTRUSTED-DATA a>>\n{"count": 2}\n<<END-UNTRUSTED-DATA a>>', "is_error": False}
+    from datetime import datetime, timedelta, timezone
+
+    from actaeon.connectors.hub import ToolCallError
+    hub = H()
+    r = _count(hub, "logs", "cmd:*-enc*", {}, 3, hits, ToolCallError, datetime, timedelta, timezone)
+    assert r == {"days": 3, "matches": 6, "index": None, "counted": "day by day"} and hub.n == 4

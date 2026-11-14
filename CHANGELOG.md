@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### New
+- Inventory drift: what is new on each host since the last snapshot (ports, accounts, services,
+  processes), with no model; new items and new hosts open a lead (docs/drift.md).
+- Entities across hunts: hosts, users, IPs, domains and hashes that findings relied on, with their history
+  and a "recurring" flag for entities in several recent unresolved hunts (docs/entities.md).
+- Investigation graph on each hunt: user, host, process, destination and intel match, linked to evidence.
+- Hunt profiles (quick, standard, deep), hunts that resume after a restart, and retention of old hunts.
+- PostgreSQL: `actaeon db migrate` copies a SQLite data folder; the scheduler lock is held in the database.
+- Search-index bridge: `--leading-wildcard-hours` allows leading wildcards over short windows, so converted
+  Sigma `contains` rules can be backtested (counted day by day).
+
+### Access
+- Scheduled replays run as the person who saved the hunt; the scheduler's own work can be given an identity
+  (`scheduler.groups`); notes and saved hunts made from restricted hunts are restricted; the audit log names
+  the identity a call ran as.
+
 ### Hunting
 - `actaeon hunt --plan-only` (also `POST /api/hunts/plan` and a **Plan only** button): the planning step
   alone, with no data queried and no hunt stored.

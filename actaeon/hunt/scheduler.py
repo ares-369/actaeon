@@ -28,9 +28,14 @@ class Scheduler:
         self._last_retention: datetime | None = None
         self._thread: threading.Thread | None = None
         self._lockfile = None
+        self._pg_conn = None
 
     def leader(self) -> bool:
-        """Hold the scheduler lock (one scheduling process per data folder)."""
+        """Hold the scheduler lock: one scheduling process per data folder, or with PostgreSQL one per
+        database schema across every machine (a session advisory lock, released if the process dies)."""
+        from .. import db
+        if db.is_pg():
+            return self._pg_leader(db)
         if self._lockfile is not None:
             return True
         try:
@@ -55,6 +60,27 @@ class Scheduler:
 
     def stop(self) -> None:
         self._stop.set()
+
+    def _pg_leader(self, db) -> bool:
+        try:
+            if self._pg_conn is not None and not self._pg_conn.closed:
+                self._pg_conn.execute("SELECT 1")
+                return True
+        except Exception:
+            self._pg_conn = None              # connection lost: the lock went with it; try again below
+        try:
+            import psycopg
+            conn = psycopg.connect(db.url(), autocommit=True)
+            key = f"actaeon-scheduler:{db.schema()}"
+            got = conn.execute("SELECT pg_try_advisory_lock(hashtext(%s))", (key,)).fetchone()[0]
+        except Exception:
+            log.exception("scheduler lock: cannot reach PostgreSQL")
+            return False
+        if got:
+            self._pg_conn = conn              # held for the life of this connection
+            return True
+        conn.close()
+        return False
 
     def _loop(self) -> None:
         while not self._stop.wait(self.tick_sec):
