@@ -35,3 +35,12 @@ def test_num_ctx_sent_and_truncation_reported(monkeypatch):
 
 def test_default_context_is_8192():
     assert OllamaProvider({}).num_ctx == 8192
+
+
+def test_think_flag_only_sent_when_set(monkeypatch):
+    sent = []
+    monkeypatch.setattr("actaeon.providers.ollama.requests.post",
+                        lambda url, json, timeout: sent.append(json) or _R({"message": {"content": "ok"}}))
+    OllamaProvider({}).chat([{"role": "user", "content": "x"}])
+    OllamaProvider({"think": False}).chat([{"role": "user", "content": "x"}])
+    assert "think" not in sent[0] and sent[1]["think"] is False

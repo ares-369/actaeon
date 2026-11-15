@@ -7,6 +7,8 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.2.0-beta] — 2026-11-15
+
 ### Security
 - Two more checks on the verdict, so a confused model cannot quietly close a real finding: a `no_results`
   whose own findings cite searches that matched becomes `inconclusive` and goes to an analyst, and a
@@ -21,6 +23,10 @@ behaviour may still change between releases.
   9/10 on a held-out set scored once, 0 false alarms on both and on 9,459 real lab alerts.
 
 ### Added
+- `docs/local-models.md`: running with a local model, and what qwen2.5-coder:7b on a 4 GB laptop GPU did on
+  the demo cases (3 of 8 correct over two runs, none of the 4 planted threats found, no false alarms).
+- Ollama provider settings `num_ctx`, `timeout_sec` and `think` (turns off a reasoning model's thinking
+  step).
 - Inventory drift: what is new on each host since the last snapshot (ports, accounts, services,
   processes), with no model; new items and new hosts open a lead (docs/drift.md).
 - Entities across hunts: hosts, users, IPs, domains and hashes that findings relied on, with their history

@@ -47,6 +47,14 @@ quality. Rebuild it with `scripts/make_demo_gif.py`.*
 ## Try it in a minute
 
 ```bash
+pipx install actaeon                          # or: pip install actaeon
+actaeon demo --offline --run                  # synthetic data, scripted run (no AI, no keys)
+ACTAEON_HOME=~/.actaeon-demo actaeon serve    # open http://127.0.0.1:8611
+```
+
+From a checkout instead:
+
+```bash
 git clone https://github.com/ares-369/actaeon.git && cd actaeon
 python -m venv .venv && . .venv/bin/activate && pip install -e .
 actaeon demo --offline --run                  # synthetic data, scripted run (no AI, no keys)
@@ -227,6 +235,7 @@ not in this repository.
 | Autonomy: web intel and autopilot | [docs/autonomy.md](docs/autonomy.md) |
 | Outputs and ticket replies | [docs/outputs.md](docs/outputs.md) |
 | Models and providers | [docs/models.md](docs/models.md) |
+| Running with a local model (set-up and measured results) | [docs/local-models.md](docs/local-models.md) |
 | Privacy masking | [docs/privacy.md](docs/privacy.md) |
 | Organisation setup, roles and access | [docs/company-setup.md](docs/company-setup.md), [docs/access.md](docs/access.md) |
 | Deployment, air-gapped networks | [docs/deploy.md](docs/deploy.md), [docs/air-gapped.md](docs/air-gapped.md) |
@@ -241,8 +250,9 @@ not in this repository.
 - **Not clustered by default.** It uses SQLite on one machine, with nothing else to install.
   PostgreSQL is an install-time option for several machines; it is new and has not run in
   production yet.
-- **Measured with a few models only.** Three Gemini models were scored; other providers have no measured
-  results yet. Small local models were not good enough to hunt in testing.
+- **Measured with a few models only.** Three Gemini models and one local 7B model were scored; other providers have no measured
+  results yet. Small local models were not good enough to hunt in testing (a 7B model found 0 of 4 planted
+  threats on the demo cases; [docs/local-models.md](docs/local-models.md)).
 - **Not proven in production yet.**
 
 ## Contributing

@@ -29,7 +29,8 @@ Install the extra for a cloud provider once: `pip install 'actaeon[all]'`
 
 - **Local models (`ollama` / `openai_compatible`)**: no data leaves your network.
   Small 7B models plan and query poorly; use a larger model for `analyst` if
-  running locally.
+  running locally. Set-up, the `num_ctx` setting and measured results:
+  [local-models.md](local-models.md).
 - **Vertex AI (`gemini` with `auth: vertex`)**: set `project` and `location`
   (default `global`), and either `credentials_file`, workload identity, or
   `gcloud auth application-default login`. Add `base_url` and `headers` if

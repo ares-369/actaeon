@@ -63,6 +63,8 @@ words when the cases are private.
 | gemini/gemini-3.8-flash | built-in demo cases | 8/8 | 1.00 | 1.00 | 0 | 1-2 min | 52k (26% cached) | 2.8k | 2026-11-14 | 0.1.0b2+ |
 | gemini/gemini-3.1-pro-preview | built-in demo cases | 8/8 | 1.00 | 1.00 | 0 | 1-3 min | 23k (2% cached) | 3.2k | 2026-11-14 | 0.1.0b2+ |
 | gemini/gemini-3.1-flash-lite | built-in demo cases | 6/8 | 1.00 | 0.50 | 0 | under 1 min | 18k (28% cached) | 0.7k | 2026-11-14 | 0.1.0b2+ |
+| ollama/qwen2.5-coder:7b (4 GB laptop GPU, compact) | built-in demo cases | 3/8 | n/a | 0.00 | 0 | 2.7 min | 28k (0% cached) | 0.7k | 2026-11-15 | 0.2.0-beta |
+| ollama/qwen2.5-coder:7b, second run | built-in demo cases | 3/8 | n/a | 0.00 | 0 | 7.4 min | 66k (0% cached) | 2.0k | 2026-11-15 | 0.2.0-beta |
 
 ## Notes on interpreting scores
 

@@ -25,20 +25,20 @@ class OllamaProvider(LLMProvider):
         self.base_url = (cfg.get("base_url") or "http://localhost:11434").rstrip("/")
         self.num_ctx = int(cfg.get("num_ctx") or 8192)
         self.timeout = float(cfg.get("timeout_sec") or 300)
+        self.think = cfg.get("think")      # None: the model's default; false turns off a reasoning model's thinking
 
     def chat(self, messages: list[Message], *, model=None, temperature=0.2, max_tokens=900) -> LLMResult:
         use_model = model or self.default_model
         try:
-            r = requests.post(
-                f"{self.base_url}/api/chat",
-                json={
-                    "model": use_model,
-                    "messages": messages,
-                    "stream": False,
-                    "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": self.num_ctx},
-                },
-                timeout=self.timeout,
-            )
+            body = {
+                "model": use_model,
+                "messages": messages,
+                "stream": False,
+                "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": self.num_ctx},
+            }
+            if self.think is not None:
+                body["think"] = bool(self.think)
+            r = requests.post(f"{self.base_url}/api/chat", json=body, timeout=self.timeout)
             r.raise_for_status()
             data = r.json()
             content = data.get("message", {}).get("content", "") or ""
