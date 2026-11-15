@@ -132,7 +132,8 @@ def test_restricted_hunt_visibility_over_http(home, monkeypatch):
     me = c.get("/api/me", headers=ann).json
     assert me["role"] == "operator" and me["groups"] == ["soc"] and "mail" not in me["connectors"]
     for path in (f"/api/hunts/{hid}", f"/api/hunts/{hid}/stix", f"/api/hunts/{hid}/report.md",
-                 f"/api/hunts/{hid}/export.json", f"/api/leads/{lead['id']}"):
+                 f"/api/hunts/{hid}/export.json", f"/api/hunts/{hid}/export.csv", f"/api/hunts/{hid}/graph",
+                 f"/api/hunts/{hid}/timeline", f"/api/leads/{lead['id']}"):
         assert c.get(path, headers=eve).status_code == 200, path
         assert c.get(path, headers=ann).status_code == 404, path
     assert hid in json.dumps(c.get("/api/hunts", headers=eve).json)
@@ -142,6 +143,12 @@ def test_restricted_hunt_visibility_over_http(home, monkeypatch):
     assert c.post(f"/api/leads/{lead['id']}/comment", json={"text": "hi"}, headers=ann).status_code == 404
     assert "forwarding" not in json.dumps(c.get("/api/memory/related?q=CFO forwarded", headers=ann).json)
     assert "forwarding" in json.dumps(c.get("/api/memory/related?q=CFO forwarded", headers=eve).json)
+    # entities from the restricted hunt follow the same rule
+    service.entities_for(cfg).index_hunt(service.store_for(cfg).get(hid) | {"status": "done"})
+    assert "evil.example" in json.dumps(c.get("/api/entities", headers=eve).json)
+    assert "evil.example" not in json.dumps(c.get("/api/entities", headers=ann).json)
+    assert c.get("/api/entities/email/x@evil.example", headers=eve).status_code == 200
+    assert c.get("/api/entities/email/x@evil.example", headers=ann).status_code == 404
 
 
 def test_require_group_role_refuses(home, monkeypatch):

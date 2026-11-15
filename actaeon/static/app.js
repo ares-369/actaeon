@@ -123,7 +123,7 @@ async function leads() {
       h("tr", {}, h("td", { colspan: 6, class: "muted" }, "No leads here.")));
   };
   main.append(section("Leads", "briefcase-outline",
-    h("p", { class: "muted small" }, "A lead opens for every threat or result that needs review. Everyone can see every lead."),
+    h("p", { class: "muted small" }, "A lead opens for every threat or result that needs review. Everyone can see every lead, except leads from hunts over sources limited to certain groups."),
     bar, h("table", {}, h("thead", {}, h("tr", {}, ["Lead", "Severity", "Status", "Title", "Assignee", "Opened / resolution"].map((x) => h("th", {}, x)))), body)));
   await load();
   poll = setInterval(load, 15000);
