@@ -25,36 +25,43 @@ def build(h: dict) -> dict:
     nodes: dict[tuple[str, str], dict] = {}
     edges: dict[tuple[tuple[str, str], tuple[str, str]], dict] = {}
 
-    def node(kind: str, label: str, ev: str) -> tuple[str, str] | None:
+    def seen(item: dict, t: str | None) -> None:
+        if t:
+            item["first"] = min(item["first"], t) if item["first"] else t
+            item["last"] = max(item["last"], t) if item["last"] else t
+
+    def node(kind: str, label: str, ev: str, t: str | None = None) -> tuple[str, str] | None:
         label = str(label or "").strip()
         if not label or label.lower() in ("none", "null", "-"):
             return None
         k = (kind, label)
         n = nodes.setdefault(k, {"id": f"{kind}:{label}", "kind": kind, "label": label[:120], "count": 0,
-                                 "evidence": set(), "cited": False})
+                                 "evidence": set(), "cited": False, "first": None, "last": None})
         n["count"] += 1
+        seen(n, t)
         n["evidence"].add(ev)
         n["cited"] = n["cited"] or ev in cited
         return k
 
-    def edge(a, b, ev: str) -> None:
+    def edge(a, b, ev: str, t: str | None = None) -> None:
         if not a or not b or a == b:
             return
         e = edges.setdefault((a, b), {"from": f"{a[0]}:{a[1]}", "to": f"{b[0]}:{b[1]}", "count": 0,
-                                      "evidence": set(), "cited": False})
+                                      "evidence": set(), "cited": False, "first": None, "last": None})
         e["count"] += 1
+        seen(e, t)
         e["evidence"].add(ev)
         e["cited"] = e["cited"] or ev in cited
 
     for r in tl["events"]:
-        ev = r["evidence"]
-        u, ho = node("user", r["user"], ev), node("host", r["host"], ev)
-        pa, pr = node("parent", r["parent"], ev), node("process", r["process"], ev)
-        de = node("destination", r["destination"], ev)
-        edge(u, ho, ev)
-        edge(ho, pa or pr, ev)
-        edge(pa, pr, ev)
-        edge(pr or ho, de, ev)
+        ev, t = r["evidence"], r.get("time")
+        u, ho = node("user", r["user"], ev, t), node("host", r["host"], ev, t)
+        pa, pr = node("parent", r["parent"], ev, t), node("process", r["process"], ev, t)
+        de = node("destination", r["destination"], ev, t)
+        edge(u, ho, ev, t)
+        edge(ho, pa or pr, ev, t)
+        edge(pa, pr, ev, t)
+        edge(pr or ho, de, ev, t)
     # intel lookups that found the value: link the looked-up destination to an intel node
     for s in h.get("steps") or []:
         if s.get("kind") != "call" or not s.get("ok") or s.get("tool") not in ("lookup", "find_indicator"):

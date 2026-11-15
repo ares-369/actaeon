@@ -213,8 +213,9 @@ counted and left out.
 
 The hunt page draws **who did what where** from the stored results: users, hosts, parent processes,
 processes, destinations and intel matches, linked when they appear together in an event. Links and
-nodes that come from evidence a finding cites are drawn bold; click a node for its evidence ids and its
-history across hunts (see [entities.md](entities.md)). No model is used. Large hunts show the most
+nodes that come from evidence a finding cites are drawn bold; click a node for its evidence ids, when it
+was first and last seen in those events, and its history across hunts (see [entities.md](entities.md)).
+Hovering a link shows the same times, so an old association is not mistaken for a current one. No model is used. Large hunts show the most
 frequent nodes per column (`GET /api/hunts/<id>/graph` has them all as data).
 
 ## Detection drafts

@@ -55,3 +55,21 @@ def test_graph_api_on_demo(tmp_path, monkeypatch):
         assert client.get("/api/hunts/nope/graph").status_code == 404
     finally:
         c._CONFIG, h._HUB = None, None
+
+
+def test_first_and_last_seen(home):
+    st = service.store_for(config.get_config(reload=True))
+    hid = st.create("beacon")
+    hits = [{"@timestamp": t, "host": {"name": "WS07"}, "destination": {"ip": "203.0.113.66"}}
+            for t in ("2026-11-14T10:00:00Z", "2026-11-12T08:30:00Z", "2026-11-13T09:00:00Z")]
+    st.add_step(hid, 2, "call", connector="logs", tool="search", ok=True, result=_wrap({"hits": hits}))
+    st.add_step(hid, 3, "call", connector="local-intel", tool="lookup", ok=True,
+                arguments={"value": "203.0.113.66"}, result=_wrap({"value": "203.0.113.66", "found": True}))
+    st.update(hid, status="done", outcome="threat", verdict=json.dumps({"outcome": "threat"}))
+    g = build(st.get(hid))
+    host = next(n for n in g["nodes"] if n["id"] == "host:WS07")
+    assert (host["first"], host["last"]) == ("2026-11-12T08:30:00Z", "2026-11-14T10:00:00Z")
+    link = next(e for e in g["edges"] if e["from"] == "host:WS07" and e["to"] == "destination:203.0.113.66")
+    assert (link["first"], link["last"]) == ("2026-11-12T08:30:00Z", "2026-11-14T10:00:00Z")
+    intel = next(n for n in g["nodes"] if n["kind"] == "intel")
+    assert intel["first"] is None                       # an intel lookup is not an event with a time

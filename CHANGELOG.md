@@ -7,6 +7,10 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Added
+- Investigation graph: every node and link carries the first and last time it was seen in the hunt's
+  events (shown when you click a node or hover a link, and in `GET /api/hunts/<id>/graph`).
+
 ## [0.2.1-beta] — 2026-11-15
 
 ### Added

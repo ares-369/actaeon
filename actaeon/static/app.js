@@ -416,6 +416,12 @@ const svgEl = (tag, attrs, ...kids) => {
   return el;
 };
 
+// "first seen ... last seen ..." for a graph node or link that has event times
+function seenText(x, sep = "\n") {
+  if (!x.first) return "";
+  return x.first === x.last ? `${sep}seen ${when(x.first)}` : `${sep}first seen ${when(x.first)}, last seen ${when(x.last)}`;
+}
+
 function graphBox(hu) {
   const box = h("div", { class: "graph-wrap" });
   const info = h("p", { class: "muted small" }, "Click a node to see the evidence it came from.");
@@ -438,15 +444,15 @@ function graphBox(hu) {
       if (!a || !b) return;
       const x1 = a.x + NODEW, y1 = a.y + NODEH / 2, x2 = b.x, y2 = b.y + NODEH / 2, mx = (x1 + x2) / 2;
       svg.append(svgEl("path", { d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`, class: e.cited ? "g-edge cited" : "g-edge" },
-        svgEl("title", {}, `${e.from} -> ${e.to}  (${e.evidence.join(", ")})`)));
+        svgEl("title", {}, `${e.from} -> ${e.to}  (${e.evidence.join(", ")})${seenText(e)}`)));
     });
     Object.values(pos).forEach(({ x, y, n }) => {
       const label = n.label.length > 24 ? n.label.slice(0, 23) + "…" : n.label;
       const g1 = svgEl("g", { class: "g-node" + (n.cited ? " cited" : ""), tabindex: "0" },
-        svgEl("title", {}, `${n.kind}: ${n.label}\nseen ${n.count} time(s) in ${n.evidence.join(", ")}`),
+        svgEl("title", {}, `${n.kind}: ${n.label}\nseen ${n.count} time(s) in ${n.evidence.join(", ")}${seenText(n)}`),
         svgEl("rect", { x, y, width: NODEW, height: NODEH, rx: 5 }),
         svgEl("text", { x: x + 8, y: y + 17 }, label));
-      const show = () => fill(info, h("b", {}, `${n.kind}: ${n.label}`), ` · seen ${n.count} time(s) · evidence ${n.evidence.join(", ")}`,
+      const show = () => fill(info, h("b", {}, `${n.kind}: ${n.label}`), ` · seen ${n.count} time(s)${seenText(n, " · ")} · evidence ${n.evidence.join(", ")}`,
         n.cited ? " · cited by a finding" : "", " · ",
         h("a", { href: `#entities/${n.kind === "parent" ? "process" : n.kind === "destination" ? (/^[\d.:a-f]+$/i.test(n.label) ? "ip" : "domain") : n.kind}:${encodeURIComponent(n.label)}` }, "history"));
       g1.addEventListener("click", show);
