@@ -26,6 +26,9 @@ class OllamaProvider(LLMProvider):
         self.num_ctx = int(cfg.get("num_ctx") or 8192)
         self.timeout = float(cfg.get("timeout_sec") or 300)
         self.think = cfg.get("think")      # None: the model's default; false turns off a reasoning model's thinking
+        # Ollama counts a reasoning model's thinking against num_predict, so leave room for it. A cap only:
+        # models that do not think stop when their answer is done.
+        self.think_tokens = 0 if self.think is False else int(cfg.get("think_tokens", 3000) or 0)
 
     def chat(self, messages: list[Message], *, model=None, temperature=0.2, max_tokens=900) -> LLMResult:
         use_model = model or self.default_model
@@ -34,7 +37,8 @@ class OllamaProvider(LLMProvider):
                 "model": use_model,
                 "messages": messages,
                 "stream": False,
-                "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": self.num_ctx},
+                "options": {"temperature": temperature, "num_predict": max_tokens + self.think_tokens,
+                            "num_ctx": self.num_ctx},
             }
             if self.think is not None:
                 body["think"] = bool(self.think)
@@ -42,6 +46,11 @@ class OllamaProvider(LLMProvider):
             r.raise_for_status()
             data = r.json()
             content = data.get("message", {}).get("content", "") or ""
+            if not content.strip() and (data.get("message", {}).get("thinking") or ""):
+                return LLMResult(text="", model=use_model, tokens_in=int(data.get("prompt_eval_count") or 0),
+                                 tokens_out=int(data.get("eval_count") or 0),
+                                 error="Ollama error: the model used its whole reply budget thinking and gave no answer; "
+                                       "raise llm.providers.ollama.think_tokens")
             content = _THINK_RE.sub("", content).strip()
             tokens_in = int(data.get("prompt_eval_count") or 0)
             if tokens_in >= self.num_ctx - 16:

@@ -7,6 +7,13 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Fixed
+- Reasoning models on Ollama (such as qwen3): their thinking counts against the reply limit, so a 900-token
+  limit could be spent entirely on thinking and return an empty answer. The provider now leaves extra room
+  (`think_tokens`, default 3000; a cap, so other models are not slowed) and reports an answer-less reply
+  as an error. With this Ollama version, `think: false` made qwen3 write its reasoning into the answer
+  instead of skipping it, so leave `think` unset for it.
+
 ## [0.2.0-beta] — 2026-11-15
 
 ### Security

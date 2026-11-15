@@ -39,7 +39,8 @@ llm:
       default_model: "qwen2.5:7b"
       num_ctx: 8192            # context window asked of Ollama (its own default cuts long prompts)
       timeout_sec: 300
-      # think: false          # reasoning models (e.g. qwen3): false skips the thinking step, faster
+      # think: false          # reasoning models (e.g. qwen3): false skips the thinking step
+      think_tokens: 3000       # extra reply room for a reasoning model's thinking (a cap; others stop early)
     anthropic:
       default_model: ""        # ANTHROPIC_API_KEY in .env
     gemini:                    # see docs/models.md for every way to connect
