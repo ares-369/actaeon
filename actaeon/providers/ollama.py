@@ -28,7 +28,7 @@ class OllamaProvider(LLMProvider):
         self.think = cfg.get("think")      # None: the model's default; false turns off a reasoning model's thinking
         # Ollama counts a reasoning model's thinking against num_predict, so leave room for it. A cap only:
         # models that do not think stop when their answer is done.
-        self.think_tokens = 0 if self.think is False else int(cfg.get("think_tokens", 3000) or 0)
+        self.think_tokens = 0 if self.think is False else int(cfg.get("think_tokens", 6000) or 0)
 
     def chat(self, messages: list[Message], *, model=None, temperature=0.2, max_tokens=900) -> LLMResult:
         use_model = model or self.default_model

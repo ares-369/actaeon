@@ -65,6 +65,8 @@ words when the cases are private.
 | gemini/gemini-3.1-flash-lite | built-in demo cases | 6/8 | 1.00 | 0.50 | 0 | under 1 min | 18k (28% cached) | 0.7k | 2026-11-14 | 0.1.0b2+ |
 | ollama/qwen2.5-coder:7b (4 GB laptop GPU, compact) | built-in demo cases | 3/8 | n/a | 0.00 | 0 | 2.7 min | 28k (0% cached) | 0.7k | 2026-11-15 | 0.2.0-beta |
 | ollama/qwen2.5-coder:7b, second run | built-in demo cases | 3/8 | n/a | 0.00 | 0 | 7.4 min | 66k (0% cached) | 2.0k | 2026-11-15 | 0.2.0-beta |
+| ollama/qwen3:4b (thinking, `think_tokens` 3000) | built-in demo cases | 3/8 | 1.00 | 0.25 | 0 | 5.1 min | 9k (0% cached) | 11.5k | 2026-11-15 | 0.2.0-beta+ |
+| ollama/qwen3:4b, 3 failed cases rerun with `think_tokens` 6000 | 3 demo cases | 1/3 | n/a | 0.00 | 0 | 8.5 min | 12k (0% cached) | 17.7k | 2026-11-15 | 0.2.0-beta+ |
 
 ## Notes on interpreting scores
 

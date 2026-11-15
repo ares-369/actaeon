@@ -52,6 +52,6 @@ def test_thinking_budget_and_empty_answer(monkeypatch):
                         lambda url, json, timeout: sent.append(json) or _R(
                             {"message": {"content": "", "thinking": "long thoughts"}, "eval_count": 3900}))
     r = OllamaProvider({}).chat([{"role": "user", "content": "x"}], max_tokens=900)
-    assert sent[0]["options"]["num_predict"] == 3900 and r.error and "thinking" in r.error and not r.text
+    assert sent[0]["options"]["num_predict"] == 6900 and r.error and "thinking" in r.error and not r.text
     OllamaProvider({"think": False}).chat([{"role": "user", "content": "x"}], max_tokens=900)
     assert sent[1]["options"]["num_predict"] == 900

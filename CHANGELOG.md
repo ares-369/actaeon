@@ -7,10 +7,16 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.2.1-beta] — 2026-11-15
+
+### Added
+- qwen3:4b measured on a 4 GB laptop GPU (`docs/local-models.md`, `docs/benchmarks.md`): 4 of 8 demo cases
+  correct, 1 of the 4 planted threats found, no false alarms; 4 to 13 minutes per hunt with thinking on.
+
 ### Fixed
 - Reasoning models on Ollama (such as qwen3): their thinking counts against the reply limit, so a 900-token
   limit could be spent entirely on thinking and return an empty answer. The provider now leaves extra room
-  (`think_tokens`, default 3000; a cap, so other models are not slowed) and reports an answer-less reply
+  (`think_tokens`, default 6000; a cap, so other models are not slowed) and reports an answer-less reply
   as an error. With this Ollama version, `think: false` made qwen3 write its reasoning into the answer
   instead of skipping it, so leave `think` unset for it.
 

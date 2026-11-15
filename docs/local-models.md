@@ -1,9 +1,10 @@
 # Running with a local model
 
 Actaeon can run on a model on your own hardware through Ollama (or any OpenAI-compatible server), so
-no data leaves your network. This page covers the set-up, and what a small local model did on the
-built-in demo cases. Short version: the set-up works and the safety checks hold, but a 7B model on a
-4 GB GPU did not find the planted attacks. Use the biggest model you can run for the `analyst` role.
+no data leaves your network. This page covers the set-up, and what two small local models did on the
+built-in demo cases. Short version: the set-up works and the safety checks hold, but on a 4 GB GPU a 7B
+model found none of the 4 planted attacks and a 4B reasoning model found 1, with no false alarms from
+either. Use the biggest model you can run for the `analyst` role.
 
 ## Set-up
 
@@ -32,6 +33,10 @@ Things that matter with local models:
   and reports a prompt that still fills the window as an error. More context needs more GPU memory.
 - **Compact prompts** (`hunt.prompt_mode: compact`, or the `quick` profile) keep each call small.
 - **Time.** On a laptop GPU every model call takes tens of seconds; a hunt takes minutes.
+- **Reasoning models** (such as qwen3) think before they answer, and Ollama counts the thinking against
+  the reply limit. Actaeon leaves `think_tokens` (default 6000) of extra room; an answer-less reply is
+  reported as an error. Leave `think` unset for qwen3: with `think: false` (Ollama 0.17) it wrote its
+  reasoning into the answer instead of skipping it, and most replies were not usable.
 - **Mixed roles.** You can keep `planner` and `reporter` local and give `analyst` a stronger model, or
   the reverse; see [models.md](models.md).
 
@@ -71,6 +76,28 @@ instead of being closed as harmless. In run 2 neither fired, because the model n
 matched: it missed the evidence altogether. The broaden-once nudge fired twice without changing an
 outcome. Run 2 was also slower and used more tokens than run 1, on the same cases: the same model varies
 a lot from run to run, so one run of 8 cases is a rough sign, not a score.
+
+## Measured: qwen3:4b on the same GPU
+
+The 2.4 GB model fits entirely on the 4 GB GPU (37 of 37 layers), with thinking on, `num_ctx` 8192,
+`prompt_mode: compact`, the same 8 cases, 2026-11-15.
+
+| Run | Correct | Threats found (of 4) | False positives | Input / output tokens per hunt | Time per hunt |
+|---|---|---|---|---|---|
+| `think_tokens` 3000, all 8 cases | 3 / 8 | 1 | 0 | 9k / 11.5k | 5.1 min |
+| `think_tokens` 6000, the 3 cases that failed above | 1 / 3 | 0 | 0 | 12k / 17.7k | 8.5 min |
+| Both together (each case's last run) | 4 / 8 | 1 | 0 | | |
+
+- It found the planted Office-to-PowerShell attack (outcome threat, confidence 60) and explained the
+  benign admin script correctly. The threat's second look failed on the thinking limit, so that hunt went
+  to an analyst as unconfirmed.
+- With 3000 tokens of room, 3 hunts failed at the planning step: the model thought past the limit and gave
+  no answer. They were handed to an analyst, not closed. With 6000 none failed, so 6000 is the default.
+- It called two of the planted threats (the beacon and the scheduled task) benign, and one empty case
+  (log clearing) benign as well. It did not look the beacon's destination up in the intel store, so the
+  intel check described above had nothing to catch.
+- Thinking makes it slow: 75 to 110 seconds per model call on average, 4 to 13 minutes per finished
+  hunt, and more output tokens than input tokens.
 
 ## Not measured
 

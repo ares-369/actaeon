@@ -250,9 +250,9 @@ not in this repository.
 - **Not clustered by default.** It uses SQLite on one machine, with nothing else to install.
   PostgreSQL is an install-time option for several machines; it is new and has not run in
   production yet.
-- **Measured with a few models only.** Three Gemini models and one local 7B model were scored; other providers have no measured
-  results yet. Small local models were not good enough to hunt in testing (a 7B model found 0 of 4 planted
-  threats on the demo cases; [docs/local-models.md](docs/local-models.md)).
+- **Measured with a few models only.** Three Gemini models and two small local models were scored; other providers have no measured
+  results yet. Small local models were not good enough to hunt in testing (on a 4 GB GPU a 7B model found 0 and
+  a 4B reasoning model 1 of the 4 planted threats in the demo cases; [docs/local-models.md](docs/local-models.md)).
 - **Not proven in production yet.**
 
 ## Contributing
