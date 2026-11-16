@@ -15,25 +15,28 @@ the work to a person instead of guessing.
 
 It does not replace your SIEM or EDR. It works on top of them, reading what they already collect.
 
-- **Read-only investigations.** Hunts and alert investigations only search and read. Response
-  actions (isolate, quarantine, disable, ...) are never offered to a model; the only writes are ones an
-  admin explicitly allows, such as opening a ticket.
-- **Response only with a person's approval (optional, off by default).** Containment actions you
-  define are proposed on true positives and run only after an analyst approves the exact call, with
-  undo and an audit trail. Destructive operations (delete, wipe, shut down) are never possible.
-- **Works with what you already run.** Every data source is reached through the Model Context
-  Protocol (MCP), so it is not tied to any product. It ships with bridges for search-index APIs,
-  read-only SQL databases, STIX/TAXII 2.1 servers and REST/OpenAPI services, and works with any
-  other MCP server.
-- **AI is optional.** Alert triage runs fixed, read-only checks first (decode the command, look up intel,
-  read the host's events and inventory, count accounts tried) and turns them into evidence-backed signals.
-  With `soc.analysis: rules` that is all it does: no model, no tokens, seconds per case. A small local
-  model can then judge the collected evidence, and your own endpoint can take only the hard cases.
-  Drift checks, intel sweeps and saved-hunt replays also run with no model.
-- **Your choice of model.** A cloud model or one on your own hardware; each role (planner, analyst,
-  reporter) can use a different one.
-- **Fully open source.** Apache-2.0. Every feature is in this repository. There is no paid
-  edition, no licence key and no telemetry.
+- **Alert triage that works without AI.** Fixed, read-only checks collect the evidence for every alert
+  (decode the command, look up intel, read the host's events and inventory, count accounts tried) and plain
+  rules turn it into signals. With `soc.analysis: rules` that is all it does: no model, no tokens, seconds
+  per case. A model, if you have one, judges the collected evidence; it can add to what the checks proved,
+  not take it away.
+- **Hypothesis-driven hunting.** Give it an idea to test and it plans the hunt, queries your sources,
+  follows pivots and maps what it finds to ATT&CK. Drift checks, intel sweeps and saved-hunt replays run
+  with no model.
+- **Evidence-backed verdicts.** Every claim cites the query result it rests on, the facts that point the
+  other way are listed, and checks in code drop or downgrade what the evidence does not support. Missing
+  logs are reported as missing, never as clean. When it cannot decide, a person gets the case.
+- **Entities linked across sources.** Hosts, users, processes, addresses and hashes from every source and
+  every hunt or case, with an entity graph and a timeline tied to the evidence.
+- **Response only with a person's approval (optional, off by default).** Containment actions you define
+  are proposed on true positives and run only after someone other than the requester approves the exact
+  call (one-person teams can allow self-approval). Where the action has a reversal, it is recorded with it and marked as a full or partial undo. All
+  actions and reversals are audited, and destructive operations (delete, wipe, shut down) are never possible.
+
+Also: every data source is reached through the Model Context Protocol (MCP), so it is not tied to any product,
+with bridges for search indices, read-only SQL, STIX/TAXII 2.1 and REST/OpenAPI; each model role can use a
+local or cloud model of your choice; investigations are read-only; and it is Apache-2.0 with no paid edition,
+no licence key and no telemetry.
 
 > **Beta, solo-maintained.** It has been tested in one home lab and on public and synthetic
 > benchmarks, but not yet in production. It runs on one machine with SQLite by default, with
@@ -128,6 +131,38 @@ flowchart TD
     S --> O["Verdict, lead or hand-off,<br/>Sigma draft, outputs"]
 ```
 
+## How alert triage works
+
+1. **Intake.** Alerts arrive through `POST /api/alerts`, a polled connector or a file. Suppressed and duplicate
+   alerts are set aside; related ones (same host, user, source address, external destination, domain or hash,
+   close in time) become one case.
+2. **Fixed checks, no model.** `decode`, `intel`, `context` (the host's events around the alert), `inventory`
+   (what runs, listens and which accounts exist on the host), `auth` (accounts tried from a source, successful
+   sign-ins) and `spread` (other hosts that contacted the same destination). Every result is evidence `E<n>`.
+3. **Signals.** Rules read the results: an intel match, a decoded download, a download piped into a shell, a
+   process running from a temporary path, a hidden listening process, a non-root account with user id 0,
+   password spraying, a successful sign-in after failures, an Office application starting a shell.
+4. **Verdict.** With `soc.analysis: rules`, a strong signal about the alert's own activity makes a true
+   positive and everything else goes to a person. With a model, the model reads the evidence, may query more,
+   and gives the verdict; a second look tries to prove it wrong; hard cases can go to a stronger model.
+5. **Case.** The story, the evidence, what points against the verdict, the fix (remediation or a tuning
+   proposal), proposed actions, an entity graph, a timeline and the ATT&CK chain.
+
+**What rules-only mode can and cannot do**
+
+- It finds the kinds of trace listed above, on connectors whose query language is query_string (Lucene), such
+  as the bundled search-index bridge. Activity that leaves none of those traces is not found without a model or
+  a person.
+- It never dismisses a case: it does not call anything a false positive. A case that matches a known-good note
+  and shows no strong signal is marked benign; high and critical cases still wait for a person.
+- When a source cannot be reached, the checks that needed it fail, the case says so, and it goes to a person
+  (`logs_missing` when nothing could be read). Missing data never counts as clean.
+- You choose which checks run per kind of alert with playbooks (`collect:`), and name your field names per
+  connector (`fields:`). The signal rules themselves are code for now; your own rules in configuration are not
+  supported yet.
+
+Details: [docs/alert-triage.md](docs/alert-triage.md).
+
 ## What is included
 
 | Area | What you get |
@@ -156,9 +191,10 @@ in code, not only in prompts:
   Response and destructive actions are always blocked on that path, whatever the configuration says.
 - **Approval-gated response.** The only way a response action runs is `soc.response.actions`: a
   configured action on a connector with the `response` role, proposed for a case, approved by a named
-  person (two with `two_person`), bound to the case as it was reviewed (new alerts or a new verdict
-  make the approval stale), audited. Destructive tools are refused at config load and at call time.
-  Approvals are not offered over MCP.
+  person who did not propose it (two with `two_person`), bound to the case as it was reviewed (new alerts
+  or a new verdict make the approval stale), and expiring if nobody decides. Where an action has a
+  reversal it is recorded and labelled full or partial; actions and reversals are audited. Destructive
+  tools are refused at config load and at call time. Approvals are not offered over MCP.
 - **Query guard.** Queries need a time window when the tool takes one. Result sizes, time per query,
   tool calls and runtime per hunt are capped, and tokens per hunt can be. Each connector is
   rate-limited. Leading wildcards, which force the index to scan every value, are refused on log indices.
@@ -183,13 +219,30 @@ Details: [docs/threat-model.md](docs/threat-model.md), [docs/connectors.md](docs
 | ExCyTIn-Bench sample (80 public investigation questions) | mean reward 0.512, 40 / 80 fully correct |
 | Field test: implant planted where no detection rule covered it | found from host inventory with no alert behind it |
 | Tokens per hunt on the lab data (gemini-3.8-flash) | about 210k to 250k input, more than half served from the provider's cache; about 4k output; about 20 model calls |
+| Alert triage on the same frozen lab data (9 labelled alerts: the 4 planted attacks of the hunt cases, written as alerts, and 5 real non-threat alerts) | fixed checks with no model: 9 / 9, all 4 attacks, no false alarm, 5 handed to a person, 9 s per case. qwen3:4b with the checks: 9 / 9, 4 handed to a person, about 11.5 min per case on a 4 GB GPU. qwen3:4b alone: 5 / 9, none of the 4 attacks |
+| Alert triage on three days of live lab alerts (329 alerts, 10 cases, not labelled, not used for tuning) | fixed checks with no model: no false alarm, nothing closed, 70 s for all 10 cases |
 
-The samples are small, the lab cases were written by someone who knew the answers, and only Gemini models
-have been measured. Read them as "it checks and clears correctly", not as proof that it finds every attacker.
+The two lab sets share the same frozen data and the same 4 planted attacks: the hunt set asks 11
+hypotheses (the fifth threat there is an earlier test implant in the same week), the triage set feeds 9
+alerts. The samples are small, the lab cases were written by someone who knew the answers, the triage rules
+were tuned on those 9 alerts, and only Gemini and two small local models have been measured. Read them as "it checks and clears correctly", not as proof that it finds every attacker.
 `actaeon bench --model <provider/model>` runs the built-in demo cases (or your own) with any model,
 and `benchmarks/` has the runners for the lab and ExCyTIn tests. Results from other models are
 welcome. Details, failures included, are in
 [docs/benchmarks.md](docs/benchmarks.md) and [docs/field-test-2026-11.md](docs/field-test-2026-11.md).
+
+## What it needs
+
+Measured on the lab install (one container, 2 CPU cores, 2 GB of memory), not tuned limits:
+
+| Part | What it needs |
+|---|---|
+| Server | Python 3.10+, about 100 MB of memory while serving; tested on Linux and in Docker |
+| Storage | SQLite files in the data folder by default (PostgreSQL optional); about 6 KB per alert including its case and evidence |
+| Alert triage with no model (`soc.analysis: rules`) | no GPU and no AI provider; about 9 s per case on the lab data, 70 s for 10 real cases of up to 250 alerts |
+| Local model | depends on the model; qwen3:4b on a 4 GB laptop GPU took about 11.5 minutes per triage case and 4 to 13 minutes per hunt |
+| Cloud or your own endpoint | optional, your credentials; prompts can be masked ([privacy](docs/privacy.md)) |
+| Data sources | read access to your SIEM, EDR or other sources through MCP; read-only accounts recommended |
 
 ## Install
 

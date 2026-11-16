@@ -121,6 +121,16 @@ What happens next depends on `soc.analysis`:
   On the lab benchmark a small local model talked itself out of attacks the rules had proved, which is why this
   rule exists (see [benchmarks.md](benchmarks.md)).
 
+Boundaries of the fixed checks:
+
+- They find the traces listed above and nothing else. Activity that leaves none of them needs a model or a
+  person.
+- When a source cannot be reached, the checks that needed it fail and are listed as failed on the case; if
+  nothing could be read the verdict is `logs_missing`, and the case goes to a person. Missing data never counts
+  as clean.
+- Playbooks choose which checks run (`collect:`) and connectors can name their fields (`fields:`), but the signal
+  rules themselves are code: rules of your own in configuration are not supported yet.
+
 **Escalation** (`soc.escalate`, off by default) re-runs hard cases on a stronger model you choose (your own
 endpoint or key), only for cases at or above `min_severity`, at most `max_per_day`, and only when the first pass
 could not decide, the second look could not confirm it, or the fixed checks and the model disagree. The first
