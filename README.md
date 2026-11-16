@@ -221,11 +221,13 @@ Details: [docs/threat-model.md](docs/threat-model.md), [docs/connectors.md](docs
 | Tokens per hunt on the lab data (gemini-3.8-flash) | about 210k to 250k input, more than half served from the provider's cache; about 4k output; about 20 model calls |
 | Alert triage on the same frozen lab data (9 labelled alerts: the 4 planted attacks of the hunt cases, written as alerts, and 5 real non-threat alerts) | fixed checks with no model: 9 / 9, all 4 attacks, no false alarm, 5 handed to a person, 9 s per case. qwen3:4b with the checks: 9 / 9, 4 handed to a person, about 11.5 min per case on a 4 GB GPU. qwen3:4b alone: 5 / 9, none of the 4 attacks |
 | Alert triage on three days of live lab alerts (329 alerts, 10 cases, not labelled, not used for tuning) | fixed checks with no model: no false alarm, nothing closed, 70 s for all 10 cases |
+| Alert triage on 6 new attacks the rules were never written for, plus 4 look-alikes (planted after the rules, labels written first, no tuning) | fixed checks with no model: none of the 6 found, no false alarm. qwen3:4b with the checks: none found, 1 false alarm. Nothing was wrongly closed: all 6 went to a person with the evidence collected |
 
 The two lab sets share the same frozen data and the same 4 planted attacks: the hunt set asks 11
 hypotheses (the fifth threat there is an earlier test implant in the same week), the triage set feeds 9
 alerts. The samples are small, the lab cases were written by someone who knew the answers, the triage rules
-were tuned on those 9 alerts, and only Gemini and two small local models have been measured. Read them as "it checks and clears correctly", not as proof that it finds every attacker.
+were tuned on those 9 alerts (on new kinds of attack they found nothing), and only Gemini and two small local
+models have been measured. Read them as "it checks and clears correctly", not as proof that it finds every attacker.
 `actaeon bench --model <provider/model>` runs the built-in demo cases (or your own) with any model,
 and `benchmarks/` has the runners for the lab and ExCyTIn tests. Results from other models are
 welcome. Details, failures included, are in
@@ -336,10 +338,10 @@ not in this repository.
 - **Measured with a few models only.** Three Gemini models and two small local models were scored; other providers have no measured
   results yet. Small local models were not good enough to hunt in testing (on a 4 GB GPU a 7B model found 0 and
   a 4B reasoning model 1 of the 4 planted threats in the demo cases; [docs/local-models.md](docs/local-models.md)).
-  For alert triage the fixed checks change that: on 9 labelled cases from the lab's real data, the checks alone
-  (no model) and the checks with a 4B local model both found all 4 planted attacks with no false alarms; the model
-  alone found none. The rules were tuned on those cases, so treat it as a first result
-  ([docs/benchmarks.md](docs/benchmarks.md)).
+  For alert triage the fixed checks help on the kinds of attack they look for: on 9 labelled cases from the lab's
+  real data, the checks alone and the checks with a 4B local model both found all 4 planted attacks, and the model
+  alone found none. On 6 new kinds of attack planted afterwards, neither found any; the guards sent all of them to
+  a person instead of closing them ([docs/benchmarks.md](docs/benchmarks.md)).
 - **Not proven in production yet.**
 
 ## Acknowledgements

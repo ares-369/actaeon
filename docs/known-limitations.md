@@ -95,6 +95,10 @@ Actaeon is in beta. These are the limits we know about.
 - **Small local models cannot triage on their own.** qwen3:4b alone found none of 4 planted attacks on real data.
   The fixed checks found all 4 with no model, and with them the same model scored 9/9, but the rules were tuned on
   those cases (see [benchmarks.md](benchmarks.md)). No larger model has been measured on alert triage yet.
+- **Measured on new attacks, they found none.** Six attacks of kinds the rules were not written for (cron entries
+  pointing at hidden binaries, a credential-file read, an `authorized_keys` change, base64 piped into a shell, a
+  download then executed, an interpreter in a hidden folder holding a connection) were all missed by the checks
+  and by qwen3:4b; all six went to a person rather than being closed ([benchmarks.md](benchmarks.md)).
 - **The fixed checks look for known kinds of trace**: processes in temporary paths, hidden listeners, extra root
   accounts, downloads piped into a shell, intel matches, password spraying. Their queries use query_string syntax
   and run only on connectors with that dialect. Activity that leaves none of these traces needs a model or a person.

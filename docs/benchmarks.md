@@ -217,6 +217,49 @@ Read these numbers with care:
 - Larger and cloud models have not been measured on alert triage. `actaeon triage-bench --table results.jsonl`
   prints every recorded run; providers with no run are listed as not measured.
 
+### Alert triage on attacks the rules had never seen (2026-11-17)
+
+The test the previous section called for: new attacks, planted after the rules were written, with no rule or
+code change before or after the run. A throwaway container in the lab got a normal monitoring agent (logs,
+inventory every 5 minutes, file-integrity monitoring), then six inert stand-in attacks of kinds the fixed
+checks have no rule for, and four harmless look-alikes. The labels, the hand-written alerts and a prediction
+were written down before anything was planted, the data was frozen, and each mode ran once.
+
+| Case | Expected |
+|---|---|
+| A cron entry that runs a renamed binary from a hidden folder (not a temporary path) | true positive |
+| A user reading `/etc/shadow` through sudo and copying it | true positive |
+| A renamed interpreter in a hidden folder holding a connection to a local listener (reverse-shell style) | true positive |
+| A key appended to root's `authorized_keys` | true positive |
+| Base64 content piped into `sh` | true positive |
+| A file downloaded, made executable and started (not piped; the address is not in the intel store) | true positive |
+| An admin script run from `/tmp` | not a threat |
+| A normal backup account created | not a threat |
+| An ordinary `curl` download of a checksum file | not a threat |
+| A logrotate cron job added | not a threat |
+
+| Run | Correct | Attacks found | False alarms | Handed to an analyst | Wrong closures | Tokens (10 cases) | Median per case |
+|---|---|---|---|---|---|---|---|
+| fixed checks, no model | 4/10 | 0/6 | 0 | 10 | 0 | 0 | 9 s |
+| qwen3:4b with the fixed checks | 3/10 | 0/6 | 1 | 8 | 0 | 207,331 | 945 s |
+
+What this shows:
+
+- **Neither found any of the new attacks.** The fixed checks collected the evidence every time (all their calls
+  succeeded: the sudo lines reading `/etc/shadow`, the hidden processes in the host inventory, the changed key
+  file), but no rule recognises these kinds of trace, so they raised no signal. The 9/9 of the previous section
+  was in-sample, as it said: it does not carry over to attacks the rules were not written for.
+- **The small model dismissed all six**, as benign or false positives, several times by pointing at a note in the
+  environment description about earlier container changes. It also called the ordinary backup account an attack.
+- **Nothing was wrongly closed.** All six attacks are high-severity alerts, and a high or critical alert is not
+  dismissed without an independent confirmation, so every one went to a person with its evidence collected. The
+  rules raised no false alarm (the `/tmp` admin script and the new cron job did not fire anything).
+- **What would have caught them** is plain to see: rules for cron and service entries pointing at hidden paths,
+  reads of credential files, `authorized_keys` changes, decoded content piped into a shell, and a download that is
+  then executed. Adding them now would be tuning to this set, so they need a fresh set of their own to be
+  measured on. The environment note the model leaned on also shows that broad notes can become an excuse; notes
+  should name exact accounts and hosts.
+
 ## Token usage
 
 Every hunt records model calls and tokens per model: input, the part of the input the provider served from

@@ -7,6 +7,13 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Measured
+- Alert triage on attacks the rules were never written for (6 new attacks and 4 look-alikes, planted after the
+  rules, labels and a prediction written first, run once with no tuning): fixed checks with no model found none
+  of the 6 with no false alarm; qwen3:4b with the checks found none and called one look-alike an attack. Nothing
+  was wrongly closed: all 6 went to a person with the evidence collected. The earlier 9/9 was in-sample and does
+  not carry over. See docs/benchmarks.md.
+
 ## [0.4.0-beta] — 2026-11-16
 
 Alert triage no longer needs a model.
