@@ -25,7 +25,8 @@ What Actaeon protects, from whom, and how. Beta: treat this as a working draft.
 Tools are read-only by default: deny/allow lists, write-like names and server
 hints are blocked, and write tools need `allow_write` plus an exact allow entry.
 Response and destructive actions (isolate, quarantine, kill, delete, disable,
-revoke, block, ...) are blocked whatever the configuration says.
+revoke, block, ...) are blocked on this path whatever the configuration says:
+connectors with the `response` or `ticketing` role are never offered to a model.
 The query validator refuses write, delete, index-change and code-execution
 patterns. Bridges expose only read endpoints. Every call is audited.
 *Residual:* the heuristics can miss a write path on a source with unusual tool
@@ -96,9 +97,34 @@ one before; `actaeon audit verify` finds changed or removed rows.
 the end. Keep the `head` hash, or ship the audit log elsewhere, if you need
 stronger guarantees.
 
+**T9. An approved response action does harm (alert triage).**
+Response is off by default (`soc.response.enabled: false`: actions are only recommended) and dry run
+when first enabled. A proposal needs a true positive, a configured action, and a target that is an
+entity of the case of the right kind; targets with shell or quoting characters are refused. Running
+needs a named approver (two with `two_person`, never the same person twice), the `response` role on
+the connector, a tool not on its deny list and not destructive (delete, wipe, purge, format, shut
+down, reboot, ...: refused at config load and again at call time). The approval is bound to the case
+as it was reviewed: new alerts or a new verdict make it stale. It is not retried, and every attempt,
+allowed or blocked, is in the hash-chained audit log with the approvers' names. No MCP tool approves.
+Each action says whether its undo is reversible or only compensating.
+*Residual:* an analyst can approve a wrong action; the case shows the exact call and its evidence
+first.
+
+**T10. Steering alert triage through the alerts themselves.**
+Alerts are attacker-influenced text. They are untrusted data in every prompt, scanned for text that
+tries to instruct an AI (a hit sends the case to a person and caps a non-threat verdict's
+confidence), and checked like hunt verdicts: a false positive or benign verdict needs a successful
+data search, and on high or critical cases a second pass tries to show it is a threat after all.
+Suppressions (the tuning a verdict proposes) are applied only by a person, scoped to a rule and
+optionally one entity, expire, and count the high-severity alerts they hide so that shows up.
+*Residual:* an attacker who knows a rule is suppressed for a host can act under it until it expires.
+
 ## Out of scope
 
 - A compromised host running Actaeon.
 - Malicious MCP servers that the admin chose to install and run (stdio servers
   run with Actaeon's user rights). Review a server before adding it.
-- Response actions: Actaeon does not contain, isolate or remediate.
+- What a response connector really does. Actaeon checks that an action is configured, approved,
+  not destructive and bound to the reviewed case; it cannot check that the tool behind it does only
+  what its name says, or that its undo really restores things. Give response connectors an account
+  that can do only the configured actions.

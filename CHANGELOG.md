@@ -8,6 +8,27 @@ behaviour may still change between releases.
 ## [Unreleased]
 
 ### Added
+- **Alert triage** (`soc:` in config.yaml, docs/alert-triage.md). Alerts arrive through `POST /api/alerts`
+  (login, or a send-only bearer token), a polled connector tool (new `alerts` connector role) or
+  `actaeon alerts import`. They are normalised, suppressed, de-duplicated and grouped into cases. Each case
+  gets a first look (planner model: priority and questions) and an investigation (analyst model) through the
+  same read-only connectors as hunts, with playbook guidance. Verdicts: true positive, false positive,
+  benign, needs analyst, logs missing, with a summary, findings and timeline tied to evidence, entities,
+  ATT&CK techniques, a fix (remediation steps or a tuning proposal) and proposed actions. The same kind of
+  checks as hunt verdicts apply, and a second look tries to prove true positives wrong, and serious
+  dismissals right.
+- Case pages with the entity graph, timeline and ATT&CK chain; a triage dashboard (verdicts per day,
+  AI and analyst agreement, noisiest rules, tokens per day); approvals; suppressions with expiry and a
+  warning when they hide high-severity alerts; a shift report. "Hunt this" starts a full hunt from a case.
+- **Approval-gated response actions** (`soc.response`, docs/response.md), off by default: configured
+  per connector with the new `response` role, proposed on true positives, run only after a person approves
+  the exact call (optionally two people), bound to the case as reviewed, with reversible or compensating
+  undo, audited. Destructive operations are never possible. Hunts and investigations still never see
+  response tools.
+- `actaeon triage-bench`: scored triage on the labelled demo cases, or on your own labelled alerts
+  (`--cases FILE`), with recall, precision, hand-overs, wrong closures, evidence coverage, tokens and time.
+- MCP tools `list_cases`, `get_case`, `submit_alerts`, `triage_case` (no tool approves an action). Case
+  outputs: `when: [case_true_positive, case_needs_analyst, case_action_proposed, ...]`.
 - Investigation graph: every node and link carries the first and last time it was seen in the hunt's
   events (shown when you click a node or hover a link, and in `GET /api/hunts/<id>/graph`).
 

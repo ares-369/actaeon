@@ -53,8 +53,16 @@ _LABELS = (("critical", 85), ("high", 65), ("medium", 40), ("low", 0))
 _WORD_SEV = {"informational": 5, "info": 5, "low": 25, "medium": 50, "moderate": 50, "high": 75, "critical": 95,
              "severe": 90}
 _TECH = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
-# Domains found in free text must end in a known suffix (a name like "c.okafor" is a user, not a domain).
-_TLDS = set(["com", "net", "org", "edu", "gov", "mil", "int", "info", "biz", "io", "co", "ai", "app", "dev", "cloud", "online", "site", "xyz", "top", "club", "shop", "store", "tech", "me", "tv", "cc", "ws", "mobi", "name", "pro", "aero", "asia", "cat", "jobs", "travel", "live", "news", "blog", "email", "link", "click", "page", "space", "website", "world", "example", "test", "invalid", "localhost", "internal", "corp", "lan", "home", "arpa", "local", "onion"])
+# Domains found in free text must end in a known suffix: "c.okafor" is a user and "agent.name" a field name,
+# not domains. Country codes are listed (not "any two letters") because "id" and "ip" style endings are
+# common in log text; the few that still collide with field names (id, name, ip is not one) are left out.
+_GENERIC_TLDS = {"com", "net", "org", "edu", "gov", "mil", "int", "info", "biz", "app", "dev", "cloud", "online",
+                 "site", "xyz", "top", "club", "shop", "store", "tech", "mobi", "pro", "aero", "asia", "cat", "jobs",
+                 "travel", "live", "news", "blog", "email", "link", "click", "page", "space", "website", "world",
+                 "example", "test", "invalid", "localhost", "internal", "corp", "lan", "home", "arpa", "local", "onion"}
+_CC_LIST = """ac ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bm bn bo br bs bt bw by bz ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg er es et eu fi fj fk fm fo fr ga gd ge gf gg gh gi gl gm gn gp gq gr gt gu gw gy hk hm hn hr ht hu ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sk sl sm sn so sr ss st su sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug uk us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw"""
+_CC_TLDS = set(_CC_LIST.split()) - {"id", "sh", "py", "pl", "so", "st", "to", "is", "in", "it", "my", "no", "do"}
+_TLDS = _GENERIC_TLDS | _CC_TLDS
 _IGNORE_USERS = {"", "-", "n/a", "none", "null", "system", "local service", "network service", "unknown"}
 
 
@@ -178,13 +186,13 @@ def entities_of(fields: dict[str, Any], text: str = "") -> list[dict]:
             add("ip", ip)
         taken = {e["value"].lower() for e in out}
         for d in found.get("domain", [])[:20]:
-            tld = d.rsplit(".", 1)[-1].lower()
-            if d.lower() not in taken and (tld in _TLDS or len(tld) == 2):
+            if d.lower() not in taken and d.rsplit(".", 1)[-1].lower() in _TLDS:
                 add("domain", d)
         for u in found.get("url", [])[:10]:
             add("url", u)
-        for h in (found.get("sha256", []) + found.get("sha1", []) + found.get("md5", []))[:10]:
-            add("hash", h)
+        # 32-hex strings in log text are far more often ids than MD5 file hashes: take those only from hash fields
+        for hsh in (found.get("sha256", []) + found.get("sha1", []))[:10]:
+            add("hash", hsh)
     return out
 
 
@@ -199,9 +207,38 @@ def _techniques(v: Any, text: str) -> list[str]:
     return sorted(set(vals))
 
 
+def values_text(obj: Any, limit: int = 20000) -> str:
+    """Every string VALUE in the alert, joined. Key names are left out: "agent.name" is not a domain."""
+    parts: list[str] = []
+
+    def walk(x):
+        if isinstance(x, str):
+            parts.append(x)
+        elif isinstance(x, dict):
+            for v in x.values():
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+    walk(obj)
+    return "\n".join(parts)[:limit]
+
+
+def group_keys(entities: list[dict]) -> list[tuple[str, str]]:
+    """Entities that tie alerts to one case. Only entities from the alert's own fields count: the host, the
+    user, the SOURCE address (the actor, internal or not), an external destination address, a domain or a
+    file hash. Values merely found in log text (reference links, other addresses in a log line, internal
+    names) are shown on the case but never group: they would glue unrelated alerts together."""
+    return [(e["type"], e["value"].lower()) for e in entities
+            if e.get("field") and (e["type"] in ("host", "user", "hash", "domain")
+                                   or (e["type"] == "ip" and (e["field"] == "src_ip" or not e.get("internal"))))]
+
+
 def fingerprint(source: str, rule_id: str, rule_name: str, entities: list[dict]) -> str:
-    """Same rule on the same main entities = the same alert again (a duplicate, not a new case)."""
-    keys = sorted(f"{e['type']}:{e['value'].lower()}" for e in entities if e["type"] in ("host", "user", "ip"))
+    """Same rule on the same main entities = the same alert again (a duplicate, not a new case). Only entities
+    from the alert's own fields count, not ones picked out of free text."""
+    keys = sorted(f"{e['type']}:{e['value'].lower()}" for e in entities
+                  if e.get("field") and e["type"] in ("host", "user", "ip"))
     body = json.dumps([source, rule_id or rule_name, keys[:6]])
     return hashlib.sha256(body.encode()).hexdigest()[:20]
 
@@ -213,7 +250,7 @@ def normalize(raw: dict, *, source: str = "webhook", field_map: dict[str, list[s
     field_map = field_map or {}
     keys = {f: [*field_map.get(f, []), *ks] for f, ks in FIELD_KEYS.items()}
     fields = {f: _first(raw, ks) for f, ks in keys.items()}
-    text = json.dumps(raw, default=str)[:20000]
+    text = values_text(raw)
     rule_id = _str(fields["rule_id"])[:200]
     rule_name = _str(fields["rule_name"])[:300]
     title = _str(fields["title"])[:300] or rule_name or "Alert"
@@ -222,7 +259,7 @@ def normalize(raw: dict, *, source: str = "webhook", field_map: dict[str, list[s
     ts = _ts(fields["ts"])
     rid = _str(fields["id"])[:200]
     if not rid:
-        rid = hashlib.sha256((source + text).encode()).hexdigest()[:24]
+        rid = hashlib.sha256((source + json.dumps(raw, default=str, sort_keys=True)).encode()).hexdigest()[:24]
     return {
         "id": f"{source}:{rid}"[:240],
         "source": source,
@@ -242,13 +279,14 @@ def normalize(raw: dict, *, source: str = "webhook", field_map: dict[str, list[s
     }
 
 
-def hits_from_result(content: str) -> list[dict]:
-    """Alert objects inside a connector result: a JSON list, or a dict holding one under a common key."""
+def hits_from_result(content: str) -> list[dict] | None:
+    """Alert objects inside a connector result: a JSON list, or a dict holding one under a common key.
+    None when the result is not JSON at all (so a broken source is not mistaken for "no alerts")."""
     from .util import payload
     try:
         data = json.loads(payload(content))
     except ValueError:
-        return []
+        return None
     if isinstance(data, list):
         items = data
     elif isinstance(data, dict):

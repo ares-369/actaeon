@@ -215,21 +215,21 @@ class SocStore:
         with self._conn() as c:
             return [self._case(r) for r in c.execute(sql, args)]
 
-    def open_case_for(self, *, fingerprint: str, entities: list[dict], since: str) -> str | None:
-        """An open case that already holds this fingerprint, or shares a host/user/external IP, since ``since``."""
+    def open_case_for(self, *, fingerprint: str, entities: list[dict], since: str, until: str) -> str | None:
+        """An open case whose alerts lie within the window (``since`` .. ``until``) and that already holds this
+        fingerprint, or shares a grouping entity (see alerts.group_keys)."""
         with self._conn() as c:
             r = c.execute("SELECT a.case_id FROM soc_alerts a JOIN soc_cases c ON c.id=a.case_id WHERE a.fingerprint=? "
-                          "AND c.status NOT IN ('closed') AND c.last_alert>=? ORDER BY c.updated DESC LIMIT 1",
-                          (fingerprint, since)).fetchone()
+                          "AND c.status NOT IN ('closed') AND c.last_alert>=? AND c.first_alert<=? ORDER BY c.updated DESC "
+                          "LIMIT 1", (fingerprint, since, until)).fetchone()
             if r:
                 return r[0]
-            keys = [(e["type"], e["value"].lower()) for e in entities
-                    if e["type"] in ("host", "user") or (e["type"] == "ip" and not e.get("internal"))
-                    or e["type"] in ("hash", "domain")]
+            from .alerts import group_keys
+            keys = group_keys(entities)
             for t, v in keys:
                 r = c.execute("SELECT ce.case_id FROM soc_entities ce JOIN soc_cases c ON c.id=ce.case_id WHERE "
                               "ce.type=? AND ce.lvalue=? AND c.status IN ('new','triaging') AND c.last_alert>=? "
-                              "ORDER BY c.updated DESC LIMIT 1", (t, v, since)).fetchone()
+                              "AND c.first_alert<=? ORDER BY c.updated DESC LIMIT 1", (t, v, since, until)).fetchone()
                 if r:
                     return r[0]
         return None

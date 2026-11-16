@@ -43,3 +43,15 @@ recorded as `mcp`.
 Results that include data from your sources (`get_hunt` with
 `include_results`, `hunt_report`) keep the untrusted-data markers. A client
 should treat that content as data, not instructions.
+
+## Alert-case tools
+
+| Tool | Role | What it does |
+|---|---|---|
+| `list_cases` | viewer | alert cases with the AI verdict |
+| `get_case` | viewer | one case; `evidence: true` adds tool results, `format: markdown` the report |
+| `submit_alerts` | operator | send alerts into the triage queue |
+| `triage_case` | operator | start or redo an investigation |
+
+No tool approves a response action. Approvals are for people, in the UI or the API, so an agent can never
+approve an action it asked for.

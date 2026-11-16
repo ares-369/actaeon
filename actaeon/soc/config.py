@@ -31,6 +31,7 @@ class SocConfig:
     auto: bool = True                # triage new cases without being asked
     first_look: bool = True          # the planner role reads the alerts first and plans the investigation
     verify: bool = True              # second look on true positives: tries to prove each one wrong
+    verify_dismissals: bool = True   # also on false_positive/benign verdicts for high and critical cases
     workers: int = 2                 # cases triaged at the same time
     max_steps: int = 15              # tool calls per case
     max_runtime_sec: int = 600
@@ -65,7 +66,7 @@ def parse(raw: Any, connector_names: set[str]) -> SocConfig:
     load_playbooks(dirs)                                   # fail fast on a bad playbook
     return SocConfig(
         auto=bool(raw.get("auto", True)), first_look=bool(raw.get("first_look", True)),
-        verify=bool(raw.get("verify", True)),
+        verify=bool(raw.get("verify", True)), verify_dismissals=bool(raw.get("verify_dismissals", True)),
         workers=_int(raw, "workers", 2, 1, 16), max_steps=_int(raw, "max_steps", 15, 1, 200),
         max_runtime_sec=_int(raw, "max_runtime_sec", 600, 10), max_results=_int(raw, "max_results", 100, 1),
         max_tokens=_int(raw, "max_tokens", 0), max_tokens_per_day=_int(raw, "max_tokens_per_day", 0),

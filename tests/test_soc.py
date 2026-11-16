@@ -502,3 +502,87 @@ def test_hunts_are_never_offered_response_or_ticket_connectors(home):
     parse_connectors([{"name": "t", "roles": ["ticketing", "response"], "transport": "stdio", "command": "x"}])
     with pytest.raises(ValueError):
         parse_connectors([{"name": "t", "roles": ["wizard"], "transport": "stdio", "command": "x"}])
+
+
+# ---------- found on real alerts: key names, ids that look like hashes, grouping ----------
+
+FLAT = {"@timestamp": "2026-11-01T10:00:00Z", "agent.name": "collector", "agent.id": "000", "manager.name": "collector",
+        "data.id": "02f4bab031b57d1e30553ce08e0ec131", "data.srcip": "10.9.9.40", "data.dstip": "198.51.100.7",
+        "rule.id": "F1", "rule.level": 10, "rule.description": "Many firewall blocks from one source",
+        "full_log": "fw01.lan filterlog: block 10.9.9.40 198.51.100.7 see https://vendor.example/advisory"}
+
+
+def test_key_names_and_rule_ids_are_not_indicators():
+    from actaeon.soc.alerts import group_keys, normalize
+    a = normalize(FLAT, severity_scale="15")
+    by = {(e["type"], e["value"]) for e in a["entities"]}
+    assert not {v for t, v in by if t == "domain"} & {"agent.name", "agent.id", "manager.name", "data.id"}
+    assert not [v for t, v in by if t == "hash"]                       # a 32-hex id in a data field is not a file hash
+    assert ("domain", "fw01.lan") in by and ("domain", "vendor.example") in by     # shown on the case ...
+    keys = group_keys(a["entities"])
+    assert ("ip", "10.9.9.40") in keys and ("ip", "198.51.100.7") in keys and ("host", "collector") in keys
+    assert not [k for k in keys if k[0] in ("domain", "url")]          # ... but text finds never group
+
+
+def test_grouping_by_source_within_a_two_sided_window(home):
+    from actaeon.soc.intake import ingest
+    cfg, store = cfg_store(home, lambda d: d["soc"]["intake"].update(no_group=["collector"], severity_scale="15"))
+
+    def fw(i, ts, src, dst):
+        return {**FLAT, "id": str(i), "@timestamp": ts, "data.srcip": src, "data.dstip": dst}
+    batch = [fw(3, "2026-11-03T10:00:00Z", "10.9.9.40", "198.51.100.9"),      # two days later: its own case
+             fw(2, "2026-11-01T10:30:00Z", "10.9.9.40", "198.51.100.8"),      # same source, other destination
+             fw(1, "2026-11-01T10:00:00Z", "10.9.9.40", "198.51.100.7"),
+             fw(4, "2026-11-01T10:10:00Z", "10.9.9.77", "203.0.113.50")]      # another source
+    out = ingest(cfg, store, batch)                                         # newest first, as a search returns them
+    sizes = sorted(c["alert_count"] for c in store.cases())
+    assert len(out["cases_opened"]) == 3 and sizes == [1, 1, 2]
+
+
+def test_poll_reads_large_results_and_refuses_non_json(home):
+    import json as _json
+
+    from actaeon.soc.intake import poll_source
+    cfg, store = cfg_store(home)
+    big = [{**FLAT, "id": str(i), "full_log": "x" * 400} for i in range(120)]
+
+    class Hub:
+        def __init__(self, text):
+            self.text, self.kw = text, None
+
+        def call(self, name, tool, args, **kw):
+            self.kw = kw
+            return {"content": self.text, "is_error": False, "truncated": False}
+    src = {"connector": "logs", "tool": "search", "arguments": {"size": 120}, "name": "s", "lookback": "now-1d"}
+    hub = Hub(_json.dumps({"hits": big}))
+    out = poll_source(cfg, store, hub, src)
+    assert out["new"] == 120 and out["page_full"] is True and hub.kw["max_bytes"] >= 1_000_000
+    mark = store.bookmark("intake:s")
+    with pytest.raises(RuntimeError, match="not JSON"):
+        poll_source(cfg, store, Hub("<html>gateway error</html>"), src)
+    assert store.bookmark("intake:s") == mark            # a failed poll does not move the bookmark
+
+
+def test_large_cases_are_summarised_for_the_prompt():
+    from actaeon.soc.alerts import normalize
+    from actaeon.soc.prompts import _alerts_text
+    many = [normalize({**FLAT, "id": str(i), "data.srcip": "10.9.9.40", "data.dstip": f"198.51.100.{i % 50}",
+                       "full_log": "y" * 3000}, severity_scale="15") for i in range(250)]
+    text = _alerts_text(many)
+    assert "250 alerts in 1 rule(s)" in text and "50 distinct" in text and len(text) < 6000
+
+
+def test_second_look_on_a_serious_dismissal(home):
+    llm = FakeLLM([call(), verdict("benign"), _verify_call(),
+                   {"action": "verify", "result": "refuted", "reason": "the same account ran it on two other hosts",
+                    "evidence": ["E2"]}])
+    c, _ = run_case(home, llm, FakeHub(), verify=True)                     # ALERT is level 12: high
+    assert c["verdict"] == "needs_analyst" and c["status"] == "needs_analyst"
+    assert c["report"]["verification"]["result"] == "refuted"
+    low = {**ALERT, "rule": {"id": "R1", "name": "Bad thing", "level": 3}}
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import triage_case
+    cfg, store = cfg_store(home)
+    cid = ingest(cfg, store, [{**low, "id": "low1", "host": {"name": "WS8"}}])["cases_opened"][0]
+    out = triage_case(cfg, cid, llm=FakeLLM([call(), verdict("benign")]), hub=FakeHub(), store=store)
+    assert out["verdict"] == "benign" and "verification" not in out["report"]   # low cases: no second look

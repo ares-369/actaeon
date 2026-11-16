@@ -18,6 +18,10 @@ The hunt engine asks for a role, never a product:
 | `cloud` | control-plane and audit logs |
 | `intel` | indicators, reports, reputation |
 
+| `alerts` | where alerts come from (polled by `soc.intake.sources`, also searched during investigations) |
+| `ticketing` | case or ticket systems: written to only by outputs, never offered to a model |
+| `response` | containment tools: run only as approved actions, never offered to a model |
+
 A connector can carry more than one role.
 
 ## Transports and auth
@@ -72,8 +76,9 @@ For each tool, in order:
    words such as isolate, contain, quarantine, kill, terminate, delete, remove,
    purge, wipe, disable, revoke, ban, block, uninstall, shutdown, reboot, lock,
    reset or remediate, and any tool the server marks `destructiveHint`. No
-   setting enables these, not even `allow_write`: Actaeon hunts, it does not
-   respond.
+   setting enables these for hunts or alert investigations, not even
+   `allow_write`. They can only run as an approved response action
+   ([response.md](response.md)).
 4. A tool that looks like it changes state is blocked unless the connector has
    `allow_write: true` **and** the tool is named exactly in `tools.allow`. This
    is how an output can create a case or ticket.

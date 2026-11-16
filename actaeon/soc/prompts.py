@@ -124,19 +124,40 @@ def _env(environment: dict) -> str:
     return "Environment: " + json.dumps(keep)[:2500] if keep else ""
 
 
-def _alerts_text(alerts: list[dict], limit: int = 12) -> str:
-    lines = []
-    for a in alerts[:limit]:
-        ents = ", ".join(f"{e['type']}={e['value']}" for e in (a.get("entities") or [])[:12])
-        raw = json.dumps(a.get("raw") or {}, default=str)
-        lines.append(f"- [{a.get('ts')}] {a.get('title')} | rule {a.get('rule_id') or '-'} {a.get('rule_name') or ''} | "
-                     f"severity {a.get('severity')} | entities: {ents}"
-                     + (f" | attack: {','.join(a['attack'])}" if a.get("attack") else "")
-                     + (f" | repeated {a['dup_count']}x" if a.get("dup_count") else "")
-                     + f"\n  raw (untrusted): {raw[:1500]}")
-    if len(alerts) > limit:
-        lines.append(f"... and {len(alerts) - limit} more alerts of the same kinds")
+def _alerts_text(alerts: list[dict], limit: int = 8, raw_chars: int = 900) -> str:
+    """The case's alerts for a prompt. Small cases: each alert with its raw JSON (cut). Large cases are
+    summarised per rule (count, time span, the entities that vary) with one or two samples, so a case of
+    hundreds of alerts still fits a small model's context."""
+    if len(alerts) <= limit:
+        return "\n".join(_one(a, raw_chars) for a in alerts)
+    groups: dict[str, list[dict]] = {}
+    for a in alerts:
+        groups.setdefault(a.get("rule_id") or a.get("rule_name") or a.get("title") or "?", []).append(a)
+    lines = [f"{len(alerts)} alerts in {len(groups)} rule(s). Summary per rule, then samples:"]
+    for rule, items in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        ts = sorted(x.get("ts") or "" for x in items)
+        values: dict[str, set] = {}
+        for x in items:
+            for e in x.get("entities") or []:
+                if e.get("field"):
+                    values.setdefault(e["field"], set()).add(e["value"])
+        ents = "; ".join(f"{t}: {len(v)} distinct ({', '.join(sorted(v)[:6])}{', ...' if len(v) > 6 else ''})"
+                         for t, v in sorted(values.items()))
+        lines.append(f"- rule {rule} {items[0].get('rule_name') or items[0].get('title') or ''}: {len(items)} alerts, "
+                     f"{ts[0]} to {ts[-1]}, severity {max(int(x.get('severity') or 0) for x in items)}. {ents}")
+        for x in (items[0], items[-1]) if len(items) > 1 else (items[0],):
+            lines.append("  sample " + _one(x, raw_chars // 2).lstrip("- "))
     return "\n".join(lines)
+
+
+def _one(a: dict, raw_chars: int) -> str:
+    ents = ", ".join(f"{e['type']}={e['value']}" for e in (a.get("entities") or []) if e.get("field"))[:400]
+    raw = json.dumps(a.get("raw") or {}, default=str)
+    return (f"- [{a.get('ts')}] {a.get('title')} | rule {a.get('rule_id') or '-'} {a.get('rule_name') or ''} | "
+            f"severity {a.get('severity')} | entities: {ents}"
+            + (f" | attack: {','.join(a['attack'])}" if a.get("attack") else "")
+            + (f" | repeated {a['dup_count']}x" if a.get("dup_count") else "")
+            + f"\n  raw (untrusted): {raw[:raw_chars]}{' ...' if len(raw) > raw_chars else ''}")
 
 
 def _history_text(history: list[dict]) -> str:

@@ -66,7 +66,9 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
         store.set_case(case_id, status="error", error=f"{type(exc).__name__}: {exc}"[:500])
         _account(store, llm)
         return store.get_case(case_id)
-    if v["verdict"] == "true_positive" and cfg.soc.verify and not v.get("unstructured"):
+    serious = int(case.get("severity") or 0) >= 65
+    check_dismissal = cfg.soc.verify_dismissals and serious and v["verdict"] in ("false_positive", "benign")
+    if cfg.soc.verify and (v["verdict"] == "true_positive" or check_dismissal) and not v.get("unstructured"):
         from .verify import apply as apply_verify
         from .verify import verify
         try:

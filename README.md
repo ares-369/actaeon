@@ -6,16 +6,21 @@
 [![PyPI](https://img.shields.io/pypi/v/actaeon.svg)](https://pypi.org/project/actaeon/)
 [![Release](https://img.shields.io/github/v/release/ares-369/actaeon?include_prereleases&sort=semver)](https://github.com/ares-369/actaeon/releases)
 
-**An open-source AI threat hunter.** You give it a hypothesis ("an Office app started encoded
-PowerShell this week"). Actaeon plans the hunt, queries your own data sources, follows pivots, and
-writes a verdict that cites its evidence and maps to MITRE ATT&CK. When it cannot be sure, it hands
-the hunt to a person instead of guessing.
+**An open-source AI threat hunter and alert triage analyst.** Give it a hypothesis ("an Office app
+started encoded PowerShell this week") and Actaeon plans the hunt, queries your own data sources,
+follows pivots, and writes a verdict that cites its evidence and maps to MITRE ATT&CK. Point your
+alerts at it and it groups them into cases, investigates each one the same way, and says whether it is
+a true positive, a false positive or expected activity, with the fix. When it cannot be sure, it hands
+the work to a person instead of guessing.
 
 It does not replace your SIEM or EDR. It works on top of them, reading what they already collect.
 
-- **Read-only by default.** It searches and reads. Response actions (isolate, quarantine, delete,
-  disable, ...) are always blocked; the only writes are ones an admin explicitly allows, such as
-  opening a case.
+- **Read-only investigations.** Hunts and alert investigations only search and read. Response
+  actions (isolate, quarantine, disable, ...) are never offered to a model; the only writes are ones an
+  admin explicitly allows, such as opening a ticket.
+- **Response only with a person's approval (optional, off by default).** Containment actions you
+  define are proposed on true positives and run only after an analyst approves the exact call, with
+  undo and an audit trail. Destructive operations (delete, wipe, shut down) are never possible.
 - **Works with what you already run.** Every data source is reached through the Model Context
   Protocol (MCP), so it is not tied to any product. It ships with bridges for search-index APIs,
   read-only SQL databases, STIX/TAXII 2.1 servers and REST/OpenAPI services, and works with any
@@ -130,8 +135,13 @@ flowchart TD
 Actaeon reads attacker-controlled text (command lines, user agents, emails), so the controls are
 in code, not only in prompts:
 
-- **Read-only by default.** Write-like tools are blocked. Response and destructive actions are
-  always blocked, whatever the configuration says.
+- **Read-only investigations.** Write-like tools are blocked for hunts and alert investigations.
+  Response and destructive actions are always blocked on that path, whatever the configuration says.
+- **Approval-gated response.** The only way a response action runs is `soc.response.actions`: a
+  configured action on a connector with the `response` role, proposed for a case, approved by a named
+  person (two with `two_person`), bound to the case as it was reviewed (new alerts or a new verdict
+  make the approval stale), audited. Destructive tools are refused at config load and at call time.
+  Approvals are not offered over MCP.
 - **Query guard.** Queries need a time window when the tool takes one. Result sizes, time per query,
   tool calls and runtime per hunt are capped, and tokens per hunt can be. Each connector is
   rate-limited. Leading wildcards, which force the index to scan every value, are refused on log indices.
@@ -226,6 +236,9 @@ not in this repository.
 | Topic | Doc |
 |---|---|
 | Hunting, limits, verdicts, chat | [docs/hunting.md](docs/hunting.md) |
+| Alert triage: intake, cases, verdicts, second look | [docs/alert-triage.md](docs/alert-triage.md) |
+| Response actions and approval | [docs/response.md](docs/response.md) |
+| Triage playbooks | [docs/playbooks.md](docs/playbooks.md) |
 | Saved hunts, schedules, sweeps, memory | [docs/library.md](docs/library.md) |
 | Inventory drift | [docs/drift.md](docs/drift.md) |
 | Entities across hunts | [docs/entities.md](docs/entities.md) |
@@ -245,8 +258,8 @@ not in this repository.
 
 ## What it is not (yet)
 
-- **Not a SIEM or SOAR.** It sits beside them as a read-only investigator, and takes no response
-  actions.
+- **Not a SIEM or a full SOAR.** It sits beside them as an investigator. It runs only the containment
+  actions you define, after approval, and none by default.
 - **Not clustered by default.** It uses SQLite on one machine, with nothing else to install.
   PostgreSQL is an install-time option for several machines; it is new and has not run in
   production yet.

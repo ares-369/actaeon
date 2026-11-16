@@ -111,3 +111,11 @@ Without a token, logged-in operators can call the same endpoint.
 `actaeon outputs` lists them. `actaeon outputs test <name>` sends a clearly
 labelled sample. Each output that runs is recorded on the hunt as an `output`
 step, with OK or the error. A failing output never stops a hunt.
+
+## Alert cases
+
+The same outputs (email, webhook, `mcp_tool`) can send triaged alert cases. Use the case events in `when`:
+`case_true_positive`, `case_false_positive`, `case_benign`, `case_needs_analyst`, `case_logs_missing`,
+`case_action_proposed`, `case_all`. `min_severity` (0-100) skips lower cases. Template fields: `case_id, time,
+title, verdict, confidence, severity, summary, alerts, findings, entities, attack, fix, actions, link`.
+A hunt output keeps its hunt events; one output can list both kinds.

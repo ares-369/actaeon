@@ -27,6 +27,7 @@ from .util import iso, now, parse_iso
 
 log = logging.getLogger("actaeon.intake")
 MAX_BATCH = 1000
+MAX_POLL_BYTES = 8_000_000
 HIGH = 65        # severity from which a suppressed alert counts as a warning on its suppression
 
 
@@ -55,7 +56,12 @@ def ingest(cfg, store: SocStore, raw_alerts: list[dict], *, source: str = "webho
     rules = store.suppressions()
     out: dict[str, Any] = {"received": len(raw_alerts), "new": 0, "duplicates": 0, "suppressed": 0,
                            "below_threshold": 0, "invalid": 0, "cases_opened": [], "cases_updated": []}
-    for raw in raw_alerts:
+    def _time(raw):          # oldest first, so a case grows forward in time whatever order the source returns
+        for k in ("@timestamp", "timestamp", "ts", "time", "created"):
+            if isinstance(raw, dict) and isinstance(raw.get(k), str):
+                return raw[k]
+        return ""
+    for raw in sorted(raw_alerts, key=_time):
         try:
             a = normalize(raw, source=source, field_map=cfg.soc.intake.field_map, severity_scale=cfg.soc.intake.severity_scale)
         except (ValueError, TypeError):
@@ -77,10 +83,11 @@ def ingest(cfg, store: SocStore, raw_alerts: list[dict], *, source: str = "webho
             out["duplicates"] += 1
             continue
         out["new"] += 1
-        since = iso(parse_iso(a["ts"]) - window) if a["ts"] else iso(now() - window)
+        when = parse_iso(a["ts"]) if a["ts"] else now()
+        since, until = iso(when - window), iso(when + window)
         group_on = [e for e in a["entities"]
                     if not any(fnmatch.fnmatchcase(e["value"].lower(), p.lower()) for p in cfg.soc.intake.no_group)]
-        cid = store.open_case_for(fingerprint=a["fingerprint"], entities=group_on, since=since)
+        cid = store.open_case_for(fingerprint=a["fingerprint"], entities=group_on, since=since, until=until)
         if cid:
             store.attach(cid, a)
             if cid not in out["cases_opened"] and cid not in out["cases_updated"]:
@@ -103,11 +110,20 @@ def poll_source(cfg, store: SocStore, hub, src: dict) -> dict:
     time_key = next((k for k in ("time_from", "since", "from", "start") if k in args or k == "time_from"), "time_from")
     args[time_key] = last or src.get("lookback") or "now-15m"
     started = iso()
-    res = hub.call(src["connector"], src["tool"], args, actor="intake")
+    # No model reads this result, so it is not cut to the size used for prompts.
+    res = hub.call(src["connector"], src["tool"], args, actor="intake", max_bytes=MAX_POLL_BYTES)
     if res.get("is_error"):
         raise RuntimeError(f"{src['name']}: the tool returned an error")
+    if res.get("truncated"):
+        raise RuntimeError(f"{src['name']}: the result is larger than {MAX_POLL_BYTES // 1_000_000} MB; "
+                           "ask for fewer alerts per poll (a smaller size, or a narrower query)")
     items = hits_from_result(res["content"])
+    if items is None:
+        raise RuntimeError(f"{src['name']}: the result is not JSON with a list of alerts")
     out = ingest(cfg, store, items[:MAX_BATCH], source=src["name"])
+    asked = next((args[k] for k in ("size", "limit", "max_results") if isinstance(args.get(k), int)), None)
+    if asked and len(items) >= asked:
+        out["page_full"] = True     # there may be more alerts in this window than one poll returns
     store.bookmark(key, started)
     return out
 

@@ -102,6 +102,17 @@ def run(cfg=None, *, offline: bool = False, models: bool = False) -> list[dict]:
     if roles["analyst"].get("provider", "ollama") == "ollama":
         add("WARN", "models", "the analyst role uses a local model; small models hunt poorly",
             "use the strongest model you can for the analyst (docs/models.md)")
+    soc = getattr(cfg, "soc", None)
+    if soc is not None:
+        from .soc.response import mode_text
+        if soc.response.enabled and not soc.response.dry_run:
+            add("WARN", "response", "alert-triage response actions are LIVE: approved actions are sent to connectors",
+                "keep soc.response.dry_run: true until the approval flow is tested")
+        else:
+            add("OK", "response", mode_text(cfg))
+        if soc.auto and soc.intake.sources and not (soc.max_tokens_per_day or soc.max_cases_per_day):
+            add("WARN", "triage", "automatic alert triage has no daily limit",
+                "set soc.max_cases_per_day or soc.max_tokens_per_day")
     if models:
         from .cli import test_models
         for r in test_models(cfg):

@@ -87,3 +87,21 @@ Actaeon is in beta. These are the limits we know about.
   PostgreSQL); if it stops, another server or `worker --scheduler` takes over at its next tick.
 - Hit counts for replays are read from common keys (`total`, `count`, `matches`,
   ...). Other result shapes fall back to "changed since last time".
+
+## Alert triage
+
+- **New.** Merged in November 2026 and tested on synthetic alerts and on real alerts from one home lab
+  with one small local model (see [benchmarks.md](benchmarks.md)). Not run in a production SOC.
+- **Field mapping is heuristic.** Unusual alert formats need `soc.intake.field_map`. Indicators found in
+  free text are shown on the case but never used to group alerts; they can be mis-typed.
+- **Grouping is simple.** Shared host, user, source address, external destination, domain or hash within a
+  time window. Shared infrastructure that every alert names must go in `soc.intake.no_group`, or it merges
+  unrelated alerts. One incident with different entities can split across cases.
+- **Exposure alerts** (a vulnerable package) do not fit the verdicts well: they are neither an attack nor a
+  false positive. Expect `needs_analyst`.
+- **Polling** starts each poll where the last one started, by the source's time field. Alerts that reach
+  the source late, with an older timestamp, can be missed; push them to the webhook instead. A poll that
+  fills its page (`page_full`) may have left alerts for the next poll.
+- **Response actions** depend on the response connector. Actaeon does not verify that a tool does only what
+  its name says, or that an undo really restores things.
+- **The webhook** has a batch limit (1000) but no rate limit; use the daily limits for automatic triage.

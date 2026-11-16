@@ -70,6 +70,7 @@ soc:
   auto: true                     # investigate new cases without being asked
   first_look: true               # plan each investigation first (priority, questions)
   verify: true                   # second look on true positives: tries to prove each one wrong
+  verify_dismissals: true        # also on false_positive/benign verdicts for high and critical cases
   workers: 2                     # cases investigated at the same time
   max_steps: 15                  # tool calls per case
   max_runtime_sec: 600
