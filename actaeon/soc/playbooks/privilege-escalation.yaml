@@ -1,0 +1,19 @@
+title: Privilege changes and admin group membership
+match:
+  keywords:
+  - privilege
+  - admin group
+  - sudo
+  - elevat
+  - token
+  - root
+  - group membership
+  attack:
+  - T1068
+  - T1078*
+  - T1098*
+  - T1548*
+steps:
+- Who made the change and from which host?
+- Is the change part of an approved change window or done by the usual admins?
+- What did the account do after it gained the privilege?

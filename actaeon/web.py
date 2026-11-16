@@ -233,6 +233,9 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         app.extensions["actaeon_scheduler"] = Scheduler(cfg, jobs)
         app.extensions["actaeon_scheduler"].start()
 
+    from .soc.api import register as register_soc
+    register_soc(app, jobs, start_scheduler=start_scheduler)
+
     def _actor():
         from flask import g
         return str(getattr(g, "actaeon_user", "") or "")

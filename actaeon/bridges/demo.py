@@ -14,7 +14,7 @@ import re
 from collections import Counter
 from datetime import datetime
 
-from ..demo.data import LABEL, events
+from ..demo.data import LABEL, alerts, events
 from .common import baseline_window, cap, compact_hits, parse_time, time_window
 from .search_index import TIME_SCHEMA
 from .server import McpServer, ToolInputError
@@ -200,6 +200,11 @@ class DemoBridge:
         return {"index": INDEX, "field": field, "recent_values": len(recent),
                 "new": [{"value": v, "count": c} for v, c in new[:cap(a.get("size"), 50, 500)]]}
 
+    def list_alerts(self, a):
+        start, end = time_window(a, self.max_days)
+        rows = [x for x in alerts() if start <= datetime.fromisoformat(x["@timestamp"].replace("Z", "+00:00")) <= end]
+        return {"alerts": rows, "count": len(rows), "note": LABEL}
+
     def build(self) -> McpServer:
         srv = McpServer("actaeon-demo", instructions=(
             f"DEMO data source with synthetic events ({LABEL}). One index: {INDEX}. Time field @timestamp. "
@@ -221,6 +226,8 @@ class DemoBridge:
         srv.tool("first_seen", "Values of a field in the window that never appear in the baseline_days before it.",
                  {"type": "object", "properties": {**idx, **q, **TIME_SCHEMA, "field": {"type": "string"},
                   "baseline_days": {"type": "number"}, "size": {"type": "integer"}}, "required": ["index", "field"]})(self.first_seen)
+        srv.tool("list_alerts", "Alerts raised in a time window (demo detection rules).",
+                 {"type": "object", "properties": {**TIME_SCHEMA}})(self.list_alerts)
         return srv
 
 

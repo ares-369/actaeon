@@ -24,7 +24,7 @@ def init_demo(home: Path, *, offline: bool = False, port: int = 8611) -> dict:
     cfg = _example()
     cfg["actaeon"].update(instance_name="Actaeon demo", demo=True, bind_port=port, data_dir="")
     cfg["connectors"] = [{
-        "name": "demo-logs", "roles": ["log_search", "endpoint", "network"], "transport": "stdio",
+        "name": "demo-logs", "roles": ["log_search", "endpoint", "network", "identity", "alerts"], "transport": "stdio",
         "command": "actaeon", "args": ["bridge", "demo"], "dialect": "query_string subset (field:value, AND/OR/NOT)",
         "description": "SAMPLE DATA - synthetic events for the demo", "rate_per_min": 600,
         "query_notes": ("Index: demo-events. Time field @timestamp. Fields: process.name, process.parent.name, "
@@ -36,6 +36,30 @@ def init_demo(home: Path, *, offline: bool = False, port: int = 8611) -> dict:
             {"goal": "PowerShell started by Word", "query": "process.parent.name:winword.exe AND process.name:powershell.exe"},
             {"goal": "connections to one destination", "query": "event.category:network AND destination.ip:198.51.100.10"},
             {"goal": "failed sign-ins", "query": "event.category:authentication AND event.outcome:failure"}]}]
+    # Alert triage: the demo connector also raises sample alerts, and a pretend response connector lets the
+    # approval flow be tried (it only changes a dictionary in memory).
+    cfg["connectors"].append({
+        "name": "demo-response", "roles": ["response"], "transport": "stdio", "command": "actaeon",
+        "args": ["bridge", "demo-response"], "description": "SAMPLE - pretend containment, changes nothing real",
+        "rate_per_min": 600})
+    rev = {"kind": "reversible"}
+    cfg["soc"] = {
+        "auto": True, "workers": 2,
+        "intake": {"sources": [{"connector": "demo-logs", "tool": "list_alerts", "arguments": {},
+                                "lookback": "now-7d"}], "no_group": ["DEMO-DC01"], "poll_interval_sec": 3600,
+                   "severity_scale": "15"},
+        "response": {"enabled": True, "dry_run": False, "two_person": False, "actions": [
+            {"name": "isolate_host", "description": "Cut the host off the network (demo)",
+             "connector": "demo-response", "tool": "isolate_host", "entity": "host",
+             "arguments": {"hostname": "{target}"},
+             "undo": {"tool": "release_host", "arguments": {"hostname": "{target}"}, **rev}},
+            {"name": "disable_user", "description": "Disable the account (demo)",
+             "connector": "demo-response", "tool": "disable_user", "entity": "user",
+             "arguments": {"username": "{target}"},
+             "undo": {"tool": "enable_user", "arguments": {"username": "{target}"}, "kind": "compensating"}},
+            {"name": "block_ip", "description": "Block the address at the edge (demo)",
+             "connector": "demo-response", "tool": "block_ip", "entity": "ip", "arguments": {"ip": "{target}"},
+             "undo": {"tool": "unblock_ip", "arguments": {"ip": "{target}"}, **rev}}]}}
     cfg["environment"] = {"summary": "SAMPLE environment: Windows endpoints named DEMO-WS01..12, one admin "
                                      "host DEMO-ADM01.", "platforms": ["windows"], "not_present": ["macOS", "Linux"]}
     if offline:

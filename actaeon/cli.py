@@ -449,6 +449,15 @@ def cmd_demo(a) -> int:
         _print_verdict(h["verdict"])
         s = run_sweep(cfg, full=True, actor="demo")
         print(f"\nIntel sweep: {s['verdict']['summary']}")
+        from .soc.intake import poll_source
+        from .soc.service import store_for as soc_store
+        from .soc.service import triage_case
+        st = soc_store(cfg)
+        got = poll_source(cfg, st, _hub.get_hub(cfg), cfg.soc.intake.sources[0])
+        print(f"\nAlert triage: {got['new']} sample alerts -> {len(got['cases_opened'])} cases")
+        for c in st.cases(status="new", limit=50):
+            r = triage_case(cfg, c["id"], actor="demo", manual=True)
+            print(f"  case {r['id']} {r.get('verdict')} ({r.get('confidence')}) [{r.get('status')}]: {r['title']}")
         _hub.get_hub().close()
     print(f"\nOpen the UI:  ACTAEON_HOME={home} actaeon serve   ->  http://127.0.0.1:{a.port}")
     return 0
@@ -581,10 +590,10 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_br = sub.add_parser("bridge", help="run a generic bridge as a stdio MCP server")
     br = p_br.add_subparsers(dest="kind", required=True)
     from .bridges import demo as demo_bridge
-    from .bridges import local_intel, local_tools, openapi, search_index, sql, taxii
+    from .bridges import demo_response, local_intel, local_tools, openapi, search_index, sql, taxii
     from .bridges import web as web_bridge
     bridges = {"search-index": search_index, "taxii": taxii, "openapi": openapi, "local-intel": local_intel,
-               "local-tools": local_tools, "demo": demo_bridge, "web": web_bridge, "sql": sql}
+               "local-tools": local_tools, "demo": demo_bridge, "demo-response": demo_response, "web": web_bridge, "sql": sql}
     for kind, mod in bridges.items():
         mod.add_args(br.add_parser(kind))
     p_in = sub.add_parser("intel", help="add, import, pull and look up intel in the local store")
@@ -657,10 +666,12 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_w = sub.add_parser("worker", help="run queued jobs (needs jobs.mode: queue)")
     p_w.add_argument("--concurrency", type=int, default=2, help="jobs at once (default 2)")
     p_w.add_argument("--scheduler", action="store_true", help="also run the scheduler (one process gets the lock)")
+    from .soc import cli as soc_cli
+    soc_cli.add_parsers(sub)
     p_demo = sub.add_parser("demo", help="set up a demo with labelled sample data (and optionally run a hunt)")
     p_demo.add_argument("--dir", default="", help="demo home (default ~/.actaeon-demo)")
     p_demo.add_argument("--offline", action="store_true", help="use a scripted run instead of a model (not AI)")
-    p_demo.add_argument("--run", action="store_true", help="run the demo hunt and a sweep now")
+    p_demo.add_argument("--run", action="store_true", help="run the demo hunt, a sweep and the alert triage now")
     p_demo.add_argument("--port", type=int, default=8611)
     p_dec = sub.add_parser("decode", help="decode an obfuscated command line (argument or stdin); runs nothing")
     p_dec.add_argument("text", nargs="?")
@@ -732,6 +743,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     if a.cmd == "bridge":
         bridges[a.kind].run(a)
         return
+    soc_rc = soc_cli.run(a)
+    if soc_rc is not None:
+        sys.exit(soc_rc)
     if a.cmd == "hunt":
         sys.exit(cmd_hunt(a))
     if a.cmd == "intel":

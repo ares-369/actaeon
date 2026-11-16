@@ -63,10 +63,12 @@ let poll = null;
 function route() {
   clearInterval(poll); poll = null;
   const [tab, arg] = (location.hash.slice(1) || "leads").split("/");
-  const navTab = { hunt: "hunts", lead: "leads" }[tab] || tab;
+  const navTab = { hunt: "hunts", lead: "leads", case: "cases", approvals: "cases", socalerts: "cases", socdash: "cases",
+    tuning: "cases" }[tab] || tab;
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === navTab));
   const pages = { leads, lead: () => leadDetail(arg), hunts, hunt: () => huntDetail(arg), ask, library, intel,
     entities: () => entities(arg), coverage, reports, connectors, settings };
+  Object.assign(pages, window.SOC_PAGES || {});   // alert triage pages (soc.js)
   const token = ++navToken;
   const view = h("div");
   main = view;

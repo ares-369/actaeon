@@ -1,0 +1,18 @@
+title: Attacks against web applications
+match:
+  keywords:
+  - sql injection
+  - xss
+  - web attack
+  - path traversal
+  - http
+  - waf
+  - exploit
+  - rce
+  attack:
+  - T1190
+steps:
+- Did the server answer the malicious request with success (status code, response size) or reject it?
+- 'Look for follow-up activity on the web server: new processes, files, outbound connections.'
+- 'Many requests from one source with only errors is usually a blocked scan: true_positive attempt with low severity,
+  or benign if it is your own scanner.'

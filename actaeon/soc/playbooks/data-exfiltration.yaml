@@ -1,0 +1,17 @@
+title: Large transfers and data leaving
+match:
+  keywords:
+  - exfil
+  - upload
+  - large transfer
+  - data loss
+  - bytes out
+  - cloud storage
+  attack:
+  - T1041
+  - T1048*
+  - T1567*
+steps:
+- How much data, to where, and is that destination used for normal business?
+- Which account and process sent it, and is that normal for them?
+- What was read before the transfer (archive tools, many file reads)?

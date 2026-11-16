@@ -23,7 +23,7 @@ BACKOFF_SEC = 1.0      # 1s, then 2s
 
 
 LOCAL_INTEL = "local-intel"
-PROBE_TOOLS = ("list_indices", "list_collections", "intel_stats", "list_hunts")
+PROBE_TOOLS = ("list_indices", "list_collections", "intel_stats", "list_hunts", "response_state")
 
 
 def local_intel_connector(data_dir) -> dict:
@@ -245,12 +245,55 @@ class ConnectorHub:
         raise ToolCallError(f"{name}/{tool} failed after {attempts} attempt{'' if attempts == 1 else 's'}: {last_err}")
 
     def _mark_restricted(self, hunt_id: str, name: str) -> None:
-        """A hunt that read a restricted connector is visible only to people who may use it."""
-        from ..hunt.store import HuntStore
+        """A hunt (or alert case, id "case:<id>") that read a restricted connector is visible only to people
+        who may use it."""
         try:
-            HuntStore(self.audit.path.parent / "hunts.sqlite").add_restricted(hunt_id, name)
+            if hunt_id.startswith("case:"):
+                from ..soc.store import SocStore
+                SocStore(self.audit.path.parent / "soc.sqlite").add_restricted(hunt_id[5:], name)
+            else:
+                from ..hunt.store import HuntStore
+                HuntStore(self.audit.path.parent / "hunts.sqlite").add_restricted(hunt_id, name)
         except Exception:
             pass
+
+    def call_action(self, name: str, tool: str, arguments: dict[str, Any], *, approved_by: str,
+                    case_id: str = "") -> dict:
+        """Run one APPROVED response action. Only ``soc/response.py`` calls this, after a person approved
+        the action and the action is in ``soc.response.actions``. Not retried: a state change must not run twice."""
+        from .policy import decide_action
+        hid = f"case:{case_id}" if case_id else ""
+        if name not in self.specs or not self.specs[name].enabled:
+            raise ToolCallError(f"unknown or disabled connector {name!r}")
+        if not approved_by:
+            raise ToolCallError("a response action needs the name of the person who approved it")
+        spec = self.specs[name]
+        meta = {t["name"]: t for t in self.tools(name)}.get(tool)
+        if meta is None:
+            self.audit.record(connector=name, tool=tool, arguments=arguments, decision="unknown tool",
+                              status="blocked", actor=approved_by, hunt_id=hid)
+            raise ToolCallError(f"{name} has no tool {tool!r}")
+        ok, why = decide_action(spec, meta)
+        if not ok:
+            self.audit.record(connector=name, tool=tool, arguments=arguments, decision=why, status="blocked",
+                              actor=approved_by, hunt_id=hid)
+            raise ToolCallError(f"{name}/{tool} blocked: {why}")
+        start = time.monotonic()
+        self.pacer.acquire(name, spec.rate_per_min)
+        try:
+            res = self._client(name).call_tool(tool, arguments)
+        except (McpError, OSError, ValueError) as exc:
+            self._drop(name)
+            self.audit.record(connector=name, tool=tool, arguments=arguments, decision=why, status="action_error",
+                              actor=approved_by, hunt_id=hid, attempts=1,
+                              duration_ms=int((time.monotonic() - start) * 1000), error=str(exc))
+            raise ToolCallError(f"{name}/{tool} failed: {exc}") from exc
+        text = _result_text(res)
+        self.audit.record(connector=name, tool=tool, arguments=arguments, decision=why,
+                          status="action_error" if res.get("isError") else "action", actor=approved_by,
+                          hunt_id=hid, attempts=1, duration_ms=int((time.monotonic() - start) * 1000),
+                          result_bytes=len(text.encode()))
+        return {"ok": not res.get("isError"), "text": text[:4000]}
 
     def _drop(self, name: str) -> None:
         with self._lock:

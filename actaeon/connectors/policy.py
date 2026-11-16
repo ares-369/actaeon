@@ -4,8 +4,10 @@ Order of checks for a tool on a connector:
   1. ``deny`` list match -> blocked (always wins)
   2. ``allow`` list set and no match -> blocked
   3. tool is a response action (isolate, quarantine, kill, delete, disable,
-     revoke, ...) or the server marks it destructive -> ALWAYS blocked. No
-     setting enables these: Actaeon hunts, it never responds.
+     revoke, ...) or the server marks it destructive -> ALWAYS blocked on this
+     path. No setting enables these for hunts or case investigations. Response
+     actions run only through ``soc.response.actions`` after a person approves
+     them (``decide_action`` below), and destructive ones never run at all.
   4. tool looks like it changes state -> blocked unless ``allow_write: true``
      AND the tool is named in ``allow`` explicitly.
 "Looks like it changes state" uses the MCP ``readOnlyHint``/``destructiveHint``
@@ -70,10 +72,35 @@ def decide(spec, tool: dict[str, Any]) -> tuple[bool, str]:
     if spec.allow and not _match(name, spec.allow):
         return False, "not on the connector's allow list"
     if is_never(tool):
-        return False, "response or destructive action; Actaeon never allows these, whatever the config says"
+        return False, "response or destructive action; hunts and investigations never call these, whatever the config says"
     if looks_write(tool):
         if not spec.allow_write:
             return False, "may change state; connectors are read-only unless allow_write is set"
         if name not in spec.allow:
             return False, "may change state; write tools must be named exactly in the allow list"
     return True, "allowed"
+
+
+# Destructive operations: not even an approved response action may call these.
+_DESTRUCTIVE_WORDS = (
+    "delete", "remove", "purge", "wipe", "erase", "destroy", "drop", "truncate", "format", "uninstall",
+    "shutdown", "reboot", "rollback", "overwrite",
+)
+
+
+def is_destructive(tool: dict[str, Any]) -> bool:
+    """Data-destroying or service-stopping operations: never allowed, approved or not."""
+    return any(w in _DESTRUCTIVE_WORDS for w in _words(str(tool.get("name", ""))))
+
+
+def decide_action(spec, tool: dict[str, Any]) -> tuple[bool, str]:
+    """May this tool run as an APPROVED response action? The deny list still wins, the connector needs the
+    ``response`` role, and destructive tools are refused whatever the config says."""
+    name = str(tool.get("name", ""))
+    if _match(name, spec.deny):
+        return False, "denied by the connector's deny list"
+    if "response" not in spec.roles:
+        return False, "the connector does not have the response role"
+    if is_destructive(tool):
+        return False, "destructive operation; never run, approved or not"
+    return True, "approved response action"

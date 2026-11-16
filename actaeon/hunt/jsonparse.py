@@ -60,6 +60,11 @@ def action_object(text: str) -> dict | None:
         if isinstance(inner, dict):
             out.update(inner)
         return {"action": "verdict", **out}
+    if act == "submit_case":
+        out = {k: v for k, v in obj.items() if k not in ("action", "name", "arguments", "args")}
+        if isinstance(inner, dict):
+            out.update(inner)
+        return {"action": "case", **out}
     if act == "call_tool":
         out = {k: v for k, v in obj.items() if k not in ("action", "name", "arguments", "args")}
         if isinstance(inner, dict) and ("tool" in inner or "connector" in inner):

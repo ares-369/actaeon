@@ -63,6 +63,49 @@ llm:
       default_model: ""
       timeout_sec: 180
 
+# Alert triage (docs/alert-triage.md): alerts come in, are grouped into cases, and each case is
+# investigated through the same read-only connectors as a hunt. The first look uses the planner
+# model, the investigation the analyst model.
+soc:
+  auto: true                     # investigate new cases without being asked
+  first_look: true               # plan each investigation first (priority, questions)
+  verify: true                   # second look on true positives: tries to prove each one wrong
+  workers: 2                     # cases investigated at the same time
+  max_steps: 15                  # tool calls per case
+  max_runtime_sec: 600
+  max_results: 100
+  max_tokens: 0                  # per case; 0 = no cap
+  max_tokens_per_day: 0          # automatic triage, all cases; 0 = no cap
+  max_cases_per_day: 0           # automatic triage; 0 = no cap
+  min_severity: 0                # 0-100; lower cases are grouped but wait for a person
+  auto_close_confidence: 0       # close false_positive/benign at or above this confidence; 0 = never
+  playbook_dirs: []              # extra playbook folders (docs/playbooks.md)
+  intake:                        # POST /api/alerts always works; sources are polled
+    poll_interval_sec: 60
+    group_window_min: 120        # alerts sharing a host/user/indicator within this window join one case
+    no_group: []                 # shared infrastructure never used to group, e.g. ["dc01*", "proxy*"]
+    severity_scale: auto         # numeric severities: auto | 4 | 10 | 15 | 100
+    min_severity: 0              # alerts below this (0-100) are stored but open no case
+    webhook_token_env: ""        # e.g. ACTAEON_ALERT_TOKEN: other systems send Authorization: Bearer <token>
+    field_map: {}                # extra keys per field, e.g. {host: ["device.hostname"]}
+    sources: []
+    #  - connector: logs
+    #    tool: search
+    #    arguments: {index: "alerts-*", query: "rule.level:>=7", size: 200}
+    #    lookback: now-15m
+  response:                      # docs/response.md. Off: actions are only recommended.
+    enabled: false
+    dry_run: true                # with enabled: approvals are recorded, not sent
+    two_person: false
+    actions: []
+    #  - name: isolate_host
+    #    description: Cut the host off the network
+    #    connector: edr           # a connector with the response role
+    #    tool: isolate_host
+    #    entity: host
+    #    arguments: {hostname: "{target}"}
+    #    undo: {tool: release_host, arguments: {hostname: "{target}"}, kind: reversible}
+
 # Describe your environment so hunts fit it (all optional).
 environment: {}
 #  summary: "Mostly Windows endpoints, a few Linux web servers, one cloud tenant."

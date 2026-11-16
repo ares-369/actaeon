@@ -53,6 +53,33 @@ ACTION_TOOLS: list[dict[str, Any]] = [
 ]
 
 
+CASE_TOOL: dict[str, Any] = {
+    "name": "submit_case",
+    "description": "Submit the final verdict on the alert case. This ends the investigation.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "verdict": {"type": "string", "enum": ["true_positive", "false_positive", "benign", "needs_analyst",
+                                                    "logs_missing"]},
+            "confidence": {"type": "integer"},
+            "severity": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "findings": {"type": "array", "items": {"type": "object"}},
+            "timeline": {"type": "array", "items": {"type": "object"}},
+            "entities": {"type": "array", "items": {"type": "object"}},
+            "relations": {"type": "array", "items": {"type": "object"}},
+            "attack": {"type": "array", "items": {"type": "string"}},
+            "fix": {"type": "object"},
+            "actions": {"type": "array", "items": {"type": "object"}},
+            "gaps": {"type": "array", "items": {"type": "string"}},
+            "next_steps": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["verdict", "confidence", "summary"],
+    },
+}
+
+
 _ACTION_RE = re.compile(r'"action":\s*"(\w+)"')
 
 
@@ -78,6 +105,8 @@ def action_tools(system: str) -> list[dict[str, Any]]:
     final = loop_final_action(system) or "verdict"
     if final == "verdict":
         return ACTION_TOOLS
+    if final == "case":
+        return [ACTION_TOOLS[0], CASE_TOOL]
     return [ACTION_TOOLS[0], {
         "name": f"submit_{final}",
         "description": f"Give the final {final}. This ends the investigation.",

@@ -30,7 +30,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-ROLES = ("log_search", "endpoint", "identity", "email", "asset", "network", "cloud", "intel", "analysis")
+# Roles a hunt or a case investigation may read from.
+ROLES = ("log_search", "endpoint", "identity", "email", "asset", "network", "cloud", "intel", "analysis", "alerts")
+# Roles that are never offered to a model: ticket systems (outputs only) and response tools (approved actions only).
+ACTION_ROLES = ("ticketing", "response")
 DATA_ROLES = ("log_search", "endpoint", "identity", "email", "asset", "network", "cloud")
 AUTH_TYPES = ("none", "api_key", "bearer", "oauth_client_credentials", "oauth")
 _NAME_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
@@ -96,10 +99,10 @@ def _spec(raw: dict[str, Any]) -> ConnectorSpec:
         raise ValueError(f"connector name {name!r} must be lowercase letters, digits, _ or - (max 40)")
     roles = [str(r) for r in (raw.get("roles") or [])]
     if not roles:
-        raise ValueError(f"connector {name}: at least one role is required ({', '.join(ROLES)})")
-    bad = [r for r in roles if r not in ROLES]
+        raise ValueError(f"connector {name}: at least one role is required ({', '.join(ROLES + ACTION_ROLES)})")
+    bad = [r for r in roles if r not in ROLES + ACTION_ROLES]
     if bad:
-        raise ValueError(f"connector {name}: unknown role(s) {bad}; expected {ROLES}")
+        raise ValueError(f"connector {name}: unknown role(s) {bad}; expected {ROLES + ACTION_ROLES}")
     transport = str(raw.get("transport", "")).strip()
     if transport not in ("stdio", "http"):
         raise ValueError(f"connector {name}: transport must be 'stdio' or 'http'")

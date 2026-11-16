@@ -266,6 +266,16 @@ def init_auth(app, cfg) -> None:
                 g.actaeon_user = "mcp-token"
                 g.actaeon_groups = parse_groups(mc.get("token_groups") or [])
                 return None
+        if p == "/api/alerts" and request.method == "POST":
+            import os
+            env = getattr(getattr(getattr(cfg, "soc", None), "intake", None), "webhook_token_env", "") or ""
+            tok = os.getenv(env, "") if env else ""
+            got = request.headers.get("Authorization", "")
+            if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), tok):
+                g.actaeon_role = "operator"          # this token can only send alerts
+                g.actaeon_user = "alert-webhook"
+                g.actaeon_groups = []
+                return None
         if p == "/api/tickets/reply" and request.method == "POST":
             import os
             tc = (cfg.raw or {}).get("tickets") or {}

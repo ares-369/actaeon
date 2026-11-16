@@ -68,7 +68,14 @@ def ticket_reply(p: dict, ctl, jobs) -> dict:
     return answer(_cfg(), p["hunt_id"], p["text"], who=p.get("who", ""), author=p.get("author", ""))
 
 
-TASKS: dict[str, Any] = {"hunt": hunt, "replay": replay, "sweep": sweep, "actor-sweep": actor_sweep,
+def triage(p: dict, ctl, jobs) -> dict:
+    from .soc.service import triage_case
+    res = triage_case(_cfg(), p["case_id"], actor=p.get("actor", ""), checkpoint=ctl.checkpoint if ctl else None,
+                      manual=bool(p.get("manual")))
+    return {"case_id": p["case_id"], "verdict": res.get("verdict"), "status": res.get("status")}
+
+
+TASKS: dict[str, Any] = {"triage": triage, "hunt": hunt, "replay": replay, "sweep": sweep, "actor-sweep": actor_sweep,
                          "web-intel": web_intel, "drift": drift, "autopilot": autopilot, "chat": chat, "ask": assistant,
                          "ticket-reply": ticket_reply}
 

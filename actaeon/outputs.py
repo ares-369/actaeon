@@ -54,6 +54,9 @@ import requests
 
 TYPES = ("email", "webhook", "mcp_tool", "taxii")
 EVENTS = ("threat", "needs_review", "benign", "no_results", "logs_missing", "inconclusive", "all", "reply")
+# Alert-case events (actaeon/soc/outputs.py): case_<verdict>, case_action_proposed, case_all.
+CASE_EVENTS = ("case_true_positive", "case_false_positive", "case_benign", "case_needs_analyst", "case_logs_missing",
+               "case_action_proposed", "case_all")
 
 
 def validate(outputs: list) -> None:
@@ -67,9 +70,9 @@ def validate(outputs: list) -> None:
             raise ValueError(f"outputs.{n}: the excel output was removed; use email, or download hunts as CSV/JSON")
         if o.get("type") not in TYPES:
             raise ValueError(f"outputs.{n}: type must be one of {TYPES}")
-        bad = set(o.get("when") or ["threat"]) - set(EVENTS)
+        bad = set(o.get("when") or ["threat"]) - set(EVENTS) - set(CASE_EVENTS)
         if bad:
-            raise ValueError(f"outputs.{n}: unknown 'when' values {sorted(bad)}; use {EVENTS}")
+            raise ValueError(f"outputs.{n}: unknown 'when' values {sorted(bad)}; use {EVENTS + CASE_EVENTS}")
         need = {"email": ("smtp_host", "from", "to"), "webhook": ("url",),
                 "mcp_tool": ("connector", "tool"), "taxii": ("url",)}[o["type"]]
         missing = [k for k in need if not o.get(k)]

@@ -21,7 +21,7 @@ from .bridges.server import McpServer, Tool, ToolInputError
 
 READ = {"readOnlyHint": True, "openWorldHint": False}
 WORK = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
-OPERATOR_TOOLS = {"start_hunt", "stop_hunt", "run_replay", "run_sweep", "add_intel"}
+OPERATOR_TOOLS = {"start_hunt", "stop_hunt", "run_replay", "run_sweep", "add_intel", "submit_alerts", "triage_case"}
 _RANK = {"viewer": 0, "operator": 1, "admin": 2}
 
 
@@ -148,6 +148,9 @@ def build(cfg, jobs, *, role_of=lambda: "admin", llm=None, hub=None) -> McpServe
         return decode(str(a.get("text", ""))[:200_000])
     add("decode_command", "Decode an obfuscated command line. Runs nothing.", {"text": {"type": "string"}},
         dec, required=["text"])
+
+    from .soc.mcp import add_tools as add_case_tools
+    add_case_tools(add, cfg, jobs, work=WORK)
 
     expose = mcp_cfg.get("expose")
     if expose:
