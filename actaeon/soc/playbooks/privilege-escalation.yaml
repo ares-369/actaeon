@@ -17,3 +17,6 @@ steps:
 - Who made the change and from which host?
 - Is the change part of an approved change window or done by the usual admins?
 - What did the account do after it gained the privilege?
+collect:
+- inventory
+- context

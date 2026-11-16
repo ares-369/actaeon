@@ -15,3 +15,7 @@ steps:
 - How much data, to where, and is that destination used for normal business?
 - Which account and process sent it, and is that normal for them?
 - What was read before the transfer (archive tools, many file reads)?
+collect:
+- intel
+- spread
+- context

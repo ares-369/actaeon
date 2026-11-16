@@ -7,9 +7,10 @@ A playbook is a YAML file::
       keywords: ["failed sign", "spray"]       # any of these in the alert title, rule or description
       attack: ["T1110*"]                        # or any matching ATT&CK technique on the alerts
       rules: ["R-100*"]                         # or a matching rule id
-    steps:
+    steps:                                      # guidance for the model
       - Count failures from the source and how many accounts it tried.
       - Check for a successful sign-in after the failures.
+    collect: [auth, intel, context]             # fixed checks run with no model (see soc/collect.py)
 
 The built-in playbooks ship in actaeon/soc/playbooks/. Add your own folders with ``soc.playbook_dirs``;
 a file with the same name replaces the built-in one. Matching playbooks are given to the investigator
@@ -45,6 +46,10 @@ def validate(name: str, data: dict) -> None:
     m = data.get("match") or {}
     if not any(m.get(k) for k in ("keywords", "attack", "rules")):
         raise ValueError(f"playbook {name}: match needs keywords, attack or rules")
+    from .collect import DEFAULT_STEPS
+    bad = [c for c in data.get("collect") or [] if c not in DEFAULT_STEPS]
+    if bad:
+        raise ValueError(f"playbook {name}: unknown collect step(s) {bad}; use {list(DEFAULT_STEPS)}")
 
 
 def matching(alerts: list[dict], books: dict[str, dict], limit: int = 2) -> list[dict]:

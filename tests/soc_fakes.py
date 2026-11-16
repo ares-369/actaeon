@@ -91,3 +91,72 @@ def call(q="host.name:WS1", thought="look"):
 def verdict(v="true_positive", ev=("E1",), **kw):
     return {"action": "case", "verdict": v, "confidence": 85, "summary": "s",
             "findings": [{"text": "f", "evidence": list(ev)}], **kw}
+
+
+class SourcesHub(FakeHub):
+    """Logs (time-bounded), inventory (snapshot), intel and a decoder, answering like the search-index bridge."""
+
+    def __init__(self, *, processes=(), ports=(), users=(), events=(), intel=(), fields=None, fail=False):
+        super().__init__(fail=fail)
+        self.processes, self.ports, self.users, self.events = list(processes), list(ports), list(users), list(events)
+        self.intel = set(intel)
+        self.kw: list[dict] = []
+        self.field_names = fields or ["agent.name", "data.srcip", "data.dstip", "data.srcuser", "process.name",
+                                      "process.command_line", "full_log", "event.outcome", "user.name", "user.id",
+                                      "source.port", "interface.state"]
+        idx = {"type": "object", "properties": {"index": {"type": "string"}, "query": {"type": "string"},
+                                                "size": {"type": "integer"}}}
+        timed = {"type": "object", "properties": {**idx["properties"], "time_from": {"type": "string"},
+                                                  "time_to": {"type": "string"}, "field": {"type": "string"}}}
+        self._tools = {
+            "logs": [{"name": n, "inputSchema": timed} for n in ("search", "count", "top_values")]
+            + [{"name": "get_fields", "inputSchema": idx}, {"name": "list_indices", "inputSchema": {"type": "object"}}],
+            "inv": [{"name": "search", "inputSchema": idx}, {"name": "get_fields", "inputSchema": idx},
+                    {"name": "list_indices", "inputSchema": {"type": "object"}}],
+            "intel": [{"name": "lookup", "inputSchema": {"type": "object", "properties": {"value": {"type": "string"}}}}],
+            "tools": [{"name": "decode_command", "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}}}],
+        }
+        roles = {"logs": "log_search", "inv": "asset", "intel": "intel", "tools": "analysis"}
+        self.specs = {n: type("S", (), {"name": n, "roles": [roles[n]], "query_notes": "", "enabled": True, "access": [],
+                                        "dialect": "query_string (Lucene)", "raw_fields": {}})() for n in roles}
+        self._roles = roles
+
+    def tools_for_role(self, role):
+        out = []
+        for conn, r in self._roles.items():
+            if r == role:
+                out += [{**t, "connector": conn, "description": "", "allowed": True, "reason": "",
+                         "dialect": "query_string (Lucene)"} for t in self._tools[conn]]
+        return out
+
+    def call(self, name, tool, args, **kw):
+        import json as _json
+
+        from actaeon.connectors.hub import ToolCallError
+        from actaeon.connectors.untrusted import wrap
+        self.calls.append((name, tool, args))
+        self.kw.append(kw)
+        if self.fail:
+            raise ToolCallError("down")
+        if tool == "list_indices":
+            pats = ["inv-processes", "inv-ports", "inv-users"] if name == "inv" else ["alerts-*", "events-*"]
+            body = {"indices": [], "allowed_patterns": pats}
+        elif tool == "get_fields":
+            body = {"fields": {f: "keyword" for f in self.field_names}}
+        elif tool == "lookup":
+            body = {"value": args["value"], "found": args["value"] in self.intel,
+                    "matches": [{"value": args["value"], "tags": ["campaign"]}] if args["value"] in self.intel else []}
+        elif tool == "decode_command":
+            from actaeon.decode import decode
+            body = decode(args["text"])
+        elif name == "inv":
+            rows = {"process": self.processes, "port": self.ports, "user": self.users}[
+                next(k for k in ("process", "port", "user") if k in args["index"])]
+            body = {"total": len(rows), "hits": rows}
+        elif tool == "count":
+            body = {"count": 0}
+        elif tool == "top_values":
+            body = {"buckets": []}
+        else:
+            body = {"total": len(self.events), "hits": self.events}
+        return {**wrap(name, tool, _json.dumps(body), int(kw.get("max_bytes") or 8000)), "is_error": False}

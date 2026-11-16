@@ -29,6 +29,10 @@ def case_markdown(case: dict) -> str:
     if r.get("findings"):
         out += ["## Findings", ""] + [f"- {_md(f.get('text'))} ({', '.join(f.get('evidence') or []) or 'no evidence'})"
                                       for f in r["findings"]] + [""]
+    if r.get("signals"):
+        out += ["## What the fixed checks found (no model)", ""] + [
+            f"- [{x['level']}] {_md(x['text'])} ({', '.join(e for e in x['evidence'] if e.startswith('E')) or 'from the alert'})"
+            for x in r["signals"]] + [""]
     if r.get("contradicting"):
         out += ["## Points against this verdict", ""] + [
             f"- {_md(f.get('text'))} ({', '.join(f.get('evidence') or []) or 'no evidence'})" for f in r["contradicting"]] + [""]

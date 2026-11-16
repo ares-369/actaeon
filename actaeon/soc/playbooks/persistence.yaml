@@ -19,3 +19,7 @@ steps:
 - What creates the task, service or account, and what does it run?
 - Was it created by a deployment or management tool at the usual time?
 - Does the thing it runs live in a user-writable or temp folder?
+collect:
+- inventory
+- context
+- decode

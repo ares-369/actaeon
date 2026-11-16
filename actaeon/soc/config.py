@@ -44,6 +44,10 @@ class SocConfig:
     min_severity: int = 0            # cases below this severity wait for a person
     auto_close_confidence: int = 0   # close false_positive/benign verdicts at or above this confidence; 0 = never
     playbook_dirs: list[str] = field(default_factory=list)
+    analysis: str = "ai"             # ai: fixed checks, then the model | rules: fixed checks only, no model
+    collect: bool = True             # run the fixed evidence checks before the model
+    collect_max_calls: int = 12
+    escalate: dict = field(default_factory=dict)   # optional stronger model for hard cases (see docs)
     intake: IntakeConfig = field(default_factory=IntakeConfig)
     response: ResponseConfig = field(default_factory=ResponseConfig)
 
@@ -76,9 +80,32 @@ def parse(raw: Any, connector_names: set[str]) -> SocConfig:
         min_severity=_int(raw, "min_severity", 0, 0, 100),
         auto_close_confidence=_int(raw, "auto_close_confidence", 0, 0, 100),
         playbook_dirs=dirs,
+        analysis=_analysis(raw.get("analysis", "ai")), collect=bool(raw.get("collect", True)),
+        collect_max_calls=_int(raw, "collect_max_calls", 12, 0, 50), escalate=_escalate(raw.get("escalate") or {}),
         intake=_intake(raw.get("intake") or {}, connector_names),
         response=_response(raw.get("response") or {}, connector_names),
     )
+
+
+def _analysis(v) -> str:
+    v = str(v or "ai").strip().lower()
+    if v not in ("ai", "rules"):
+        raise ValueError("soc.analysis must be ai or rules")
+    return v
+
+
+def _escalate(e: dict) -> dict:
+    if not e:
+        return {}
+    if not isinstance(e, dict):
+        raise ValueError("soc.escalate must be a mapping")
+    from ..config import PROVIDERS
+    if str(e.get("provider", "")) not in PROVIDERS:
+        raise ValueError(f"soc.escalate.provider must be one of {PROVIDERS}")
+    return {"provider": str(e["provider"]), "model": str(e.get("model", "") or ""),
+            "min_severity": max(0, min(100, int(e.get("min_severity", 65)))),
+            "max_per_day": max(0, int(e.get("max_per_day", 10))),
+            "when": [str(w) for w in (e.get("when") or ["needs_analyst", "unconfirmed", "conflict"])]}
 
 
 def _intake(i: dict, connector_names: set[str]) -> IntakeConfig:

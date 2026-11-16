@@ -14,6 +14,7 @@ from typing import Any
 
 from . import response
 from .engine import CaseEngine, Limits, Stopped, tokens_used
+from .evidence import RecordingLLM
 from .playbooks import load as load_playbooks
 from .store import VERDICTS, SocStore
 from .util import iso
@@ -31,8 +32,64 @@ def _llm(cfg):
     return privacy_llm(cfg, get_llm())
 
 
+_ESC_KEY = "escalations:"
+
+
+def escalations_today(store: SocStore) -> int:
+    try:
+        return int(store.bookmark(_ESC_KEY + iso()[:10]) or 0)
+    except ValueError:
+        return 0
+
+
+def _escalation_name(cfg) -> str:
+    e = cfg.soc.escalate
+    return f"{e['provider']}/{e['model']}" if e.get("model") else e.get("provider", "")
+
+
+def escalation_needed(cfg, store: SocStore, case: dict, v: dict) -> str:
+    """Why this case should go to the stronger model ('' = it should not)."""
+    e = cfg.soc.escalate
+    if not e or cfg.soc.analysis != "ai" or int(case.get("severity") or 0) < e["min_severity"]:
+        return ""
+    if e["max_per_day"] and escalations_today(store) >= e["max_per_day"]:
+        return ""
+    when = set(e["when"])
+    if "needs_analyst" in when and v["verdict"] in ("needs_analyst", "logs_missing") and not v.get("injection"):
+        return "the first pass could not decide"
+    if "conflict" in when and any("strong signs of an attack" in c for c in v.get("checks") or []):
+        return "the fixed checks and the first pass disagree"
+    if "unconfirmed" in when and (v.get("verification") or {}).get("result") == "unconfirmed":
+        return "the second look could not confirm the first pass"
+    return ""
+
+
+class _OneModel:
+    """Every role served by one bound model (the escalation model)."""
+
+    def __init__(self, llm, rc: dict):
+        self.llm, self.rc = llm, rc
+        self.usage: dict = {}
+
+    def for_role(self, role: str):
+        b = self.llm._bind(self.rc)
+        b.meter = self.usage
+        return b
+
+    def usage_summary(self, usage=None):
+        return self.llm.usage_summary(self.usage if usage is None else usage)
+
+
+def _escalation_llm(cfg):
+    from ..privacy import PrivacyLLM
+    from ..providers import get_llm
+    e = cfg.soc.escalate
+    return PrivacyLLM(_OneModel(get_llm(), {"provider": e["provider"], "model": e["model"]}),
+                      (cfg.raw or {}).get("privacy") or {})
+
+
 def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, manual: bool = False,
-                llm=None, hub=None, store: SocStore | None = None) -> dict:
+                llm=None, hub=None, store: SocStore | None = None, escalate_llm=None) -> dict:
     """Investigate one case and store the checked verdict. Returns the stored case."""
     store = store or store_for(cfg)
     case = store.get_case(case_id, full=False)
@@ -46,12 +103,12 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
     if hub is None:
         from ..connectors import get_hub
         hub = get_hub(cfg)
-    from .evidence import RecordingLLM
     llm = RecordingLLM(llm or _llm(cfg))       # keeps a digest of every prompt and reply for the evidence bundle
     store.clear_steps(case_id)
     store.set_case(case_id, status="triaging", error=None)
     started = time.monotonic()
-    engine = CaseEngine(llm, hub, store, Limits(max_steps=cfg.soc.max_steps,
+    engine = CaseEngine(llm, hub, store, Limits(max_steps=cfg.soc.max_steps, analysis=cfg.soc.analysis,
+                                                 collect=cfg.soc.collect, collect_max_calls=cfg.soc.collect_max_calls,
                                                  max_runtime_sec=cfg.soc.max_runtime_sec,
                                                  max_results=cfg.soc.max_results, max_tokens=cfg.soc.max_tokens,
                                                  first_look=cfg.soc.first_look),
@@ -68,8 +125,31 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
         _account(store, llm)
         return store.get_case(case_id)
     serious = int(case.get("severity") or 0) >= 65
+    esc = escalation_needed(cfg, store, case, v)
+    if esc and escalate_llm is None:
+        try:
+            escalate_llm = _escalation_llm(cfg)
+        except Exception as exc:
+            log.warning("escalation model unavailable: %s", exc)
+    if esc and escalate_llm is not None:
+        # The first pass could not settle it: run the investigation again on the stronger model. Its calls and
+        # verdict replace the first pass's; the first verdict is kept in the report.
+        first = {k: v.get(k) for k in ("verdict", "confidence", "summary", "checks")}
+        store.clear_steps(case_id)
+        engine.llm = RecordingLLM(escalate_llm)
+        llm = engine.llm
+        try:
+            v = engine.run(case_id)
+            v["escalated"] = {"reason": esc, "model": _escalation_name(cfg), "first_pass": first}
+            v["checks"] = [*v["checks"], f"escalated to {_escalation_name(cfg)} ({esc}); first pass said "
+                           f"{first['verdict']} at {first['confidence']}"]
+            store.bookmark(_ESC_KEY + iso()[:10], str(escalations_today(store) + 1))
+        except Exception as exc:
+            log.exception("escalation failed for %s", case_id)
+            v = {**v, "checks": [*v.get("checks", []), f"escalation failed ({type(exc).__name__})"]}
     check_dismissal = cfg.soc.verify_dismissals and serious and v["verdict"] in ("false_positive", "benign")
-    if cfg.soc.verify and (v["verdict"] == "true_positive" or check_dismissal) and not v.get("unstructured"):
+    if (cfg.soc.verify and cfg.soc.analysis == "ai" and (v["verdict"] == "true_positive" or check_dismissal)
+            and not v.get("unstructured")):
         from .verify import apply as apply_verify
         from .verify import verify
         try:

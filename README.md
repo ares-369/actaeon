@@ -25,6 +25,11 @@ It does not replace your SIEM or EDR. It works on top of them, reading what they
   Protocol (MCP), so it is not tied to any product. It ships with bridges for search-index APIs,
   read-only SQL databases, STIX/TAXII 2.1 servers and REST/OpenAPI services, and works with any
   other MCP server.
+- **AI is optional.** Alert triage runs fixed, read-only checks first (decode the command, look up intel,
+  read the host's events and inventory, count accounts tried) and turns them into evidence-backed signals.
+  With `soc.analysis: rules` that is all it does: no model, no tokens, seconds per case. A small local
+  model can then judge the collected evidence, and your own endpoint can take only the hard cases.
+  Drift checks, intel sweeps and saved-hunt replays also run with no model.
 - **Your choice of model.** A cloud model or one on your own hardware; each role (planner, analyst,
   reporter) can use a different one.
 - **Fully open source.** Apache-2.0. Every feature is in this repository. There is no paid

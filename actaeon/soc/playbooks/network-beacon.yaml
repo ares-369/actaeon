@@ -19,3 +19,8 @@ steps:
 - 'Count connections over time: regular intervals suggest beaconing.'
 - Which process made the connection, and how did that process start?
 - Did any other host contact the same destination (scope)?
+collect:
+- intel
+- spread
+- context
+- inventory

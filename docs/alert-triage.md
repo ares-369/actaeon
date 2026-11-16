@@ -79,6 +79,49 @@ compared on the dashboard.
 
 Proposed actions never run on their own. See [response.md](response.md).
 
+## Fixed checks, no-model mode and escalation
+
+Actaeon does not need a model to triage. Before any model sees a case, **fixed checks** collect evidence
+the same way every time, read-only:
+
+| Step | What it does |
+|---|---|
+| `decode` | decodes an obfuscated command line from the alert (never runs it) |
+| `intel` | looks external addresses, domains, URLs and hashes up in the intel connectors |
+| `context` | events on the same host from 30 minutes before the first alert to 30 minutes after the last |
+| `inventory` | what runs, listens and which accounts exist on the host now (snapshot connectors) |
+| `auth` | for sign-in alerts: how many accounts the source tried, and whether any sign-in succeeded |
+| `spread` | which other hosts contacted the same destination or domain in the last week |
+
+`decode` and `intel` always run; the matching [playbooks](playbooks.md) choose the rest (`collect:`), and all of
+them run when no playbook matches. Field names are found with each connector's `get_fields` (`agent.name`,
+`host.name`, `data.srcip`, ...), or named in the connector's config with `fields: {host: ..., user: ...}`. The
+queries use query_string (Lucene) syntax, so the steps run on connectors with that dialect, such as the
+bundled search-index bridge. Every result is stored as evidence `E<n>` and read in full by the rules.
+
+Plain rules turn the results into **signals**, each citing its evidence: an intel match, a decoded command that
+downloads and runs code, a download piped into a shell, a process running from a temporary path, a process with
+a hidden name listening on a port, an account other than root with user id 0, one source trying ten or more
+accounts, a successful sign-in after failures, an Office application starting a shell, an indicator seen on
+several hosts, a match with a known-good note. A finding is only counted for the alert when it concerns the
+alert's own process, account, command, address or domain. Anything else on the same host is shown as "the host
+also shows: ..." and sends the case to a person without making the alert a true positive.
+
+What happens next depends on `soc.analysis`:
+
+- **`rules`: no model at all.** A strong signal with evidence makes a `true_positive` (confidence 60, more with
+  several independent signals). A known-good match with no strong signal makes `benign`. Everything else goes to
+  an analyst with the evidence collected. Rules never close a case on their own: they do not call anything a false
+  positive, and high and critical dismissals still wait for a person.
+- **`ai` (the default).** The model gets the collected evidence and the signals first, can make more calls, and
+  gives the verdict. If the fixed checks found a strong sign of an attack, the model cannot dismiss the case: it
+  goes to an analyst. If the model fails or is unreachable, the rules' verdict is used, with a note.
+
+**Escalation** (`soc.escalate`, off by default) re-runs hard cases on a stronger model you choose (your own
+endpoint or key), only for cases at or above `min_severity`, at most `max_per_day`, and only when the first pass
+could not decide, the second look could not confirm it, or the fixed checks and the model disagree. The first
+pass's verdict is kept in the report.
+
 ## Second look
 
 After the verdict, a second pass on the analyst model tries to prove it wrong (`soc.verify`, on by default):

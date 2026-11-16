@@ -68,6 +68,7 @@ class ConnectorSpec:
     enabled: bool = True
     verify_tls: bool = True
     access: list[str] = field(default_factory=list)   # who may use it: group, role:<r>, user:<u>; empty = all
+    raw_fields: dict[str, str] = field(default_factory=dict)   # "fields:": kind of value -> field name (alert triage)
 
     def public(self) -> dict[str, Any]:
         """Safe view for the UI/API (no secrets, no env values)."""
@@ -145,6 +146,7 @@ def _spec(raw: dict[str, Any]) -> ConnectorSpec:
         enabled=bool(raw.get("enabled", True)),
         verify_tls=bool(raw.get("verify_tls", True)),
         access=[a.strip() for a in access],
+        raw_fields={str(k): str(v) for k, v in (raw.get("fields") or {}).items()},
     )
 
 

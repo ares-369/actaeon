@@ -19,3 +19,9 @@ steps:
 - Has this exact command run before on this host or by this account (a recurring admin task)?
 - 'Look for what happened next: network connections, files written, scheduled tasks or services created.'
 - Known admin tooling that runs on a schedule is benign; propose tuning scoped to that account or host.
+collect:
+- decode
+- intel
+- context
+- inventory
+- spread

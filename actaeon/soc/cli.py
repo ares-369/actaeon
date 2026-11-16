@@ -36,6 +36,7 @@ def add_parsers(sub) -> None:
     p.add_argument("--record", help="append this run to a JSON-lines results file")
     p.add_argument("--label", default="", help="name of the case set in the results file")
     p.add_argument("--table", help="print the suitability table of a results file and exit")
+    p.add_argument("--analysis", choices=["ai", "rules"], help="override soc.analysis for this run (rules = no model)")
     p = sub.add_parser("shift-report", help="markdown summary of the last N hours of alert cases")
     p.add_argument("--hours", type=int, default=12)
 
@@ -147,9 +148,9 @@ def _bench(a) -> int:
         print(table(Path(a.table)))
         return 0
     if a.cases:
-        res = run_cases(Path(a.cases).expanduser())
+        res = run_cases(Path(a.cases).expanduser(), analysis=a.analysis)
     else:
-        res = run_bench(Path(a.dir).expanduser() if a.dir else None, offline=a.offline)
+        res = run_bench(Path(a.dir).expanduser() if a.dir else None, offline=a.offline, analysis=a.analysis)
     for r in res["cases"]:
         print(f"{'PASS' if r['pass'] else 'FAIL'} {r['name'][:28]:28} expected {r['expected']:15} got "
               f"{r['verdict'] or '-':15} status {r['status']:13} conf {r['confidence']:3} calls {r['calls']:2} "
@@ -159,7 +160,9 @@ def _bench(a) -> int:
           f"(recall {s['recall']}); false alarms {s['false_alarms']} (precision {s['precision']}); handed to an "
           f"analyst {s['handed_over']}; wrongly closed {s['wrong_closures']}; claims with evidence "
           f"{s['evidence_coverage']}; tokens {s['tokens']}; median {s['median_seconds']} s per case")
-    if a.offline:
+    if a.analysis == "rules":
+        print("(rules only: no model was used)")
+    elif a.offline:
         print("(offline: the scripted demo provider was used, so this checks the pipeline, not a model)")
     if a.json:
         Path(a.json).write_text(json.dumps(res, indent=1))

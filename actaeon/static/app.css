@@ -168,3 +168,4 @@ header{gap:.8rem}nav{gap:.1rem}nav a{padding:.35rem .5rem}
 .soc .subnav{margin-bottom:.8rem}
 .soc a.button.seg{border-radius:16px;padding:.3rem .8rem}.soc a.button.seg.on{border-color:var(--accent);color:var(--accent)}
 .soc-tip.hidden{display:none}
+.soc .sig-high{color:var(--tp);border-color:var(--tp)}.soc .sig-medium{color:var(--need);border-color:var(--need)}.soc .sig-info{color:var(--muted)}

@@ -10,6 +10,7 @@ from typing import Any
 from .. import db
 from .util import ago, dumps, iso, loads, new_id
 
+RESULT_CHARS = 200_000      # per stored tool result (what the case page and the evidence bundle show)
 VERDICTS = ("true_positive", "false_positive", "benign", "needs_analyst", "logs_missing")
 STATUSES = ("new", "triaging", "triaged", "needs_analyst", "closed", "error")
 ACTION_STATES = ("proposed", "rejected", "dry_run", "executed", "failed", "undone", "manual", "stale", "expired")
@@ -290,7 +291,8 @@ class SocStore:
             c.execute("INSERT INTO soc_steps (case_id, n, kind, connector, tool, role, arguments, why, ok, "
                       "result, note, ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                       (case_id, n, kind, connector, tool, role, dumps(arguments or {}), why[:1000], int(ok),
-                       result[:20000], note[:2000], iso()))
+                       result[:RESULT_CHARS], (note + (f" (result cut to {RESULT_CHARS} characters)"
+                                                     if len(result) > RESULT_CHARS else ""))[:2000], iso()))
             c.commit()
 
     def clear_steps(self, case_id: str) -> None:

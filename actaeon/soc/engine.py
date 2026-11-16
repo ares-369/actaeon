@@ -43,6 +43,9 @@ class Limits:
     max_results: int = 100
     max_tokens: int = 0
     first_look: bool = True
+    analysis: str = "ai"          # ai | rules (no model at all)
+    collect: bool = True          # fixed evidence checks before the model
+    collect_max_calls: int = 12
 
 
 class Stopped(Exception):
@@ -232,7 +235,8 @@ class CaseEngine:
         start = self._clock()
         n = 0
         plan = None
-        if self.limits.first_look:
+        rules_only = self.limits.analysis == "rules"
+        if self.limits.first_look and not rules_only:
             plan = self.first_look(case, alerts, history, rule_hist, roles)
             store.set_case(case_id, first_look=plan)
             store.add_step(case_id, 0, "first_look", ok="error" not in plan, note=json.dumps(plan)[:2000],
@@ -254,6 +258,49 @@ class CaseEngine:
         done: dict[str, str] = {}
         steps: list[dict] = []
         injections: list[str] = []
+        # ---- fixed evidence checks (no model) ----
+        signals: list[dict] = []
+        if self.limits.collect or rules_only:
+            from .collect import DEFAULT_STEPS, Collector, rules_verdict
+            from .collect import summary as signal_summary
+            wanted = tuple(dict.fromkeys(st for b in books for st in (b.get("collect") or []))) or DEFAULT_STEPS
+            wanted = tuple(dict.fromkeys(("decode", "intel", *wanted)))   # cheap and local: always run
+            col = Collector(self.hub, tools, store, case_id, start_n=n, max_calls=self.limits.collect_max_calls,
+                            environment=self.environment)
+            try:
+                signals = col.run(alerts, wanted)
+            except Exception as exc:          # the checks are extra: their failure must not lose the case
+                store.add_step(case_id, col.n + 1, "note", ok=False, note=f"fixed checks failed: {exc}"[:500])
+                col.n += 1
+            n = col.n
+            done.update(col.done)
+            for st in col.steps:
+                steps.append({k: st[k] for k in ("n", "connector", "tool", "role", "ok", "hits")})
+                inj = scan_injection(json.dumps(st.get("data"), default=str)[:20000]) if st["ok"] else []
+                if inj:
+                    injections.append(f"E{st['n']}: " + "; ".join(x["pattern"] for x in inj[:2]))
+            self._emit({"type": "collected", "calls": col.calls, "signals": len(signals)})
+            if rules_only:
+                for a in alerts:
+                    inj = scan_injection(json.dumps(a.get("raw") or {}, default=str))
+                    if inj:
+                        injections.append(f"alert {a['id'][:60]}: " + "; ".join(x["pattern"] for x in inj[:2]))
+                v = rules_verdict(signals, steps, case)
+                return self.check(v, steps, case, alerts, injections, calls=col.calls, signals=signals)
+            if col.steps:
+                lines = []
+                for st in col.steps:
+                    res = ""
+                    for x in store.get_case(case_id).get("steps") or []:
+                        if x["n"] == st["n"]:
+                            res = x.get("result") or ""
+                    lines.append(f"E{st['n']} {st['connector']}.{st['tool']} ({st['why']}), "
+                                 f"{'ok' if st['ok'] else 'failed'}:\n{res[:1200]}")
+                transcript.append({"role": "user", "content": "Evidence already collected by fixed checks (no model):\n"
+                                   + "\n\n".join(lines) + "\n\nWhat the fixed checks found:\n"
+                                   + signal_summary(signals) + "\n\nDo not repeat these calls. Continue with one "
+                                   "JSON object: another call if something is still unclear, or the verdict.",
+                                   "_result": True})
         fields_cache: dict[str, set[str]] = {}
         calls = bad = 0
         verdict: dict | None = None
@@ -270,6 +317,12 @@ class CaseEngine:
                                    f"({reason_forced}). Reply with the verdict JSON object now."})
             res = self.llm.for_role("analyst").chat(self._messages(system, user, transcript), max_tokens=2500)
             if res.error:
+                if signals or steps:      # the model failed: the fixed checks still give a verdict
+                    from .collect import rules_verdict
+                    verdict = rules_verdict(signals, steps, case)
+                    verdict["gaps"] = [*verdict.get("gaps", []), f"the model failed ({res.error[:150]}); this verdict "
+                                       "comes from the fixed checks"]
+                    break
                 if not steps:
                     raise RuntimeError(f"model error: {res.error[:300]}")
                 verdict = {"verdict": "needs_analyst", "confidence": 0,
@@ -369,11 +422,11 @@ class CaseEngine:
             inj = scan_injection(json.dumps(a.get("raw") or {}, default=str))
             if inj:
                 injections.append(f"alert {a['id'][:60]}: " + "; ".join(x["pattern"] for x in inj[:2]))
-        return self.check(verdict, steps, case, alerts, injections, forced=reason_forced, calls=calls)
+        return self.check(verdict, steps, case, alerts, injections, forced=reason_forced, calls=calls, signals=signals)
 
     # ---- checks ----
     def check(self, v: dict, steps: list[dict], case: dict, alerts: list[dict], injections: list[str], *,
-              forced: str = "", calls: int = 0) -> dict:
+              forced: str = "", calls: int = 0, signals: list[dict] | None = None) -> dict:
         notes: list[str] = []
         ok_ids = {f"E{s['n']}" for s in steps if s["ok"]}
         data_ok = [s for s in steps if s["ok"] and any(r in DATA_ROLES for r in s["role"].split(","))]
@@ -418,6 +471,16 @@ class CaseEngine:
         if verdict in ("false_positive", "benign") and data_ok and all(s.get("hits") == 0 for s in data_ok):
             notes.append("every data search returned nothing: the activity was not confirmed in the logs")
             conf = min(conf, 60)
+        strong = [x for x in signals or [] if x["level"] == "high" and any(e in ok_ids for e in x["evidence"])]
+        if strong and verdict in ("false_positive", "benign"):
+            notes.append("the fixed checks found strong signs of an attack (" + "; ".join(x["text"] for x in strong[:3])
+                         + "); a dismissal is not accepted: an analyst must decide")
+            verdict, conf = "needs_analyst", min(conf, 40)
+            findings = findings + [{"text": x["text"], "evidence": [e for e in x["evidence"] if e in ok_ids]}
+                                   for x in strong]
+        elif strong and verdict in ("needs_analyst", "logs_missing"):
+            findings = findings + [{"text": x["text"], "evidence": [e for e in x["evidence"] if e in ok_ids]}
+                                   for x in strong if not any(f["text"] == x["text"] for f in findings)]
         against = [c for c in contradicting if c["evidence"]]
         if against and verdict in ("true_positive", "false_positive", "benign"):
             notes.append(f"{len(against)} cited fact(s) point against this verdict; read them before acting")
@@ -478,6 +541,6 @@ class CaseEngine:
             "attack": attack, "fix": fix, "actions": actions[:10],
             "gaps": [str(g)[:300] for g in v.get("gaps") or []][:15],
             "next_steps": [str(g)[:300] for g in v.get("next_steps") or []][:15],
-            "checks": notes + more, "injection": injections[:10], "calls": calls,
+            "checks": notes + more, "injection": injections[:10], "calls": calls, "signals": signals or [],
             "evidence_ok": len(ok_ids), "unstructured": bool(v.get("unstructured")),
         }

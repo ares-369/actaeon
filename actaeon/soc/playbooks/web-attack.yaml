@@ -16,3 +16,7 @@ steps:
 - 'Look for follow-up activity on the web server: new processes, files, outbound connections.'
 - 'Many requests from one source with only errors is usually a blocked scan: true_positive attempt with low severity,
   or benign if it is your own scanner.'
+collect:
+- intel
+- context
+- auth

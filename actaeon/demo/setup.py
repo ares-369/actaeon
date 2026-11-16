@@ -61,7 +61,8 @@ def init_demo(home: Path, *, offline: bool = False, port: int = 8611) -> dict:
              "connector": "demo-response", "tool": "block_ip", "entity": "ip", "arguments": {"ip": "{target}"},
              "undo": {"tool": "unblock_ip", "arguments": {"ip": "{target}"}, **rev}}]}}
     cfg["environment"] = {"summary": "SAMPLE environment: Windows endpoints named DEMO-WS01..12, one admin "
-                                     "host DEMO-ADM01.", "platforms": ["windows"], "not_present": ["macOS", "Linux"]}
+                                     "host DEMO-ADM01.", "platforms": ["windows"], "not_present": ["macOS", "Linux"],
+                          "known_good": ["svc.maint runs a nightly encoded PowerShell log clean-up on DEMO-ADM01"]}
     if offline:
         for role in ("planner", "analyst", "reporter"):
             cfg["llm"]["roles"][role] = {"provider": "demo", "model": ""}

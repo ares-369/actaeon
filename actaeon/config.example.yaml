@@ -67,6 +67,15 @@ llm:
 # investigated through the same read-only connectors as a hunt. The first look uses the planner
 # model, the investigation the analyst model.
 soc:
+  analysis: ai                   # ai: fixed checks, then the model | rules: fixed checks only, no model at all
+  collect: true                  # fixed evidence checks before the model (decode, intel, host context, inventory, ...)
+  collect_max_calls: 12
+  escalate: {}                   # optional stronger model for hard cases, e.g.
+  #  provider: openai_compatible  # your own endpoint or key; nothing is sent unless you set this
+  #  model: "<strong model>"
+  #  min_severity: 65             # only high and critical cases
+  #  max_per_day: 10
+  #  when: [needs_analyst, unconfirmed, conflict]
   auto: true                     # investigate new cases without being asked
   first_look: true               # plan each investigation first (priority, questions)
   verify: true                   # second look on true positives: tries to prove each one wrong

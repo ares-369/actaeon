@@ -69,9 +69,11 @@ def score(rows: list[dict]) -> dict:
 
 
 def models_used(rows: list[dict] | None = None) -> dict[str, str]:
-    """provider/model per role, from the current configuration."""
+    """provider/model per role, from the current configuration ("rules" when no model is used)."""
     from ..config import LLM_ROLES, get_config
     cfg = get_config()
+    if cfg.soc.analysis == "rules":
+        return {role: "rules (no model)" for role in LLM_ROLES}
     out = {}
     for role in LLM_ROLES:
         rc = cfg.role_cfg(role)
@@ -117,7 +119,7 @@ def table(path: Path) -> str:
     return "\n".join(lines)
 
 
-def run_bench(home: Path | None = None, *, offline: bool = False) -> dict:
+def run_bench(home: Path | None = None, *, offline: bool = False, analysis: str | None = None) -> dict:
     """The demo cases, in their own home folder."""
     from ..demo.data import EXPECTED
     from ..demo.setup import init_demo
@@ -143,6 +145,8 @@ def run_bench(home: Path | None = None, *, offline: bool = False) -> dict:
     os.chdir(home)
     try:
         cfg = _c.get_config(reload=True)
+        if analysis:
+            cfg.soc.analysis = analysis
         from .intake import poll_source
         from .service import store_for, triage_case
         store = store_for(cfg)
@@ -160,7 +164,7 @@ def run_bench(home: Path | None = None, *, offline: bool = False) -> dict:
     return {"home": str(home), "cases": rows, "score": score(rows), "models": models_used()}
 
 
-def run_cases(path: Path, *, cfg=None, llm=None, hub=None) -> dict:
+def run_cases(path: Path, *, cfg=None, llm=None, hub=None, analysis: str | None = None) -> dict:
     """Labelled alerts from a YAML file, triaged with the current configuration in a scratch store."""
     import yaml
 
@@ -174,6 +178,8 @@ def run_cases(path: Path, *, cfg=None, llm=None, hub=None) -> dict:
     if cfg is None:
         from ..config import get_config
         cfg = get_config()
+    if analysis:
+        cfg.soc.analysis = analysis
     rows = []
     with tempfile.TemporaryDirectory(prefix="actaeon-triage-bench-") as tmp:
         for i, case in enumerate(cases):

