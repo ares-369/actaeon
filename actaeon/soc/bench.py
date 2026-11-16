@@ -179,7 +179,9 @@ def run_cases(path: Path, *, cfg=None, llm=None, hub=None) -> dict:
         for i, case in enumerate(cases):
             if not case.get("alerts") or not case.get("expect"):
                 raise ValueError(f"{path}: case {i + 1} needs alerts and expect")
-            store = SocStore(Path(tmp) / f"case{i}.sqlite")          # one store per case: nothing groups across
+            # one throw-away SQLite store per case: nothing groups across cases, and with PostgreSQL nothing
+            # reaches the live tables
+            store = SocStore(Path(tmp) / f"case{i}.sqlite", scratch=True)
             out = ingest(cfg, store, list(case["alerts"]), source=str(case.get("source") or "bench"))
             ids = out["cases_opened"]
             if not ids:

@@ -57,8 +57,11 @@ def _row(r) -> dict:
 
 
 class SocStore:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, scratch: bool = False):
+        """``scratch``: always a SQLite file at ``path``, even when the deployment uses PostgreSQL (the
+        benchmark's throw-away stores must never share tables with the live queue)."""
         self.path = Path(path)
+        self.scratch = scratch
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         with self._conn() as c:
@@ -69,6 +72,11 @@ class SocStore:
                 db.add_column(c, "soc_suppressions", col, ddl)
 
     def _conn(self):
+        if self.scratch:
+            import sqlite3
+            c = sqlite3.connect(self.path, timeout=10)
+            c.row_factory = sqlite3.Row
+            return c
         return db.connect(self.path)
 
     # ---- alerts ----

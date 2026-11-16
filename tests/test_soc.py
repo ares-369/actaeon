@@ -733,3 +733,15 @@ def test_auto_close_never_closes_a_case_sent_to_an_analyst(home):
     c, _ = run_case(home, FakeLLM([call(), verdict("false_positive")]), FakeHub(),
                     lambda d: d["soc"].update(auto_close_confidence=50), manual=False)
     assert c["status"] == "needs_analyst"          # high severity, no confirmation: not closed
+
+
+def test_bench_scratch_stores_never_use_the_shared_database(tmp_path, monkeypatch):
+    from actaeon import db
+    from actaeon.soc.store import SocStore
+
+    def boom(*a, **k):
+        raise AssertionError("a scratch store opened the shared database")
+    monkeypatch.setattr(db, "connect", boom)
+    s = SocStore(tmp_path / "case0.sqlite", scratch=True)
+    s.add_note("c1", "t", "x")
+    assert (tmp_path / "case0.sqlite").exists()
