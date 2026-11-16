@@ -207,8 +207,12 @@ def test_daily_budget_stops_automatic_triage(home):
 
 
 def test_auto_close_confident_noise(home):
-    c, _ = run_case(home, FakeLLM([call(), verdict("false_positive")]), FakeHub(),
-                    lambda d: d["soc"].update(auto_close_confidence=80), manual=False)
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import triage_case
+    cfg, store = cfg_store(home, lambda d: d["soc"].update(auto_close_confidence=80, verify=False))
+    low = {**ALERT, "id": "low", "rule": {"id": "R1", "name": "Bad thing", "level": 3}}
+    cid = ingest(cfg, store, [low])["cases_opened"][0]
+    c = triage_case(cfg, cid, llm=FakeLLM([call(), verdict("false_positive")]), hub=FakeHub(), store=store)
     assert c["status"] == "closed" and c["closed_by"] == "actaeon (auto)"
 
 
@@ -217,7 +221,6 @@ def test_auto_close_confident_noise(home):
 ACTIONS = [{"name": "isolate_host", "connector": "edr", "tool": "isolate_host", "entity": "host",
             "arguments": {"hostname": "{target}"}, "undo": {"tool": "release_host", "arguments": {"hostname": "{target}"}}}]
 EDR = {"name": "edr", "roles": ["response"], "transport": "stdio", "command": "x"}
-
 
 def with_response(**kw):
     def m(d):
