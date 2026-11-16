@@ -65,6 +65,10 @@ soc:
   `response` role, a tool not on its deny list and not destructive. It is not retried, so a state
   change cannot run twice by accident.
 - With `two_person`, the same person cannot approve twice.
+- Separation of duties: the person who proposed an action cannot approve it (`allow_self_approval: true`
+  allows it, for one-person teams). Actions the AI proposes are requested by "actaeon (AI)".
+- Proposals expire: one not decided within `proposal_hours` (default 24) lapses with a recorded outcome
+  instead of waiting for ever.
 - Every attempt, allowed or blocked, goes to the hash-chained audit log with the approvers' names.
 - Approvals are not offered over MCP: another agent cannot approve its own request.
 - Undo calls the action's `undo` tool (also audited). `undo.kind` says what it is worth:

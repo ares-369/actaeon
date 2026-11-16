@@ -102,6 +102,57 @@ class Masker:
         return _PLACEHOLDER.sub(lambda m: self.back.get(m.group(0), m.group(0)), text)
 
 
+# Secret-shaped values: removed from every prompt, for every provider (local ones too), before it is sent.
+# A key in a log line is evidence that a key leaked; the model needs to know that, not the key.
+_SECRETS = [
+    ("private_key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)", re.S)),
+    ("aws_key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+    ("github_token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b")),
+    ("slack_token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b")),
+    ("google_key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
+    ("jwt", re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\b")),
+    ("bearer", re.compile(r"(?i)(\bbearer\s+)[A-Za-z0-9._~+/\-]{16,}=*")),
+    ("url_password", re.compile(r"(?i)(\b[a-z][a-z0-9+.\-]*://[^\s:/@]+:)[^\s@/]{3,}(@)")),
+    ("assigned", re.compile(r"""(?ix)(\b(?:password|passwd|pwd|secret|client_secret|api[_-]?key|access[_-]?token|
+                            auth[_-]?token|private[_-]?key)\b["']?\s*[:=]\s*["']?)([^\s"',;}{]{4,})""")),
+]
+
+
+def strip_secrets(text: str) -> tuple[str, dict[str, int]]:
+    """Replace secret-shaped values with [SECRET-REMOVED:<kind>]. Returns the text and counts per kind."""
+    counts: dict[str, int] = {}
+    if not text:
+        return text, counts
+    for kind, rx in _SECRETS:
+        def sub(m, kind=kind):
+            counts[kind] = counts.get(kind, 0) + 1
+            if kind in ("bearer", "assigned"):
+                return m.group(1) + f"[SECRET-REMOVED:{kind}]"
+            if kind == "url_password":
+                return m.group(1) + f"[SECRET-REMOVED:{kind}]" + m.group(2)
+            return f"[SECRET-REMOVED:{kind}]"
+        text = rx.sub(sub, text)
+    return text, counts
+
+
+class _SecretFreeBound:
+    def __init__(self, bound, counts: dict[str, int]):
+        self._b, self._counts = bound, counts
+        self.provider, self.model = bound.provider, bound.model
+
+    def __getattr__(self, name):
+        return getattr(self._b, name)
+
+    def chat(self, messages, **kw):
+        out = []
+        for m in messages:
+            text, found = strip_secrets(m.get("content", ""))
+            for k, n in found.items():
+                self._counts[k] = self._counts.get(k, 0) + n
+            out.append({**m, "content": text})
+        return self._b.chat(out, **kw)
+
+
 class _MaskedBound:
     def __init__(self, bound, masker: Masker):
         self._b, self._m = bound, masker
@@ -123,6 +174,8 @@ class PrivacyLLM:
         self.llm = llm
         self._usage: dict[str, dict] = {}   # per-wrapper meter: one wrapper per hunt
         self.mask_for = tuple(s.get("mask_for", CLOUD))
+        self.strip_secrets = bool(s.get("strip_secrets", True))
+        self.secrets_removed: dict[str, int] = {}
         self.masker = Masker(types=tuple(s.get("types", DEFAULT_TYPES)), terms=list(s.get("terms") or []),
                              patterns=list(s.get("patterns") or []),
                              keep_public_ips=bool(s.get("keep_public_ips", False)))
@@ -131,7 +184,8 @@ class PrivacyLLM:
         b = self.llm.for_role(role)
         if hasattr(b, "meter"):
             b.meter = self._usage          # count this wrapper's (one hunt's) calls only
-        return _MaskedBound(b, self.masker) if getattr(b.provider, "name", "") in self.mask_for else b
+        out = _MaskedBound(b, self.masker) if getattr(b.provider, "name", "") in self.mask_for else b
+        return _SecretFreeBound(out, self.secrets_removed) if self.strip_secrets else out
 
     @property
     def usage(self) -> dict:
@@ -141,7 +195,8 @@ class PrivacyLLM:
         return self.llm.usage_summary(self._usage) if hasattr(self.llm, "usage_summary") else {}
 
     def summary(self) -> dict[str, Any]:
-        return {"masked_values": len(self.back_map()), "by_type": dict(self.masker.counts)}
+        return {"masked_values": len(self.back_map()), "by_type": dict(self.masker.counts),
+                "secrets_removed": dict(self.secrets_removed)}
 
     def back_map(self) -> dict[str, str]:
         return self.masker.back

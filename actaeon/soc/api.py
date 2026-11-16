@@ -114,6 +114,20 @@ def register(app, jobs, *, start_scheduler: bool = False) -> None:
         return Response(case_markdown(c), mimetype="text/markdown",
                         headers={"Content-Disposition": f'attachment; filename="case-{cid}.md"'})
 
+    @app.route("/api/cases/<cid>/evidence.json")
+    def soc_case_evidence(cid):
+        c = _case(cid)
+        if not c:
+            return bad("not found", 404)
+        from .evidence import build
+        try:
+            b = build(c, audit=hub().audit)
+        except ValueError as exc:
+            return bad(exc, 409)
+        import json as _json
+        return Response(_json.dumps(b, indent=1, default=str), mimetype="application/json",
+                        headers={"Content-Disposition": f'attachment; filename="case-{cid}-evidence.json"'})
+
     @app.route("/api/cases/<cid>/triage", methods=["POST"])
     def soc_case_triage(cid):
         c = _case(cid)
@@ -208,7 +222,7 @@ def register(app, jobs, *, start_scheduler: bool = False) -> None:
             act = R.build(get_config(), str(b.get("name", "")), str(b.get("target", "")).strip(), cid)
         except R.ResponseError as exc:
             return bad(exc)
-        aid = store().add_action(cid, **act, basis=R.basis(c),
+        aid = store().add_action(cid, **act, basis=R.basis(c), requested_by=actor(), expires=R.expiry(get_config()),
                                  reason=f"proposed by {actor()}: {str(b.get('reason', ''))[:400]}")
         return jsonify(store().get_action(aid))
 

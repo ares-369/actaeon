@@ -38,7 +38,9 @@ Each turn reply with exactly ONE JSON object and nothing else:
   {{"action": "case", "verdict": "true_positive|false_positive|benign|needs_analyst|logs_missing",
     "confidence": 0-100, "severity": "low|medium|high|critical", "title": "short case title",
     "summary": "the whole story in plain language for the analyst: what happened, to what, how you know",
-    "findings": [{{"text": "a fact", "evidence": ["E2"]}}],
+    "findings": [{{"text": "a fact that supports the verdict", "evidence": ["E2"]}}],
+    "contradicting": [{{"text": "a fact that points the other way", "evidence": ["E4"]}}],
+    "missing": ["a fact the verdict depends on that you could not establish"],
     "timeline": [{{"time": "ISO time", "event": "what happened", "evidence": ["E3"]}}],
     "entities": [{{"type": "host|user|ip|process|domain|url|hash|file", "value": "...",
                    "role": "victim|attacker|related"}}],
@@ -55,6 +57,8 @@ Each turn reply with exactly ONE JSON object and nothing else:
 Rules:
 - Evidence ids: the result of each call is E<n>. Cite them in findings and timeline. A true_positive needs at least
   one cited successful result.
+- Be honest about the other side: put evidence that points AGAINST your verdict in "contradicting", and what you
+  could not establish in "missing". An empty list is fine only if there really is nothing.
 - Start from the alert: confirm what it says in the raw data, then widen (same host, same user, same destination,
   parent and child processes, before and after the alert time). Check intel for external indicators when an intel
   tool exists. Check whether this activity is normal for this host or user (has it happened before?).

@@ -401,6 +401,8 @@ class CaseEngine:
 
         findings = cites(v.get("findings"))
         timeline = cites(v.get("timeline"))
+        contradicting = cites(v.get("contradicting"))
+        missing = [str(m)[:300] for m in v.get("missing") or [] if m][:10]
         cited = {e for f in findings + timeline for e in f["evidence"]}
         if verdict == "true_positive" and not cited:
             notes.append("true_positive without cited evidence; changed to needs_analyst")
@@ -416,6 +418,10 @@ class CaseEngine:
         if verdict in ("false_positive", "benign") and data_ok and all(s.get("hits") == 0 for s in data_ok):
             notes.append("every data search returned nothing: the activity was not confirmed in the logs")
             conf = min(conf, 60)
+        against = [c for c in contradicting if c["evidence"]]
+        if against and verdict in ("true_positive", "false_positive", "benign"):
+            notes.append(f"{len(against)} cited fact(s) point against this verdict; read them before acting")
+            conf = min(conf, 70)
         if injections:
             notes.append("text that tries to instruct an AI was found; an analyst must review this case")
             if verdict != "true_positive":
@@ -467,7 +473,8 @@ class CaseEngine:
             "verdict": verdict, "confidence": conf, "severity": severity,
             "title": str(v.get("title") or case.get("title") or "")[:200],
             "summary": str(v.get("summary") or "")[:5000],
-            "findings": findings, "timeline": timeline, "entities": entities, "relations": relations,
+            "findings": findings, "contradicting": contradicting, "missing": missing, "timeline": timeline,
+            "entities": entities, "relations": relations,
             "attack": attack, "fix": fix, "actions": actions[:10],
             "gaps": [str(g)[:300] for g in v.get("gaps") or []][:15],
             "next_steps": [str(g)[:300] for g in v.get("next_steps") or []][:15],

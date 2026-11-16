@@ -23,6 +23,8 @@ class ResponseConfig:
     enabled: bool = False            # off: actions are only recommended, never run
     dry_run: bool = True             # on: approved actions are recorded but not sent
     two_person: bool = False         # an action needs two different approvers
+    proposal_hours: int = 24         # a proposal not decided within this lapses (0 = never)
+    allow_self_approval: bool = False   # a person may approve an action they proposed (one-person teams)
     actions: list[dict] = field(default_factory=list)
 
 
@@ -118,4 +120,6 @@ def _response(r: dict, connector_names: set[str]) -> ResponseConfig:
     actions = list(r.get("actions") or [])
     validate_actions(actions, connector_names)
     return ResponseConfig(enabled=bool(r.get("enabled", False)), dry_run=bool(r.get("dry_run", True)),
-                          two_person=bool(r.get("two_person", False)), actions=actions)
+                          two_person=bool(r.get("two_person", False)),
+                          proposal_hours=max(0, min(24 * 30, int(r.get("proposal_hours", 24) or 0))),
+                          allow_self_approval=bool(r.get("allow_self_approval", False)), actions=actions)

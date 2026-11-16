@@ -134,6 +134,19 @@ def build(cfg, name: str, target: str, case_id: str) -> dict:
             "description": str(spec.get("description", ""))[:500], "tier": 2, "undo_kind": undo_kind(spec)}
 
 
+AI_REQUESTER = "actaeon (AI)"
+
+
+def expiry(cfg) -> str | None:
+    h = cfg.soc.response.proposal_hours
+    if not h:
+        return None
+    from datetime import timedelta
+
+    from .util import now
+    return iso(now() + timedelta(hours=h))
+
+
 def propose(cfg, store: SocStore, case_id: str, verdict: dict) -> list[int]:
     """Store the verdict's actions as proposals (the engine already checked names and targets)."""
     ids = []
@@ -149,7 +162,8 @@ def propose(cfg, store: SocStore, case_id: str, verdict: dict) -> list[int]:
             act = build(cfg, a["name"], a["target"], case_id)
         except ResponseError:
             continue
-        ids.append(store.add_action(case_id, **act, reason=a.get("reason", ""), basis=base))
+        ids.append(store.add_action(case_id, **act, reason=a.get("reason", ""), basis=base,
+                                    requested_by=AI_REQUESTER, expires=expiry(cfg)))
     return ids
 
 
@@ -164,10 +178,15 @@ def decide(cfg, store: SocStore, hub, action_id: int, *, user: str, approve: boo
     a = store.get_action(action_id)
     if not a:
         raise ResponseError("no such action")
+    if a["status"] == "proposed" and a.get("expires") and a["expires"] < iso():
+        store.expire_actions()
+        raise ResponseError("this proposal expired before it was decided; propose it again if it is still needed")
     if a["status"] != "proposed":
         raise ResponseError(f"the action is already {a['status']}")
     if not user:
         raise ResponseError("an approver name is needed")
+    if approve and a.get("requested_by") == user and not cfg.soc.response.allow_self_approval:
+        raise ResponseError("you proposed this action; someone else must approve it")
     if approve and a.get("basis") and a["basis"] != basis(store.get_case(a["case_id"]) or {}):
         store.set_action(action_id, status="stale", decided_by=user, decided_at=iso(),
                          result="The case changed after this was proposed (new alerts or a new verdict).")

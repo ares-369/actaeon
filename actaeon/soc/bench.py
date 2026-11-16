@@ -68,6 +68,55 @@ def score(rows: list[dict]) -> dict:
     }
 
 
+def models_used(rows: list[dict] | None = None) -> dict[str, str]:
+    """provider/model per role, from the current configuration."""
+    from ..config import LLM_ROLES, get_config
+    cfg = get_config()
+    out = {}
+    for role in LLM_ROLES:
+        rc = cfg.role_cfg(role)
+        prov = rc.get("provider", "ollama")
+        model = rc.get("model") or ((cfg.llm.get("providers") or {}).get(prov) or {}).get("default_model", "")
+        out[role] = f"{prov}/{model}" if model else prov
+    return out
+
+
+def record(res: dict, path: Path, *, label: str = "") -> dict:
+    """Append one run to a JSON-lines file of results (for the suitability table)."""
+    import json
+
+    from .util import iso
+    row = {"date": iso()[:10], "label": label or res.get("file") or "demo cases", "models": res.get("models") or {},
+           "cases": res["score"]["total"], **{k: res["score"][k] for k in res["score"]}}
+    with Path(path).open("a") as f:
+        f.write(json.dumps(row) + "\n")
+    return row
+
+
+def table(path: Path) -> str:
+    """Markdown table of recorded runs, one row per run; providers with no run read "not measured"."""
+    import json
+
+    from ..config import PROVIDERS
+    rows = [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()] if Path(path).exists() else []
+    head = ("| Date | Cases | Models (planner / analyst) | Correct | Recall | Precision | Handed to analyst | "
+            "Wrong closures | Evidence coverage | Tokens | Median s/case |\n|---|---|---|---|---|---|---|---|---|---|---|")
+    lines = [head]
+    seen = set()
+    for r in rows:
+        m = r.get("models") or {}
+        seen |= {str(v).split("/")[0] for v in m.values()}
+        cell = lambda v: "not measured" if v is None else v  # noqa: E731
+        lines.append(f"| {r['date']} | {r['label']} ({r['cases']}) | {m.get('planner', '?')} / {m.get('analyst', '?')} | "
+                     f"{r['passed']}/{r['total']} | {cell(r['recall'])} | {cell(r['precision'])} | {r['handed_over']} | "
+                     f"{r['wrong_closures']} | {cell(r['evidence_coverage'])} | {r['tokens']} | {r['median_seconds']} |")
+    missing = [p for p in PROVIDERS if p not in seen and p not in ("demo", "cli")]
+    if missing:
+        lines.append("")
+        lines.append("Not measured: " + ", ".join(missing) + ".")
+    return "\n".join(lines)
+
+
 def run_bench(home: Path | None = None, *, offline: bool = False) -> dict:
     """The demo cases, in their own home folder."""
     from ..demo.data import EXPECTED
@@ -108,7 +157,7 @@ def run_bench(home: Path | None = None, *, offline: bool = False) -> dict:
         _hub.get_hub().close()
     finally:
         os.chdir(cwd)
-    return {"home": str(home), "cases": rows, "score": score(rows)}
+    return {"home": str(home), "cases": rows, "score": score(rows), "models": models_used()}
 
 
 def run_cases(path: Path, *, cfg=None, llm=None, hub=None) -> dict:
@@ -141,4 +190,4 @@ def run_cases(path: Path, *, cfg=None, llm=None, hub=None) -> dict:
     if hub is None:
         from ..connectors import get_hub
         get_hub().close()
-    return {"file": str(path), "cases": rows, "score": score(rows)}
+    return {"file": str(path), "cases": rows, "score": score(rows), "models": models_used()}

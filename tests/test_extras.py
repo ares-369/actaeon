@@ -63,7 +63,9 @@ def test_privacy_llm_masks_only_cloud():
     assert "10.9.9.9" in out.text and "dave" in out.text
     p.for_role("local").chat([{"role": "user", "content": "host 10.9.9.9"}])
     assert local.seen[0][0]["content"] == "host 10.9.9.9"
-    assert PrivacyLLM(TwoRoles(cloud, local), {"mask_for": []}).for_role("cloud") is cloud
+    # masking off: only the secret filter stays (it applies to every provider); turned off too, the model is as is
+    assert PrivacyLLM(TwoRoles(cloud, local), {"mask_for": [], "strip_secrets": False}).for_role("cloud") is cloud
+    assert PrivacyLLM(TwoRoles(cloud, local), {"mask_for": []}).for_role("cloud")._b is cloud
 
 
 def test_privacy_config_validation(home):

@@ -108,7 +108,8 @@ async function caseDetail(id) {
       h("button", { class: "ghost", "data-need": "op", title: "Start a full hunt for the same activity elsewhere",
         onclick: async () => { const r = await post(`/api/cases/${c.id}/hunt`); toast("Hunt started"); location.hash = "hunt/" + r.hunt_id; } },
         icon("target"), "Hunt this"),
-      h("a", { class: "button ghost", href: `/api/cases/${c.id}/report.md` }, icon("language-markdown-outline"), "Report")),
+      h("a", { class: "button ghost", href: `/api/cases/${c.id}/report.md` }, icon("language-markdown-outline"), "Report"),
+      h("a", { class: "button ghost", href: `/api/cases/${c.id}/evidence.json`, title: "Sealed evidence bundle (JSON)" }, icon("lock"), "Evidence")),
     c.error ? h("p", { class: "bad" }, c.error) : null);
   main.append(head);
   if (c.status === "triaging") {
@@ -122,6 +123,10 @@ async function caseDetail(id) {
       h("p", { class: "pre lead" }, c.summary || ""),
       r.findings && r.findings.length ? h("ul", { class: "findings" }, r.findings.map((f) => h("li", {}, f.text, " ",
         (f.evidence || []).map((e) => h("a", { class: "ev", href: "#", onclick: (ev) => { ev.preventDefault(); openEvidence(e); } }, e))))) : null,
+      r.contradicting && r.contradicting.length ? h("div", { class: "handoff" }, h("h4", {}, icon("compare-horizontal"), " Points against this verdict"),
+        h("ul", {}, r.contradicting.map((f) => h("li", {}, f.text, " ", (f.evidence || []).map((e) => h("a", { class: "ev", href: "#", onclick: (ev) => { ev.preventDefault(); openEvidence(e); } }, e)))))) : null,
+      r.missing && r.missing.length ? h("div", { class: "handoff" }, h("h4", {}, icon("chat-question-outline"), " Could not establish"),
+        h("ul", {}, r.missing.map((m) => h("li", { class: "small" }, m)))) : null,
       r.verification ? h("p", { class: "small" }, icon("check-decagram-outline"), " Second look: ", h("b", {}, r.verification.result), ". ",
         r.verification.reason || "", " ", (r.verification.evidence || []).map((e) => h("a", { class: "ev", href: "#", onclick: (ev) => { ev.preventDefault(); openEvidence(e); } }, e))) : null,
       checks.length ? h("div", { class: "handoff" }, h("h4", {}, icon("check-decagram-outline"), " Checks on the AI verdict"),

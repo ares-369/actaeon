@@ -46,7 +46,8 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
     if hub is None:
         from ..connectors import get_hub
         hub = get_hub(cfg)
-    llm = llm or _llm(cfg)
+    from .evidence import RecordingLLM
+    llm = RecordingLLM(llm or _llm(cfg))       # keeps a digest of every prompt and reply for the evidence bundle
     store.clear_steps(case_id)
     store.set_case(case_id, status="triaging", error=None)
     started = time.monotonic()
@@ -77,6 +78,11 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
             log.exception("second look failed for %s", case_id)
             v["checks"] = [*v["checks"], f"the second look failed ({type(exc).__name__}); not verified"]
             v["confidence"] = min(v["confidence"], 60)
+    v["model_calls"] = llm.calls[-200:]
+    removed = getattr(llm.llm, "secrets_removed", None)
+    if removed:
+        v["checks"] = [*v["checks"], "secret-shaped values were removed from the prompts before they were sent: "
+                       + ", ".join(f"{k} x{n}" for k, n in sorted(removed.items()))]
     usage = llm.usage_summary() if hasattr(llm, "usage_summary") else {}
     usage["seconds"] = round(time.monotonic() - started, 1)
     _account(store, llm)
@@ -212,6 +218,7 @@ class Scheduler:
                     out["polled"].append({"source": src["name"], **poll_source(cfg, store, get_hub(cfg), src)})
                 except Exception as exc:
                     out["polled"].append({"source": src["name"], "error": str(exc)[:300]})
+        out["expired_actions"] = store.expire_actions()
         if cfg.soc.auto:
             out["queued"] = queue_new(cfg, self.jobs, store)
         self.last = {"at": iso(), **out}

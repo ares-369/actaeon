@@ -30,3 +30,12 @@ Limits, be aware of them:
 - Hashes, domains and URLs are not masked by default, because hunting needs
   them. Put internal domains under `terms`.
 - Masking covers what Actaeon sends. What your own sources log is up to them.
+
+## Secrets never reach a model
+
+Separately from masking, and for every provider (local ones too), values that look like secrets are
+removed from each prompt before it is sent and replaced with `[SECRET-REMOVED:<kind>]`: private key
+blocks, cloud access keys, code-hosting and chat tokens, JWTs, bearer tokens, passwords in URLs, and
+values assigned to keys such as `password`, `secret`, `api_key` or `token`. The model still learns that
+a secret was there, which is often the finding. Alert cases list how many were removed. Turn it off
+with `privacy.strip_secrets: false`.

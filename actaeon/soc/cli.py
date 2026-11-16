@@ -14,8 +14,10 @@ def add_parsers(sub) -> None:
     p.add_argument("file", nargs="?")
     p.add_argument("--source", default="import")
     p.add_argument("--limit", type=int, default=50)
-    p = sub.add_parser("cases", help="alert cases: cases list | show ID [--markdown] | close ID --verdict V")
-    p.add_argument("action", nargs="?", choices=["list", "show", "close"], default="list")
+    p = sub.add_parser("cases", help="alert cases: list | show ID [--markdown] | close ID --verdict V | "
+                       "export ID [--out FILE] | verify FILE")
+    p.add_argument("action", nargs="?", choices=["list", "show", "close", "export", "verify"], default="list")
+    p.add_argument("--out")
     p.add_argument("id", nargs="?")
     p.add_argument("--open", action="store_true")
     p.add_argument("--limit", type=int, default=50)
@@ -31,6 +33,9 @@ def add_parsers(sub) -> None:
     p.add_argument("--offline", action="store_true", help="use the scripted provider (checks the pipeline only)")
     p.add_argument("--cases", help="YAML with labelled alerts to triage with the current configuration")
     p.add_argument("--json", help="write the full result to this file")
+    p.add_argument("--record", help="append this run to a JSON-lines results file")
+    p.add_argument("--label", default="", help="name of the case set in the results file")
+    p.add_argument("--table", help="print the suitability table of a results file and exit")
     p = sub.add_parser("shift-report", help="markdown summary of the last N hours of alert cases")
     p.add_argument("--hours", type=int, default=12)
 
@@ -93,6 +98,24 @@ def run(a) -> int | None:
                 print(case_markdown(c))
             else:
                 print_case(c, full=True)
+        elif a.action == "export":
+            from ..connectors.audit import AuditLog
+            from .evidence import build
+            c = store.get_case(a.id or "")
+            if not c:
+                print("no such case")
+                return 1
+            text = json.dumps(build(c, audit=AuditLog(cfg.data_dir / "audit.sqlite")), indent=1, default=str)
+            if a.out:
+                Path(a.out).write_text(text)
+                print(f"wrote {a.out}")
+            else:
+                print(text)
+        elif a.action == "verify":
+            from .evidence import verify
+            r = verify(json.loads(Path(a.id or "").read_text()))
+            print(("OK  " if r["ok"] else "FAIL ") + f"case {r['case']}" + "".join(f"\n  - {p}" for p in r["problems"]))
+            return 0 if r["ok"] else 1
         elif a.action == "close":
             from .service import close_case
             close_case(store, a.id or "", user=a.user or getpass.getuser(), verdict=a.verdict or "", note=a.note or "")
@@ -119,7 +142,10 @@ def run(a) -> int | None:
 
 
 def _bench(a) -> int:
-    from .bench import run_bench, run_cases
+    from .bench import record, run_bench, run_cases, table
+    if a.table:
+        print(table(Path(a.table)))
+        return 0
     if a.cases:
         res = run_cases(Path(a.cases).expanduser())
     else:
@@ -137,4 +163,7 @@ def _bench(a) -> int:
         print("(offline: the scripted demo provider was used, so this checks the pipeline, not a model)")
     if a.json:
         Path(a.json).write_text(json.dumps(res, indent=1))
+    if a.record:
+        record(res, Path(a.record), label=a.label)
+        print(f"recorded in {a.record}")
     return 0 if s["passed"] == s["total"] else 1

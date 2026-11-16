@@ -29,6 +29,11 @@ def case_markdown(case: dict) -> str:
     if r.get("findings"):
         out += ["## Findings", ""] + [f"- {_md(f.get('text'))} ({', '.join(f.get('evidence') or []) or 'no evidence'})"
                                       for f in r["findings"]] + [""]
+    if r.get("contradicting"):
+        out += ["## Points against this verdict", ""] + [
+            f"- {_md(f.get('text'))} ({', '.join(f.get('evidence') or []) or 'no evidence'})" for f in r["contradicting"]] + [""]
+    if r.get("missing"):
+        out += ["## Could not establish", ""] + [f"- {_md(m)}" for m in r["missing"]] + [""]
     tl = timeline(case)
     if tl:
         out += ["## Timeline", "", "| Time | Kind | Event |", "|---|---|---|"]

@@ -248,3 +248,27 @@ hunt:
   max_result_bytes: 8000    # per tool result shown to a model (shared with hunts)
   max_query_sec: 120        # one tool call, retries included (shared with hunts)
 ```
+
+## Evidence bundle
+
+**Evidence** on a case (or `GET /api/cases/<id>/evidence.json`, or `actaeon cases export ID --out FILE`)
+gives one JSON file with everything the verdict rests on: the alerts as received, every tool call with its
+arguments, result and the result's SHA-256, the checked verdict (findings, points against it, what could not
+be established), the second look, the actions and who decided them, the notes, a digest of every prompt sent
+to a model and every reply (not the text), and the case's audit-log rows with the audit chain's head hash.
+It is sealed with HMAC-SHA256 using `ACTAEON_EVIDENCE_KEY` (or `ACTAEON_SECRET_KEY`). `actaeon cases verify
+FILE` checks the seal and every result digest. Anyone with the key can check it; it is not a public-key
+signature.
+
+## Measuring a model for triage
+
+```bash
+actaeon triage-bench --offline                                # the pipeline, scripted (not AI)
+actaeon triage-bench --cases my-cases.yaml --record results.jsonl --label "my alerts"
+actaeon triage-bench --table results.jsonl                    # the suitability table, one row per run
+```
+
+`--cases` triages your own labelled alerts with the current configuration in a scratch store (the live
+queue is not touched). The score reports recall on true positives, precision, cases handed to an analyst,
+wrong closures (a real threat called benign or a false positive: the dangerous miss), the share of findings
+that cite evidence, tokens and time. Providers with no recorded run are listed as not measured.

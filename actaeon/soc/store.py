@@ -12,7 +12,7 @@ from .util import ago, dumps, iso, loads, new_id
 
 VERDICTS = ("true_positive", "false_positive", "benign", "needs_analyst", "logs_missing")
 STATUSES = ("new", "triaging", "triaged", "needs_analyst", "closed", "error")
-ACTION_STATES = ("proposed", "rejected", "dry_run", "executed", "failed", "undone", "manual", "stale")
+ACTION_STATES = ("proposed", "rejected", "dry_run", "executed", "failed", "undone", "manual", "stale", "expired")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS soc_alerts (
@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS soc_steps (
 CREATE TABLE IF NOT EXISTS soc_actions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT, name TEXT, target TEXT, connector TEXT, tool TEXT,
   arguments TEXT, reason TEXT, tier INTEGER, status TEXT, proposed_at TEXT, approvers TEXT, decided_by TEXT,
-  decided_at TEXT, result TEXT, undo TEXT, executed_at TEXT, description TEXT, basis TEXT, undo_kind TEXT);
+  decided_at TEXT, result TEXT, undo TEXT, executed_at TEXT, description TEXT, basis TEXT, undo_kind TEXT,
+  requested_by TEXT, expires TEXT);
 CREATE INDEX IF NOT EXISTS soc_actions_case ON soc_actions(case_id);
 CREATE TABLE IF NOT EXISTS soc_suppressions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, rule TEXT, entity_type TEXT, entity_value TEXT, reason TEXT,
@@ -62,6 +63,10 @@ class SocStore:
         self._lock = threading.RLock()
         with self._conn() as c:
             c.executescript(_SCHEMA)
+            for col in ("basis", "undo_kind", "requested_by", "expires"):    # stores made by earlier versions
+                db.add_column(c, "soc_actions", col, "TEXT")
+            for col, ddl in (("high_hits", "INTEGER DEFAULT 0"), ("last_hit", "TEXT")):
+                db.add_column(c, "soc_suppressions", col, ddl)
 
     def _conn(self):
         return db.connect(self.path)
@@ -298,13 +303,24 @@ class SocStore:
     def add_action(self, case_id: str, **a) -> int:
         with self._lock, self._conn() as c:
             cur = c.execute("INSERT INTO soc_actions (case_id, name, target, connector, tool, arguments, reason, tier, "
-                            "status, proposed_at, approvers, undo, description, basis, undo_kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            "status, proposed_at, approvers, undo, description, basis, undo_kind, requested_by, expires) "
+                            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                             (case_id, a.get("name", ""), a.get("target", ""), a.get("connector", ""), a.get("tool", ""),
                              dumps(a.get("arguments") or {}), str(a.get("reason", ""))[:1000], int(a.get("tier", 2)),
                              a.get("status", "proposed"), iso(), "[]", dumps(a.get("undo")) if a.get("undo") else None,
-                             str(a.get("description", ""))[:500], a.get("basis", ""), a.get("undo_kind", "")))
+                             str(a.get("description", ""))[:500], a.get("basis", ""), a.get("undo_kind", ""),
+                             str(a.get("requested_by", ""))[:100], a.get("expires")))
             c.commit()
             return int(cur.lastrowid)
+
+    def expire_actions(self) -> int:
+        """Proposals past their expiry lapse with a recorded outcome instead of waiting for ever."""
+        with self._lock, self._conn() as c:
+            n = c.execute("UPDATE soc_actions SET status='expired', decided_at=?, result='Not decided before it "
+                          "expired; propose it again if it is still needed.' WHERE status='proposed' AND expires IS "
+                          "NOT NULL AND expires!='' AND expires<?", (iso(), iso())).rowcount
+            c.commit()
+        return int(n or 0)
 
     def get_action(self, action_id: int) -> dict | None:
         with self._conn() as c:

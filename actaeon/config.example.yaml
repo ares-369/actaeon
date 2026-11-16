@@ -98,6 +98,8 @@ soc:
     enabled: false
     dry_run: true                # with enabled: approvals are recorded, not sent
     two_person: false
+    proposal_hours: 24           # a proposal not decided within this lapses (0 = never)
+    allow_self_approval: false   # true: a person may approve an action they proposed (one-person teams)
     actions: []
     #  - name: isolate_host
     #    description: Cut the host off the network

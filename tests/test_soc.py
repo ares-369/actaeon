@@ -609,3 +609,98 @@ def test_prompt_lists_the_allowed_indices(home):
     run_case(home, llm, Hub())
     prompt = next(m for role, m in llm.seen if role == "analyst")[1]["content"]
     assert "use index patterns alerts-*" in prompt and "alerts-2026" in prompt
+
+
+def test_requester_cannot_approve_and_proposals_expire(home):
+    from actaeon import config
+    from actaeon.soc import response
+    hub = FakeHub()
+    c, store = run_case(home, FakeLLM([call(), verdict("needs_analyst", ev=())]), hub,
+                        with_response(enabled=True, dry_run=False))
+    cfg = config.get_config()
+    act = response.build(cfg, "isolate_host", "WS1", c["id"])
+    mine = store.add_action(c["id"], **act, basis=response.basis(store.get_case(c["id"])), requested_by="ana",
+                            expires=response.expiry(cfg))
+    with pytest.raises(response.ResponseError, match="someone else"):
+        response.decide(cfg, store, hub, mine, user="ana", approve=True)
+    assert response.decide(cfg, store, hub, mine, user="ben", approve=True)["status"] == "executed"
+    old = store.add_action(c["id"], **act, basis=response.basis(store.get_case(c["id"])), requested_by="ana",
+                           expires="2000-01-01T00:00:00+00:00")
+    with pytest.raises(response.ResponseError, match="expired"):
+        response.decide(cfg, store, hub, old, user="ben", approve=True)
+    assert store.get_action(old)["status"] == "expired"
+
+
+def test_self_approval_can_be_allowed(home):
+    from actaeon import config
+    from actaeon.soc import response
+    hub = FakeHub()
+    c, store = run_case(home, FakeLLM([call(), verdict("needs_analyst", ev=())]), hub,
+                        with_response(enabled=True, dry_run=True, allow_self_approval=True))
+    cfg = config.get_config()
+    aid = store.add_action(c["id"], **response.build(cfg, "isolate_host", "WS1", c["id"]),
+                           basis=response.basis(store.get_case(c["id"])), requested_by="ana")
+    assert response.decide(cfg, store, hub, aid, user="ana", approve=True)["status"] == "dry_run"
+
+
+def test_contradicting_evidence_is_kept_and_caps_confidence(home):
+    v = verdict("true_positive", confidence=95,
+                contradicting=[{"text": "the account is the backup service", "evidence": ["E1"]}],
+                missing=["whether the download ran"])
+    v["confidence"] = 95
+    c, _ = run_case(home, FakeLLM([call(), v]), FakeHub())
+    r = c["report"]
+    assert r["contradicting"][0]["evidence"] == ["E1"] and r["missing"] == ["whether the download ran"]
+    assert c["confidence"] == 70 and any("point against" in x for x in r["checks"])
+    from actaeon import config
+    from actaeon.soc.report import case_markdown
+    from actaeon.soc.service import store_for
+    md = case_markdown(store_for(config.get_config()).get_case(c["id"]))
+    assert "Points against this verdict" in md and "Could not establish" in md
+
+
+def test_evidence_bundle_is_sealed_and_detects_changes(home, monkeypatch):
+    import copy
+
+    from actaeon.soc.evidence import build, verify
+    monkeypatch.setenv("ACTAEON_EVIDENCE_KEY", "k1")
+    c, store = run_case(home, FakeLLM([call(), verdict()]), FakeHub())
+    full = store.get_case(c["id"])
+    b = build(full)
+    assert verify(b)["ok"] and b["steps"][-1]["result_sha256"] and b["verdict"]["verdict"] == "true_positive"
+    assert len(b["model_calls"]) == 3 and all(len(m["prompt_sha256"]) == 64 for m in b["model_calls"])
+    t = copy.deepcopy(b)
+    t["verdict"]["verdict"] = "benign"
+    assert not verify(t)["ok"]
+    t = copy.deepcopy(b)
+    t["steps"][-1]["result"] = "edited"
+    assert any("E1" in p for p in verify(t)["problems"])
+    monkeypatch.setenv("ACTAEON_EVIDENCE_KEY", "other")
+    assert any("HMAC" in p for p in verify(b)["problems"])
+
+
+def test_secret_shaped_values_never_reach_a_model():
+    from actaeon.privacy import PrivacyLLM, strip_secrets
+    text = ("login password=Hunter2pass and key AKIAABCDEFGHIJKLMNOP, Authorization: Bearer abcdefghijklmnop1234 "
+            "url https://svc:s3cr3tpw@db.example/x token ghp_" + "a" * 36 + " sha256 " + "f" * 64)
+    out, counts = strip_secrets(text)
+    for leaked in ("Hunter2pass", "AKIAABCDEFGHIJKLMNOP", "abcdefghijklmnop1234", "s3cr3tpw", "ghp_aaaa"):
+        assert leaked not in out
+    assert "f" * 64 in out and counts["aws_key"] == 1           # file hashes are kept
+    llm = FakeLLM([verdict()])
+    wrapped = PrivacyLLM(llm, {"mask_for": []})
+    wrapped.for_role("analyst").chat([{"role": "user", "content": text}])
+    assert "Hunter2pass" not in llm.seen[-1][1][0]["content"] and wrapped.secrets_removed["assigned"] == 1
+
+
+def test_suitability_table_marks_untested_providers(tmp_path):
+    from actaeon.soc.bench import record, table
+    res = {"file": "lab", "models": {"planner": "ollama/qwen3:4b", "analyst": "ollama/qwen3:4b"},
+           "score": {"passed": 7, "total": 9, "tp_found": 3, "tp_total": 4, "recall": 0.75, "false_alarms": 0,
+                     "precision": 1.0, "handed_over": 4, "wrong_closures": 1, "evidence_coverage": 0.8, "tokens": 9,
+                     "median_seconds": 400}}
+    f = tmp_path / "results.jsonl"
+    record(res, f, label="lab")
+    t = table(f)
+    assert "| lab (9) | ollama/qwen3:4b / ollama/qwen3:4b | 7/9 | 0.75 | 1.0 | 4 | 1 |" in t
+    assert "Not measured: anthropic, gemini, openai" in t and "ollama" not in t.split("Not measured:")[1]

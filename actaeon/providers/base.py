@@ -66,6 +66,8 @@ CASE_TOOL: dict[str, Any] = {
             "title": {"type": "string"},
             "summary": {"type": "string"},
             "findings": {"type": "array", "items": {"type": "object"}},
+            "contradicting": {"type": "array", "items": {"type": "object"}},
+            "missing": {"type": "array", "items": {"type": "string"}},
             "timeline": {"type": "array", "items": {"type": "object"}},
             "entities": {"type": "array", "items": {"type": "object"}},
             "relations": {"type": "array", "items": {"type": "object"}},

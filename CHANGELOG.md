@@ -7,6 +7,11 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Security
+- Secret-shaped values (private keys, cloud and code-hosting tokens, JWTs, bearer tokens, URL passwords,
+  values of password/secret/token keys) are removed from every prompt for every provider before it is sent
+  (`privacy.strip_secrets`, on by default). This applies to hunts too.
+
 ### Added
 - **Alert triage** (`soc:` in config.yaml, docs/alert-triage.md). Alerts arrive through `POST /api/alerts`
   (login, or a send-only bearer token), a polled connector tool (new `alerts` connector role) or
@@ -27,6 +32,14 @@ behaviour may still change between releases.
   response tools.
 - `actaeon triage-bench`: scored triage on the labelled demo cases, or on your own labelled alerts
   (`--cases FILE`), with recall, precision, hand-overs, wrong closures, evidence coverage, tokens and time.
+- Every verdict lists the cited facts that point against it and what could not be established; cited
+  contradicting evidence caps the confidence at 70.
+- Sealed evidence bundle per case (`actaeon cases export` / `verify`, `GET /api/cases/<id>/evidence.json`):
+  alerts, every tool call and result with digests, verdict, second look, actions, notes, digests of every
+  prompt and reply, audit rows and chain head, HMAC-SHA256.
+- Separation of duties for response: whoever proposed an action cannot approve it (unless
+  `allow_self_approval`); proposals expire after `proposal_hours`.
+- `triage-bench --record` / `--table`: a per-model suitability table; untested providers read "not measured".
 - MCP tools `list_cases`, `get_case`, `submit_alerts`, `triage_case` (no tool approves an action). Case
   outputs: `when: [case_true_positive, case_needs_analyst, case_action_proposed, ...]`.
 - Investigation graph: every node and link carries the first and last time it was seen in the hunt's
