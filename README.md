@@ -280,6 +280,29 @@ not in this repository.
   a 4B reasoning model 1 of the 4 planted threats in the demo cases; [docs/local-models.md](docs/local-models.md)).
 - **Not proven in production yet.**
 
+## Acknowledgements
+
+Actaeon builds on open work by many people:
+
+- [MITRE ATT&CK®](https://attack.mitre.org) for the technique data bundled with Actaeon (used under MITRE's
+  terms of use), and the [Model Context Protocol](https://modelcontextprotocol.io), which every connector speaks.
+- [Sigma](https://github.com/SigmaHQ/sigma) and [pySigma](https://github.com/SigmaHQ/pySigma) for detection
+  drafts and conversion, and OASIS [STIX and TAXII 2.1](https://oasis-open.github.io/cti-documentation/) for
+  sharing intel.
+- [ExCyTIn-Bench](https://github.com/microsoft/SecRL) for the public investigation benchmark (its judge prompts
+  are used as published), and [Ollama](https://ollama.com) with the open-weight models it serves for local
+  testing.
+- [Material Design Icons](https://pictogrammers.com/library/mdi/) (a bundled subset), and Flask, Waitress,
+  Requests, PyYAML and python-dotenv.
+- The alert-triage design took ideas from the documentation of other open-source AI SOC projects. From
+  [AiSOC](https://github.com/beenuar/AiSOC): an approver who is not the requester, approvals that expire,
+  stating the evidence that argues against a verdict, sealed evidence exports, keeping secrets out of
+  prompts, and measuring each model per task. From [Vigil](https://github.com/Vigil-SOC/vigil) and
+  [Cerebro](https://writer.com/engineering/cerebro-ai-security-alert-triage-system/): separate triage and
+  investigation roles, and a graph of the entities around each alert. No code was copied from them.
+
+Thank you to everyone who builds and maintains them.
+
 ## Contributing
 
 Bug reports, hunt hypotheses ([hunt packs](docs/hunt-packs.md)), connectors and benchmark runs
