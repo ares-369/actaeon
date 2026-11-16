@@ -819,6 +819,7 @@ def test_model_cannot_overrule_proven_signals(home):
     c = triage_case(cfg, cid, llm=FakeLLM([verdict("false_positive", ev=("E1",))]), hub=hub, store=store)
     assert c["verdict"] == "true_positive" and any("the evidence decides" in x for x in c["report"]["checks"])
     assert any("the model's view" in f["text"] for f in c["report"]["contradicting"])
+    assert not c["title"].lower().startswith("false positive")
 
 
 def test_model_failure_falls_back_to_the_rules(home):

@@ -484,6 +484,7 @@ class CaseEngine:
             contradicting = [*contradicting, {"text": f"the model's view: {str(v.get('summary') or '')[:400]}", "evidence": []}]
             verdict, conf = "true_positive", int(rv.get("confidence", 60))
             summary_override = rv.get("summary", "")
+            v = {**v, "title": ""}           # the model's title argued the other way; use the alert's
             findings = [{"text": x["text"], "evidence": [e for e in x["evidence"] if e in ok_ids]} for x in strong] + [
                 f for f in findings if f["evidence"]]
         else:

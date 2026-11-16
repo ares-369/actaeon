@@ -90,6 +90,7 @@ def call(q="host.name:WS1", thought="look"):
 
 def verdict(v="true_positive", ev=("E1",), **kw):
     return {"action": "case", "verdict": v, "confidence": 85, "summary": "s",
+            "title": f"{v.replace('_', ' ').capitalize()}: test case",
             "findings": [{"text": "f", "evidence": list(ev)}], **kw}
 
 
