@@ -92,9 +92,12 @@ Actaeon is in beta. These are the limits we know about.
 
 - **New.** Merged in November 2026 and tested on synthetic alerts and on real alerts from one home lab
   with one small local model (see [benchmarks.md](benchmarks.md)). Not run in a production SOC.
-- **Small local models cannot triage.** qwen3:4b found none of 4 planted attacks on real data and called
-  them false positives; the guards sent them to an analyst instead of closing them. Use a capable model for
-  the analyst role; no larger model has been measured on alert triage yet.
+- **Small local models cannot triage on their own.** qwen3:4b alone found none of 4 planted attacks on real data.
+  The fixed checks found all 4 with no model, and with them the same model scored 9/9, but the rules were tuned on
+  those cases (see [benchmarks.md](benchmarks.md)). No larger model has been measured on alert triage yet.
+- **The fixed checks look for known kinds of trace**: processes in temporary paths, hidden listeners, extra root
+  accounts, downloads piped into a shell, intel matches, password spraying. Their queries use query_string syntax
+  and run only on connectors with that dialect. Activity that leaves none of these traces needs a model or a person.
 - **Field mapping is heuristic.** Unusual alert formats need `soc.intake.field_map`. Indicators found in
   free text are shown on the case but never used to group alerts; they can be mis-typed.
 - **Grouping is simple.** Shared host, user, source address, external destination, domain or hash within a

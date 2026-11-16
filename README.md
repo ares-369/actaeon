@@ -283,6 +283,10 @@ not in this repository.
 - **Measured with a few models only.** Three Gemini models and two small local models were scored; other providers have no measured
   results yet. Small local models were not good enough to hunt in testing (on a 4 GB GPU a 7B model found 0 and
   a 4B reasoning model 1 of the 4 planted threats in the demo cases; [docs/local-models.md](docs/local-models.md)).
+  For alert triage the fixed checks change that: on 9 labelled cases from the lab's real data, the checks alone
+  (no model) and the checks with a 4B local model both found all 4 planted attacks with no false alarms; the model
+  alone found none. The rules were tuned on those cases, so treat it as a first result
+  ([docs/benchmarks.md](docs/benchmarks.md)).
 - **Not proven in production yet.**
 
 ## Acknowledgements

@@ -183,31 +183,39 @@ raise (a process running from `/dev/shm` with a daemon-like name, a hidden proce
 second account with user id 0, a download piped into a shell from an address in a published campaign); their
 activity is really in the data. 5 are real alerts that are not attacks (firewall blocks from a LAN client,
 a decoy port probed by the lab's own proxy, a host low on memory, a hypervisor configuration change, a
-hardening check on a new container). One local model for every role: qwen3:4b on Ollama, 4 GB laptop GPU.
+hardening check on a new container). The local model is qwen3:4b on Ollama, on a 4 GB laptop GPU.
 
-| Correct | Attacks found | False alarms | Handed to an analyst | Wrong closures | Claims with evidence | Tokens (9 cases) | Median per case |
-|---|---|---|---|---|---|---|---|
-| 5/9 | 0/4 | 0 | 8 | 0 | 0.79 | 245,137 | 555 s |
+| Run | Correct | Attacks found | False alarms | Handed to an analyst | Wrong closures | Claims with evidence | Tokens (9 cases) | Median per case |
+|---|---|---|---|---|---|---|---|---|
+| qwen3:4b, no fixed checks | 5/9 | 0/4 | 0 | 8 | 0 | 0.79 | 245,137 | 555 s |
+| fixed checks only, **no model** (`soc.analysis: rules`) | 9/9 | 4/4 | 0 | 5 | 0 | 1.0 | 0 | 9 s |
+| qwen3:4b with the fixed checks, model allowed to overrule them | 6/9 | 1/4 | 0 | 7 | 0 | 0.81 | 220,086 | 739 s |
+| qwen3:4b with the fixed checks (what ships) | 9/9 | 4/4 | 0 | 4 | 0 | 0.95 | 225,414 | 692 s |
 
-What happened:
+What the runs show:
 
-- **The model found none of the attacks.** It made one or two queries per case and called all four false
-  positives ("a systemd process", "a kernel worker thread", "an offline container agent"). A model this
-  small cannot triage these alerts.
-- **None of them was closed.** All four are high-severity alerts, and the rule added after the first run (a
-  high or critical alert is not dismissed without an independent confirmation) sent them to an analyst.
-  The second look could not confirm the dismissals, so their confidence was capped at 60. In the first
-  run, before that rule existed, the same verdicts would have shown as triaged false positives.
-- **The real non-threat alerts** were all called benign, false positive or needs-analyst. Only one (the
-  low-severity hardening check) was left as triaged without a person.
+- **The small model alone found none of the attacks.** It made one or two queries per case and called all four
+  false positives; the rule that a high or critical alert is not dismissed without confirmation kept them open.
+- **The fixed checks found all four with no model**, from the host's inventory (the `/dev/shm` process, the
+  hidden listener, the second root account) and the host's events with the intel store (the download from a
+  campaign address). They also hand every real non-threat alert to a person: rules do not dismiss.
+- **Given the same evidence, the small model still argued three of the four away.** Since then, evidence-backed
+  signals about the alert's own activity keep the case a true positive and the model's view is recorded against
+  it. With that rule the model adds what the rules cannot: it labelled the real non-threat alerts (benign or
+  false positive), so one fewer case waits for a person, at about 25,000 tokens and 11 minutes per case.
 
-Read the score as a measurement of the guards, not of detection. Larger and cloud models have not been
-measured on this set yet. `actaeon triage-bench --table results.jsonl` prints every recorded run.
+Read these numbers with care:
 
-Real alerts from the live lab (one run, before the fixes above, not labelled): 343 level-10+ alerts from three
-days. Before the grouping fix they formed 1 case. After it they formed 11 cases of related alerts (one of 250
-firewall blocks). qwen3:4b handed 9 of the 11 to an analyst, 2 failed on the 12k context (now summarised),
-and most of its queries named indices that do not exist (the prompt now lists the allowed ones).
+- **The rules were tuned on these 9 cases.** In particular the rule that a finding only counts when it concerns
+  the alert's own activity came from the hardening-check case (its host also carried the planted attacks). The
+  9/9 is an in-sample result.
+- **Out of sample**, on three days of real alerts from the live lab (329 alerts in 10 cases, no known attacks),
+  the no-model rules produced no false alarms and closed nothing: every case went to a person with its evidence,
+  in 70 seconds for all 10. Rules alone do not reduce noise; a model, tuning or suppressions still have to.
+- **Nine cases is small**, and the planted attacks are of the kinds the checks look for. Attacks that leave no
+  trace in inventory, host events or intel would not be found this way.
+- Larger and cloud models have not been measured on alert triage. `actaeon triage-bench --table results.jsonl`
+  prints every recorded run; providers with no run are listed as not measured.
 
 ## Token usage
 

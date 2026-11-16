@@ -30,8 +30,15 @@ Alert triage no longer needs a model.
 - Playbooks list their fixed checks (`collect:`); `decode` and `intel` always run.
 - `triage-bench --analysis rules|ai`; the case page, report and evidence bundle show the signals.
 
+### Measured
+- 9 labelled cases over the lab's real data (4 planted attacks, 5 real non-threat alerts): qwen3:4b alone 5/9 (0
+  of 4 attacks); fixed checks with no model 9/9 (4 of 4) in 9 s per case; qwen3:4b with the fixed checks 9/9 (4
+  of 4, one fewer case for a person), 0 false alarms and 0 wrong closures. The rules were tuned on these cases. On
+  three days of live lab alerts (out of sample) the no-model rules raised no false alarm. See docs/benchmarks.md.
+
 ### Fixed
 - Tool results on alert cases are stored up to 200 kB (was 20 kB), with a note when cut.
+- When the evidence overrules the model, the case keeps the alert's title, not the model's.
 
 ## [0.3.0-beta] — 2026-11-16
 

@@ -14,6 +14,7 @@ import re
 from .base import LLMProvider, LLMResult
 
 _EID = re.compile(r"^(E\d+) result of ([\w.-]+)", re.M)
+_SEEN = re.compile(r"You already made that call; see (E\d+)")
 
 
 IDX = "demo-events"
@@ -73,9 +74,20 @@ def _case_reply(self, messages, system: str, user: str) -> LLMResult:
         return self._r({"action": "verify", "result": "confirmed", "evidence": [new[0][0]],
                         "reason": "[scripted demo] the wider search still shows the activity and nothing in the "
                                   "sample environment explains it."})
-    done = _EID.findall("\n".join(m["content"] for m in messages[2:] if m["role"] == "user"))
-    ids = [e for e, _ in done]
-    step = len(done)
+    # one answer per scripted step: a new result ("E<n> result of ..."), or a call the fixed checks had already made
+    # ("You already made that call; see E<n>") - so each step cites the evidence for its own call
+    ids = []
+    for m in messages[2:]:
+        if m["role"] != "user":
+            continue
+        got = _EID.findall(m["content"])
+        if got:
+            ids += [e for e, _ in got]
+        else:
+            seen = _SEEN.search(m["content"])
+            if seen:
+                ids.append(seen.group(1))
+    step = len(ids)
     e = lambda i: [ids[i]] if i < len(ids) else []  # noqa: E731
     scripts: dict[str, list[dict]] = {
         "chain": [

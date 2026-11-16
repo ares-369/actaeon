@@ -108,7 +108,7 @@ def table(path: Path) -> str:
     for r in rows:
         m = r.get("models") or {}
         seen |= {str(v).split("/")[0] for v in m.values()}
-        cell = lambda v: "not measured" if v is None else v  # noqa: E731
+        cell = lambda v: "n/a" if v is None else v  # noqa: E731   (precision is undefined with no true positive verdict)
         lines.append(f"| {r['date']} | {r['label']} ({r['cases']}) | {m.get('planner', '?')} / {m.get('analyst', '?')} | "
                      f"{r['passed']}/{r['total']} | {cell(r['recall'])} | {cell(r['precision'])} | {r['handed_over']} | "
                      f"{r['wrong_closures']} | {cell(r['evidence_coverage'])} | {r['tokens']} | {r['median_seconds']} |")
