@@ -49,6 +49,16 @@ quality. Rebuild it with `scripts/make_demo_gif.py`.*
 | **Leads** | **ATT&CK coverage** |
 | ![Leads](docs/screenshots/leads.png) | ![Coverage](docs/screenshots/coverage.png) |
 
+**Alert triage:** alerts grouped into cases, each with an AI verdict that a person reviews.
+
+![The alert queue: cases with the AI verdict, confidence and actions waiting for approval](docs/screenshots/cases.png)
+
+| A case: what happened, the evidence, the fix | Response actions (approve, reject, undo) |
+|---|---|
+| ![Case](docs/screenshots/case.png) | ![Actions](docs/screenshots/case-actions.png) |
+| **Entity graph of a case** | **Triage dashboard** |
+| ![Case graph](docs/screenshots/case-graph.png) | ![Dashboard](docs/screenshots/triage-dashboard.png) |
+
 ## Try it in a minute
 
 ```bash
@@ -74,7 +84,9 @@ docker compose --profile demo up demo         # open http://127.0.0.1:8611
 ```
 
 The demo has a planted attack and a harmless look-alike, and all of its data is labelled SAMPLE.
-See [docs/demo.md](docs/demo.md).
+`--run` also sends five sample alerts through alert triage (a document lure, password spraying, an admin
+script, an ordinary failed sign-in, and an alert whose text tries to talk the AI into closing it), and a
+pretend response connector lets you approve an action safely. See [docs/demo.md](docs/demo.md).
 
 Screenshots are from this demo; `scripts/make_screenshots.py` rebuilds them.
 

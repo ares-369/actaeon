@@ -7,6 +7,10 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.3.0-beta] — 2026-11-16
+
+Alert triage joins hunting: the agentic SOC work done as Haymdhal is now part of Actaeon.
+
 ### Security
 - Secret-shaped values (private keys, cloud and code-hosting tokens, JWTs, bearer tokens, URL passwords,
   values of password/secret/token keys) are removed from every prompt for every provider before it is sent

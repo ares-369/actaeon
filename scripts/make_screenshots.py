@@ -4,7 +4,8 @@ Usage (needs Playwright with Chromium):
     python scripts/make_screenshots.py [--actaeon PATH_TO_actaeon_CLI]
 
 Runs `actaeon demo --offline --run` in a temporary folder (synthetic data, scripted, no model),
-serves it on a free local port, and captures the Leads, Hunt, investigation graph, Entities and Coverage pages.
+serves it on a free local port, and captures the Leads, Hunt, investigation graph, Entities and Coverage pages, and the alert-triage queue,
+a case (with its actions and entity graph) and the triage dashboard.
 """
 
 from __future__ import annotations
@@ -67,6 +68,21 @@ def main() -> None:
             g.scroll_into_view_if_needed()
             pg.wait_for_timeout(500)
             g.screenshot(path=str(OUT / "graph.png"))
+            # alert triage: the queue, one case, its entity graph and the dashboard
+            pg.goto(base + "/#cases")
+            pg.wait_for_timeout(1500)
+            pg.screenshot(path=str(OUT / "cases.png"))
+            pg.locator("main tbody tr", has_text="DEMO-WS07").first.click()   # the document-lure case
+            pg.wait_for_timeout(1800)
+            pg.screenshot(path=str(OUT / "case.png"))
+            for title, name in (("Response actions", "case-actions"), ("Entity graph", "case-graph")):
+                sec = pg.locator("section", has=pg.locator("h2", has_text=title)).first
+                sec.scroll_into_view_if_needed()
+                pg.wait_for_timeout(300)
+                sec.screenshot(path=str(OUT / f"{name}.png"))
+            pg.goto(base + "/#socdash")
+            pg.wait_for_timeout(1500)
+            pg.screenshot(path=str(OUT / "triage-dashboard.png"))
             b.close()
         print("wrote", ", ".join(sorted(p.name for p in OUT.glob("*.png"))))
     finally:

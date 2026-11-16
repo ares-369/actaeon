@@ -35,3 +35,20 @@ heavily on the model.
 
 The demo bridge understands only a small part of query_string syntax
 (`field:value`, wildcards, quotes, `AND`/`OR`/`NOT`, parentheses).
+
+## Alert triage in the demo
+
+`--run` also polls six sample alerts from the `demo-logs` connector into alert triage, groups them into
+five cases and triages each one (scripted with `--offline`):
+
+| Case | What is behind it | Expected |
+|---|---|---|
+| Office application started encoded PowerShell + connection to a new domain (DEMO-WS07) | the document lure above; two alerts, one case | true positive, three actions proposed |
+| Encoded PowerShell command (DEMO-ADM01, svc.maint) | the nightly admin script | benign, with a tuning proposal |
+| Many failed sign-ins from one source | password spraying from 198.51.100.200, no success | true positive, a block proposed |
+| Failed sign-in (a.rivera) | one ordinary failure | false positive, with a tuning proposal |
+| Script written to a temp folder (DEMO-WS05) | the alert text tells the AI to close it | the scripted reply obeys it on purpose; the injection guard sends the case to an analyst |
+
+A `demo-response` connector (`actaeon bridge demo-response`) pretends to isolate hosts, disable users and
+block addresses; it only changes a dictionary in memory, so approving an action is safe. `actaeon
+triage-bench --offline` scores these five cases (it checks the pipeline, not a model).
