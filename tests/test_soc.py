@@ -810,14 +810,15 @@ def test_known_good_note_makes_a_rules_benign(home):
     assert c["verdict"] == "benign" and c["status"] == "triaged"        # low severity: no second person needed
 
 
-def test_strong_signal_blocks_a_model_dismissal(home):
+def test_model_cannot_overrule_proven_signals(home):
     hub = SourcesHub(processes=[{"agent.name": "srv1", "process.name": ".udevd", "process.command_line": "/dev/shm/.udevd"}])
     from actaeon.soc.intake import ingest
     from actaeon.soc.service import triage_case
     cfg, store = cfg_store(home, lambda d: (d["soc"].update(verify=False), d["soc"]["intake"].update(severity_scale="15")))
     cid = ingest(cfg, store, [HOSTA])["cases_opened"][0]
     c = triage_case(cfg, cid, llm=FakeLLM([verdict("false_positive", ev=("E1",))]), hub=hub, store=store)
-    assert c["verdict"] == "needs_analyst" and any("strong signs of an attack" in x for x in c["report"]["checks"])
+    assert c["verdict"] == "true_positive" and any("the evidence decides" in x for x in c["report"]["checks"])
+    assert any("the model's view" in f["text"] for f in c["report"]["contradicting"])
 
 
 def test_model_failure_falls_back_to_the_rules(home):

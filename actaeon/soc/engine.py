@@ -472,15 +472,22 @@ class CaseEngine:
             notes.append("every data search returned nothing: the activity was not confirmed in the logs")
             conf = min(conf, 60)
         strong = [x for x in signals or [] if x["level"] == "high" and any(e in ok_ids for e in x["evidence"])]
-        if strong and verdict in ("false_positive", "benign"):
-            notes.append("the fixed checks found strong signs of an attack (" + "; ".join(x["text"] for x in strong[:3])
-                         + "); a dismissal is not accepted: an analyst must decide")
-            verdict, conf = "needs_analyst", min(conf, 40)
-            findings = findings + [{"text": x["text"], "evidence": [e for e in x["evidence"] if e in ok_ids]}
-                                   for x in strong]
-        elif strong and verdict in ("needs_analyst", "logs_missing"):
-            findings = findings + [{"text": x["text"], "evidence": [e for e in x["evidence"] if e in ok_ids]}
-                                   for x in strong if not any(f["text"] == x["text"] for f in findings)]
+        if strong and verdict != "true_positive":
+            # The model may add to what the fixed checks proved, not take it away: evidence-backed signals about this
+            # alert keep it a true positive. The model's view is kept for the analyst (and a second look with its
+            # own evidence can still refute it).
+            from .collect import rules_verdict
+            rv = rules_verdict(signals or [], steps, case)
+            notes.append(f"the model said {verdict}, but the fixed checks proved signs of an attack ("
+                         + "; ".join(x["text"] for x in strong[:3]) + "); the evidence decides: true_positive. "
+                         "Read the model's summary below as the other side.")
+            contradicting = [*contradicting, {"text": f"the model's view: {str(v.get('summary') or '')[:400]}", "evidence": []}]
+            verdict, conf = "true_positive", int(rv.get("confidence", 60))
+            summary_override = rv.get("summary", "")
+            findings = [{"text": x["text"], "evidence": [e for e in x["evidence"] if e in ok_ids]} for x in strong] + [
+                f for f in findings if f["evidence"]]
+        else:
+            summary_override = ""
         against = [c for c in contradicting if c["evidence"]]
         if against and verdict in ("true_positive", "false_positive", "benign"):
             notes.append(f"{len(against)} cited fact(s) point against this verdict; read them before acting")
@@ -535,7 +542,7 @@ class CaseEngine:
         return {
             "verdict": verdict, "confidence": conf, "severity": severity,
             "title": str(v.get("title") or case.get("title") or "")[:200],
-            "summary": str(v.get("summary") or "")[:5000],
+            "summary": (summary_override or str(v.get("summary") or ""))[:5000],
             "findings": findings, "contradicting": contradicting, "missing": missing, "timeline": timeline,
             "entities": entities, "relations": relations,
             "attack": attack, "fix": fix, "actions": actions[:10],

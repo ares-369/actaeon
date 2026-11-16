@@ -57,7 +57,7 @@ def escalation_needed(cfg, store: SocStore, case: dict, v: dict) -> str:
     when = set(e["when"])
     if "needs_analyst" in when and v["verdict"] in ("needs_analyst", "logs_missing") and not v.get("injection"):
         return "the first pass could not decide"
-    if "conflict" in when and any("strong signs of an attack" in c for c in v.get("checks") or []):
+    if "conflict" in when and any("the fixed checks proved signs of an attack" in c for c in v.get("checks") or []):
         return "the fixed checks and the first pass disagree"
     if "unconfirmed" in when and (v.get("verification") or {}).get("result") == "unconfirmed":
         return "the second look could not confirm the first pass"

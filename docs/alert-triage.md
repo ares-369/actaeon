@@ -114,8 +114,12 @@ What happens next depends on `soc.analysis`:
   an analyst with the evidence collected. Rules never close a case on their own: they do not call anything a false
   positive, and high and critical dismissals still wait for a person.
 - **`ai` (the default).** The model gets the collected evidence and the signals first, can make more calls, and
-  gives the verdict. If the fixed checks found a strong sign of an attack, the model cannot dismiss the case: it
-  goes to an analyst. If the model fails or is unreachable, the rules' verdict is used, with a note.
+  gives the verdict. The model can add to what the fixed checks proved, but not take it away: when they found an
+  evidence-backed sign of an attack in this alert's own activity, the case stays a true positive, and the model's
+  disagreement is shown under "points against this verdict" for the analyst. Only the second look, with evidence
+  from its own calls, can refute it. If the model fails or is unreachable, the rules' verdict is used, with a note.
+  On the lab benchmark a small local model talked itself out of attacks the rules had proved, which is why this
+  rule exists (see [benchmarks.md](benchmarks.md)).
 
 **Escalation** (`soc.escalate`, off by default) re-runs hard cases on a stronger model you choose (your own
 endpoint or key), only for cases at or above `min_severity`, at most `max_per_day`, and only when the first pass

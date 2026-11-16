@@ -7,6 +7,32 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.4.0-beta] — 2026-11-16
+
+Alert triage no longer needs a model.
+
+### Added
+- **Fixed evidence checks** before any model sees a case (`soc.collect`, on by default): decode the command
+  line, look indicators up in intel, read the host's events around the alert, read what runs, listens and
+  which accounts exist on the host, count the accounts a source tried and its successful sign-ins, and see
+  which other hosts contacted the same destination. Field names are found per connector with `get_fields`
+  (or set with `fields:` on the connector). Results are stored as evidence and read in full.
+- **Signals** from plain rules over those results, each citing its evidence (intel match, decoded download,
+  download piped into a shell, process from a temporary path, hidden listening process, non-root account with
+  user id 0, password spraying, success after failures, Office starting a shell, spread, known-good match). A
+  finding only counts for the alert when it concerns the alert's own process, account, command, address or
+  domain; other findings on the host send the case to a person ("the host also shows ...").
+- **`soc.analysis: rules`**: triage with no model at all. With a model (`ai`), the model can add to what the
+  fixed checks proved but not take it away (an evidence-backed attack signal keeps the case a true positive, with
+  the model's view shown against it), and a failed or unreachable model falls back to the rules' verdict.
+- **`soc.escalate`**: re-run hard cases (undecided, unconfirmed, or rules and model disagreeing) on a stronger
+  model you choose, for high and critical cases only, within a daily limit.
+- Playbooks list their fixed checks (`collect:`); `decode` and `intel` always run.
+- `triage-bench --analysis rules|ai`; the case page, report and evidence bundle show the signals.
+
+### Fixed
+- Tool results on alert cases are stored up to 200 kB (was 20 kB), with a note when cut.
+
 ## [0.3.0-beta] — 2026-11-16
 
 Alert triage joins hunting: the agentic SOC work done as Haymdhal is now part of Actaeon.
