@@ -55,7 +55,7 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
                                                  max_results=cfg.soc.max_results, max_tokens=cfg.soc.max_tokens,
                                                  first_look=cfg.soc.first_look),
                         actions=response.catalogue(cfg), environment=(cfg.raw or {}).get("environment") or {}, checkpoint=checkpoint,
-                        playbooks=load_playbooks(cfg.soc.playbook_dirs))
+                        playbooks=load_playbooks(cfg.soc.playbook_dirs), cfg=cfg)
     try:
         v = engine.run(case_id)
     except Stopped:

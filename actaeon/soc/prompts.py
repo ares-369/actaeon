@@ -103,9 +103,6 @@ def investigator_user(case: dict, alerts: list[dict], plan: dict | None, history
         dialect = f" [query dialect: {t['dialect']}]" if t.get("dialect") else ""
         parts.append(f"- {t['connector']}.{t['name']} (role {t['role']}): {t.get('description', '')[:240]}"
                      f" args: {args}{dialect}")
-    notes_by = {t["connector"]: t.get("query_notes") for t in tools if t.get("query_notes")}
-    for conn, n in notes_by.items():
-        parts.append(f"Query notes for {conn}: {n[:1500]}")
     if actions:
         parts.append("Response actions you may PROPOSE (a person approves before anything runs):")
         for a in actions:

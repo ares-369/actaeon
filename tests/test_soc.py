@@ -586,3 +586,26 @@ def test_second_look_on_a_serious_dismissal(home):
     cid = ingest(cfg, store, [{**low, "id": "low1", "host": {"name": "WS8"}}])["cases_opened"][0]
     out = triage_case(cfg, cid, llm=FakeLLM([call(), verdict("benign")]), hub=FakeHub(), store=store)
     assert out["verdict"] == "benign" and "verification" not in out["report"]   # low cases: no second look
+
+
+def test_prompt_lists_the_allowed_indices(home):
+    from tests.soc_fakes import FakeHub as Base
+
+    class Hub(Base):
+        def tools_for_role(self, role):
+            out = super().tools_for_role(role)
+            if role == "log_search":
+                out.append({"name": "list_indices", "description": "", "allowed": True, "reason": "", "connector": "logs",
+                            "inputSchema": {"type": "object", "properties": {}}, "dialect": ""})
+            return out
+
+        def call(self, name, tool, args, **kw):
+            if tool == "list_indices":
+                from actaeon.connectors.untrusted import wrap
+                return {**wrap(name, tool, '{"indices": [{"index": "alerts-2026"}], "allowed_patterns": ["alerts-*"]}',
+                               8000), "is_error": False}
+            return super().call(name, tool, args, **kw)
+    llm = FakeLLM([call(), verdict()])
+    run_case(home, llm, Hub())
+    prompt = next(m for role, m in llm.seen if role == "analyst")[1]["content"]
+    assert "use index patterns alerts-*" in prompt and "alerts-2026" in prompt

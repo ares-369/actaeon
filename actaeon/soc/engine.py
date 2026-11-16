@@ -121,7 +121,7 @@ class CaseEngine:
     def __init__(self, llm, hub, store: SocStore, limits: Limits | None = None, *, actions: list[dict] | None = None,
                  environment: dict | None = None, checkpoint: Callable[[], bool] | None = None,
                  clock: Callable[[], float] = time.monotonic, on_event: Callable[[dict], None] | None = None,
-                 playbooks: dict[str, dict] | None = None):
+                 playbooks: dict[str, dict] | None = None, cfg=None):
         self.llm, self.hub, self.store = llm, hub, store
         self.limits = limits or Limits()
         self.actions = actions or []
@@ -130,6 +130,7 @@ class CaseEngine:
         self._clock = clock
         self._emit = on_event or (lambda e: None)
         self.playbooks = playbooks or {}
+        self._cfg = cfg
 
     # ---- tools ----
     def tools(self) -> list[dict]:
@@ -143,6 +144,48 @@ class CaseEngine:
                     spec = self.hub.specs.get(t["connector"])
                     seen[key] = {**t, "role": role, "query_notes": getattr(spec, "query_notes", "")}
         return list(seen.values())
+
+    # ---- where to search: allowed indices and query guides, so a model does not guess ----
+    def _where(self, tools: list[dict], case_id: str) -> str:
+        """Allowed index patterns of each connector that lists them (one cheap call, no model) plus the hunt
+        engine's query guides: notes, examples, and queries that returned data in earlier hunts."""
+        lines = []
+        for conn in sorted({t["connector"] for t in tools if t["name"] == "list_indices"}):
+            try:
+                out = self.hub.call(conn, "list_indices", {}, actor="triage", hunt_id="case:" + case_id)
+                data = json.loads(payload(out["content"]))
+            except (ToolCallError, ValueError, KeyError):
+                continue
+            pats = data.get("allowed_patterns") or []
+            names = [i.get("index") for i in data.get("indices") or [] if isinstance(i, dict)][:30]
+            if pats or names:
+                lines.append(f"- {conn}: use index patterns {', '.join(pats) or '-'}"
+                             + (f" (indices now: {', '.join(n for n in names if n)})" if names else ""))
+        text = ("\nIndices you may search (any other index is refused):\n" + "\n".join(lines)) if lines else ""
+        try:
+            from ..hunt.prompts import guides
+            from ..hunt.service import store_for as hunt_store
+            entries = {}
+            hs = None
+            for t in tools:
+                c = t["connector"]
+                if c in entries:
+                    continue
+                sp = self.hub.specs.get(c)
+                learned = []
+                try:
+                    hs = hs or hunt_store(self._cfg)
+                    learned = hs.good_queries(c)
+                except Exception:
+                    learned = []
+                entries[c] = {"dialect": t.get("dialect", ""), "notes": getattr(sp, "query_notes", ""),
+                              "examples": getattr(sp, "query_examples", []), "learned": learned}
+            g = guides(entries, compact=True)
+            if g:
+                text += "\n" + g
+        except Exception:
+            pass
+        return text
 
     # ---- first look ----
     def first_look(self, case: dict, alerts: list[dict], history, rule_hist, roles) -> dict:
@@ -199,6 +242,8 @@ class CaseEngine:
         system = INVESTIGATOR_SYSTEM
         user = investigator_user(case, alerts, plan if plan and "error" not in plan else None, history, rule_hist,
                                  tools, self.actions, self.environment, case.get("notes") or [], self.limits.max_steps)
+        user = user.replace("\nBegin. Reply with one JSON object.", self._where(tools, case_id)
+                            + "\nBegin. Reply with one JSON object.")
         from .playbooks import matching, prompt_text
         books = matching(alerts, self.playbooks)
         if books:
