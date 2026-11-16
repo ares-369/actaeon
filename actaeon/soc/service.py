@@ -90,14 +90,21 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
     status = "triaged"
     if v["verdict"] in ("needs_analyst", "logs_missing") or v["injection"]:
         status = "needs_analyst"
+    ver = (v.get("verification") or {}).get("result")
+    if serious and v["verdict"] in ("false_positive", "benign") and ver != "confirmed":
+        # A high or critical alert is never quietly dismissed: without an independent confirmation it waits for
+        # a person (the verdict stays as the AI's proposal).
+        status = "needs_analyst"
+        v["checks"] = [*v["checks"], "a high or critical alert is not dismissed without an independent "
+                       "confirmation; an analyst must decide"]
     store.set_case(case_id, status=status, verdict=v["verdict"], confidence=v["confidence"], severity=v["severity"],
                    severity_label=severity_label(v["severity"]), summary=v["summary"], report=v, attack=v["attack"],
                    triaged_at=iso(), usage=usage, title=v["title"] or case["title"])
     store.add_entities(case_id, v["entities"])
     response.propose(cfg, store, case_id, v)
     auto = cfg.soc.auto_close_confidence
-    if (auto and v["verdict"] in ("false_positive", "benign") and v["confidence"] >= auto and not v["injection"]
-            and not manual):
+    if (auto and status == "triaged" and v["verdict"] in ("false_positive", "benign") and v["confidence"] >= auto
+            and not v["injection"] and not manual):
         store.set_case(case_id, status="closed", closed_at=iso(), closed_by="actaeon (auto)")
         store.add_note(case_id, "actaeon", f"Closed automatically: {v['verdict']} at confidence {v['confidence']} "
                        f"(soc.auto_close_confidence {auto}).")

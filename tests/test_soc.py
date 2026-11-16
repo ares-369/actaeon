@@ -704,3 +704,29 @@ def test_suitability_table_marks_untested_providers(tmp_path):
     t = table(f)
     assert "| lab (9) | ollama/qwen3:4b / ollama/qwen3:4b | 7/9 | 0.75 | 1.0 | 4 | 1 |" in t
     assert "Not measured: anthropic, gemini, openai" in t and "ollama" not in t.split("Not measured:")[1]
+
+
+def test_serious_dismissal_without_confirmation_waits_for_a_person(home):
+    llm = FakeLLM([call(), verdict("false_positive"), _verify_call(),
+                   {"action": "verify", "result": "unconfirmed", "reason": "could not tell", "evidence": []}])
+    c, _ = run_case(home, llm, FakeHub(), verify=True)            # ALERT is high severity
+    assert c["verdict"] == "false_positive" and c["status"] == "needs_analyst"
+    assert any("not dismissed without an independent confirmation" in x for x in c["report"]["checks"])
+
+
+def test_serious_dismissal_with_no_second_look_waits_for_a_person(home):
+    c, _ = run_case(home, FakeLLM([call(), verdict("false_positive")]), FakeHub(), verify=False)
+    assert c["status"] == "needs_analyst"
+
+
+def test_confirmed_serious_dismissal_is_triaged(home):
+    ok = FakeLLM([call(), verdict("false_positive"), _verify_call(),
+                  {"action": "verify", "result": "confirmed", "reason": "it is the nightly job", "evidence": ["E2"]}])
+    c, _ = run_case(home, ok, FakeHub(), verify=True)
+    assert c["status"] == "triaged"
+
+
+def test_auto_close_never_closes_a_case_sent_to_an_analyst(home):
+    c, _ = run_case(home, FakeLLM([call(), verdict("false_positive")]), FakeHub(),
+                    lambda d: d["soc"].update(auto_close_confidence=50), manual=False)
+    assert c["status"] == "needs_analyst"          # high severity, no confirmation: not closed
