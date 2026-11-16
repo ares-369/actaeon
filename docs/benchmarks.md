@@ -175,6 +175,40 @@ The same 11 cases and frozen data, the current code, each model for every role, 
   in accordance with our terms of use and policies"), probably because hunt prompts are full of attack
   techniques. A rerun of the ExCyTIn sample and of gemini-3.1-pro-preview after the fix could not be done.
 
+### Alert triage on real lab data (2026-11-16)
+
+`actaeon triage-bench --cases` on 9 labelled cases over the frozen copy of the lab's real data (the same
+indices as the lab benchmark above). 4 are planted attacks, written as the alerts a detection rule would
+raise (a process running from `/dev/shm` with a daemon-like name, a hidden process listening on port 4444, a
+second account with user id 0, a download piped into a shell from an address in a published campaign); their
+activity is really in the data. 5 are real alerts that are not attacks (firewall blocks from a LAN client,
+a decoy port probed by the lab's own proxy, a host low on memory, a hypervisor configuration change, a
+hardening check on a new container). One local model for every role: qwen3:4b on Ollama, 4 GB laptop GPU.
+
+| Correct | Attacks found | False alarms | Handed to an analyst | Wrong closures | Claims with evidence | Tokens (9 cases) | Median per case |
+|---|---|---|---|---|---|---|---|
+| 5/9 | 0/4 | 0 | 8 | 0 | 0.79 | 245,137 | 555 s |
+
+What happened:
+
+- **The model found none of the attacks.** It made one or two queries per case and called all four false
+  positives ("a systemd process", "a kernel worker thread", "an offline container agent"). A model this
+  small cannot triage these alerts.
+- **None of them was closed.** All four are high-severity alerts, and the rule added after the first run (a
+  high or critical alert is not dismissed without an independent confirmation) sent them to an analyst.
+  The second look could not confirm the dismissals, so their confidence was capped at 60. In the first
+  run, before that rule existed, the same verdicts would have shown as triaged false positives.
+- **The real non-threat alerts** were all called benign, false positive or needs-analyst. Only one (the
+  low-severity hardening check) was left as triaged without a person.
+
+Read the score as a measurement of the guards, not of detection. Larger and cloud models have not been
+measured on this set yet. `actaeon triage-bench --table results.jsonl` prints every recorded run.
+
+Real alerts from the live lab (one run, before the fixes above, not labelled): 343 level-10+ alerts from three
+days. Before the grouping fix they formed 1 case. After it they formed 11 cases of related alerts (one of 250
+firewall blocks). qwen3:4b handed 9 of the 11 to an analyst, 2 failed on the 12k context (now summarised),
+and most of its queries named indices that do not exist (the prompt now lists the allowed ones).
+
 ## Token usage
 
 Every hunt records model calls and tokens per model: input, the part of the input the provider served from
