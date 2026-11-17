@@ -239,3 +239,18 @@ def test_import_api(home, monkeypatch):
     r = c.post("/api/intel/advisories/import", data=data, content_type="multipart/form-data").json
     assert r["new"] >= 1 and r["title"] == "adv.pdf"
     assert c.post("/api/decode", json={"text": "i`e`x"}).json["final"] == "iex"
+
+
+def test_ip_at_the_end_of_a_sentence_is_handled():
+    """An address followed by a full stop was missed by masking, the web leak guard, extraction and decoding."""
+    from actaeon.bridges.server import ToolInputError
+    from actaeon.bridges.web import leak_check
+    from actaeon.decode import _IP
+    from actaeon.intel.extract import extract
+    out = Masker().mask("login from 10.1.2.3. Then quiet.")
+    assert "10.1.2.3" not in out
+    with pytest.raises(ToolInputError):
+        leak_check("scan of 10.1.2.3.", [])
+    assert extract("seen 203.0.113.9. And 198.51.100.7, too")["ipv4"] == ["203.0.113.9", "198.51.100.7"]
+    assert _IP.findall("beacon to 203.0.113.9.") == ["203.0.113.9"]
+    assert "ipv4" not in extract("version 1.2.3.4.5")

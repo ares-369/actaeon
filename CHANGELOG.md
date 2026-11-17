@@ -7,6 +7,11 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Security
+- An IPv4 address followed by a full stop ("login from 10.1.2.3.") was not recognised. So an internal address at
+  the end of a sentence was not masked before a prompt went to a cloud model, the web bridge's leak guard did not
+  refuse it, and indicator extraction and the decoder missed it. Fixed in all four places, with a test.
+
 ### Measured
 - Alert triage on attacks the rules were never written for (6 new attacks and 4 look-alikes, planted after the
   rules, labels and a prediction written first, run once with no tuning): fixed checks with no model found none

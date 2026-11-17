@@ -21,7 +21,7 @@ _FILE_EXT = {
 _RE = {
     "url": re.compile(r"\b(?:https?|ftp)://[^\s<>\"'`)\]]+", re.I),
     "email": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}\b"),
-    "ipv4": re.compile(r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\d.])"),
+    "ipv4": re.compile(r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?!\d|\.\d)"),
     "ipv6": re.compile(r"(?<![:\w.])(?=[0-9a-fA-F:]*:[0-9a-fA-F]*:)[0-9a-fA-F:]{2,39}(?![:\w])"),
     "sha256": re.compile(r"\b[a-fA-F0-9]{64}\b"),
     "sha1": re.compile(r"\b[a-fA-F0-9]{40}\b"),
