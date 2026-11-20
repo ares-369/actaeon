@@ -9,6 +9,8 @@ behaviour may still change between releases.
 
 ### Added
 
+- CI: a UI smoke test opens every page of the offline demo in headless Chromium (desktop and phone width) and
+  fails on script errors, failed requests or "undefined" on screen.
 - Autopilot `intel_sources`: connector tools that return reports rated relevant to this environment become a
   planner input; hunts started from them carry the report as context, and a report is hunted once.
 
