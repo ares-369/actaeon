@@ -83,7 +83,16 @@ autopilot:
   max_hunts_per_run: 3
   max_hunts_per_day: 12
   avoid_repeat_days: 7
+  intel_sources:             # optional
+    - connector: intel-platform
+      tool: search_documents
+      arguments: {order: relevance, min_relevance: 50, days: 7, limit: 5}
 ```
+
+`intel_sources` lets an intel connector add what it rates as relevant to this environment: each tool returns a
+list of reports with an `id` and `title` (and ideally why they are relevant and what they name). They reach the
+planner as untrusted data; a hunt started from one carries the origin `autopilot:intel:<connector>:<id>`, the
+report's details as context, and the report is not offered again. A source that fails is skipped.
 
 `actaeon autopilot [--dry-run]`, `POST /api/autopilot {"dry_run": true}`, or the
 UI's Suggest button. The planner model gets new unhunted advisories (as

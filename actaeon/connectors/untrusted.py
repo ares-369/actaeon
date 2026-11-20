@@ -9,6 +9,7 @@ not remove it, which is why tools stay read-only by default.
 
 from __future__ import annotations
 
+import re
 import secrets
 
 SYSTEM_RULE = (
@@ -27,3 +28,12 @@ def wrap(connector: str, tool: str, text: str, max_bytes: int) -> dict:
     block = (f"<<UNTRUSTED-DATA {nonce} source={connector}/{tool}>>\n{text}\n"
              f"<<END-UNTRUSTED-DATA {nonce}>>")
     return {"connector": connector, "tool": tool, "truncated": truncated, "content": block}
+
+
+_MARKERS = re.compile(r"<<(?:END-)?UNTRUSTED-DATA[^>]*>>")
+
+
+def unwrap(content: str) -> str:
+    """The tool output inside a wrapped block (for code that parses it as data, never for a model)."""
+    return _MARKERS.sub("", content or "")
+

@@ -7,6 +7,11 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Added
+
+- Autopilot `intel_sources`: connector tools that return reports rated relevant to this environment become a
+  planner input; hunts started from them carry the report as context, and a report is hunted once.
+
 ## [0.4.3-beta] — 2026-11-20
 
 ### Added

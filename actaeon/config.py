@@ -183,6 +183,10 @@ def load_config() -> Config:
     validate_privacy(data.get("privacy") or {})
     from .outputs import validate as validate_outputs
     validate_outputs(list(data.get("outputs") or []))
+    for src in ((data.get("autopilot") or {}).get("intel_sources") or []):
+        if not isinstance(src, dict) or not src.get("connector") or not src.get("tool") \
+                or not isinstance(src.get("arguments", {}), dict):
+            raise ValueError("autopilot.intel_sources: each needs connector and tool (and optional arguments)")
     from .hunt.drift import validate_target
     for t in ((data.get("drift") or {}).get("targets") or []):
         validate_target(t)

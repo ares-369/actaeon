@@ -245,3 +245,44 @@ def test_web_intel_hunts_only_relevant_and_records_ledger(home, monkeypatch):
     assert ledger["OpenSSH bug exploited"]["hunt_id"] == "h-ssh" and ledger["OpenSSH bug exploited"]["relevance"]["relevant"]
     assert ledger["Windows driver flaw"]["relevance"]["relevant"] is False and ledger["Windows driver flaw"]["hunt_id"] == ""
     assert {x["relevant"] for x in r["relevance"]} == {True, False}
+
+
+def test_autopilot_uses_intel_sources(home, monkeypatch):
+    write_cfg(home, lambda d: (d.update(connectors=[{"name": "logs", "roles": ["log_search"], "transport": "stdio",
+                                                     "command": "x"}]),
+                               d["autopilot"].update(intel_sources=[{"connector": "intel", "tool": "search_documents",
+                                                                     "arguments": {"min_relevance": 50}}])))
+    cfg = config.load_config()
+    reports = [{"id": 7, "title": "Loader exploits CVE-2026-1111", "why_relevant": "installed: OpenSSH on 3 hosts",
+                "names": {"cve": ["CVE-2026-1111"], "ipv4": ["203.0.113.9"]}}]
+    calls = []
+
+    class Spec:
+        enabled, roles = True, ["log_search"]
+
+    class Hub:
+        specs = {"logs": Spec()}
+
+        def call(self, conn, tool, args, **kw):
+            calls.append((conn, tool, args))
+            return {"content": "<<UNTRUSTED-DATA ab source=intel/search_documents>>\n" + json.dumps(reports)
+                    + "\n<<END-UNTRUSTED-DATA ab>>"}
+    import actaeon.connectors as conns
+    monkeypatch.setattr(conns, "get_hub", lambda cfg=None, **k: Hub())
+    llm = GenLLM({"hypotheses": [{"hypothesis": "A host contacted 203.0.113.9 in the last 7 days.", "why": "relevant report",
+                                  "roles": ["log_search"], "source": "intel:intel:7"}]})
+    started = []
+    monkeypatch.setattr(service, "start_hunt", lambda jobs, cfg, hyp, **kw: started.append(kw) or "h1")
+    r = service.run_autopilot(cfg, object(), llm=llm, hub=Hub())
+    assert calls == [("intel", "search_documents", {"min_relevance": 50})]
+    assert "installed: OpenSSH on 3 hosts" in llm.seen[0][1]["content"]
+    assert started[0]["origin"] == "autopilot:intel:intel:7" and "CVE-2026-1111" in started[0]["context"]
+    service.store_for(cfg).create("done", origin="autopilot:intel:intel:7")          # hunted: not offered again
+    from actaeon.hunt.autopilot import gather
+    assert gather(cfg)["intel_reports"] == []
+
+
+def test_intel_sources_config_is_checked(home):
+    write_cfg(home, lambda d: d["autopilot"].update(intel_sources=[{"connector": "x"}]))
+    with pytest.raises(ValueError, match="intel_sources"):
+        config.load_config()
