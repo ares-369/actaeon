@@ -273,7 +273,7 @@ def test_autopilot_uses_intel_sources(home, monkeypatch):
                                   "roles": ["log_search"], "source": "intel:intel:7"}]})
     started = []
     monkeypatch.setattr(service, "start_hunt", lambda jobs, cfg, hyp, **kw: started.append(kw) or "h1")
-    r = service.run_autopilot(cfg, object(), llm=llm, hub=Hub())
+    service.run_autopilot(cfg, object(), llm=llm, hub=Hub())
     assert calls == [("intel", "search_documents", {"min_relevance": 50})]
     assert "installed: OpenSSH on 3 hosts" in llm.seen[0][1]["content"]
     assert started[0]["origin"] == "autopilot:intel:intel:7" and "CVE-2026-1111" in started[0]["context"]

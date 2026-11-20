@@ -93,6 +93,7 @@ def _intel_reports(cfg, hub, origins: set[str]) -> list[dict]:
     """Recent reports that intel connectors rate as relevant here (``autopilot.intel_sources``), minus the ones
     already hunted. A failing source is skipped: autopilot still runs on its other inputs."""
     import json as _json
+
     from ..connectors.untrusted import unwrap
     out = []
     for src in ((cfg.raw or {}).get("autopilot") or {}).get("intel_sources") or []:
