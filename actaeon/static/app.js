@@ -62,7 +62,9 @@ const when = (s) => (s || "").replace("T", " ").slice(0, 16);
 let poll = null;
 function route() {
   clearInterval(poll); poll = null;
-  const [tab, arg] = (location.hash.slice(1) || "leads").split("/");
+  const [path, query] = (location.hash.slice(1) || "leads").split("?");
+  const [tab, arg] = path.split("/");
+  window.ROUTE_QUERY = new URLSearchParams(query || "");  // e.g. #hunts?hypothesis=...&context=... from another tool
   const navTab = { hunt: "hunts", lead: "leads", case: "cases", approvals: "cases", socalerts: "cases", socdash: "cases",
     tuning: "cases" }[tab] || tab;
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === navTab));
@@ -251,12 +253,20 @@ async function hunts() {
   const steps = h("input", { type: "number", min: 1, max: 100, placeholder: "max steps" });
   const profile = h("select", { title: "quick: fewer calls and tokens, no second look; deep: more calls and time" },
     ["standard", "quick", "deep"].map((p) => h("option", { value: p }, p)));
+  // A hypothesis handed over by another tool (a link to #hunts?hypothesis=...&context=...&from=...) only fills the
+  // form: nothing runs until an analyst presses Start.
+  const q = window.ROUTE_QUERY || new URLSearchParams();
+  const ctx = h("textarea", { "data-need": "op", class: "short", placeholder: "Context for the hunt (optional): indicators, techniques, sources" });
+  if (q.get("hypothesis")) hyp.value = q.get("hypothesis").slice(0, 4000);
+  if (q.get("context")) ctx.value = q.get("context").slice(0, 8000);
+  const handed = q.get("hypothesis") ? h("p", { class: "warn small" }, icon("file-import"),
+    ` Handed over${q.get("from") ? " from " + q.get("from").slice(0, 60) : ""}. Review the hypothesis and context, then press Start.`) : null;
   const pick = h("select", { onchange: () => { if (pick.value) hyp.value = pick.value; } },
     h("option", { value: "" }, "Starter hypotheses..."),
     lib.starters.map((s) => h("option", { value: s.hypothesis }, `${s.name} (${s.attack.join(", ")})`)));
   const start = async () => {
     if (!hyp.value.trim()) return toast("Write a hypothesis first.");
-    const r = await api("/api/hunts", { hypothesis: hyp.value, max_steps: steps.value ? +steps.value : undefined,
+    const r = await api("/api/hunts", { hypothesis: hyp.value, context: ctx.value || undefined, max_steps: steps.value ? +steps.value : undefined,
       profile: profile.value === "standard" ? undefined : profile.value });
     if (r.error) return toast(r.error);
     location.hash = "#hunt/" + r.hunt_id;
@@ -275,7 +285,7 @@ async function hunts() {
         h("p", { class: "muted small" }, "Nothing was queried and no hunt was stored. The queries are written during the hunt."));
     } finally { e.target.disabled = false; }
   };
-  main.append(section("New hunt", "target", hyp,
+  main.append(section("New hunt", "target", handed, hyp, ctx,
     h("div", { class: "row" }, pick, profile, steps,
       h("button", { "data-need": "op", class: "ghost", onclick: planOnly, title: "Show the plan without querying any data" }, icon("map-search-outline"), "Plan only"),
       h("button", { "data-need": "op", onclick: start }, icon("play"), "Start hunt")), planBox));

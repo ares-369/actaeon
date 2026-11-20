@@ -7,6 +7,12 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Added
+
+- Hunts page: a link to `#hunts?hypothesis=...&context=...&from=...` fills in a new hunt (for example handed over
+  from a threat intelligence tool). Nothing runs until an analyst reviews it and presses Start. The new hunt form
+  also takes an optional context.
+
 ## [0.4.2-beta] — 2026-11-20
 
 ### Fixed
