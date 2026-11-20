@@ -885,3 +885,12 @@ def test_hard_case_escalates_to_the_stronger_model(home):
     c2 = triage_case(cfg, cid2, llm=FakeLLM([call(), verdict("needs_analyst", ev=())]), hub=FakeHub(), store=store,
                      escalate_llm=big2)
     assert c2["verdict"] == "needs_analyst" and big2.seen == []          # the daily limit is reached
+
+
+def test_held_dismissal_keeps_the_incoming_severity(home):
+    v = verdict("benign")
+    v["severity"] = 20                                            # the AI rates the high alert as low
+    c, _ = run_case(home, FakeLLM([call(), v]), FakeHub(), verify=False)
+    assert c["status"] == "needs_analyst" and c["severity"] >= 65 and c["severity_label"] in ("high", "critical")
+    checks = c["report"]["checks"]
+    assert any("came in as" in x for x in checks) and any("the case keeps" in x for x in checks)

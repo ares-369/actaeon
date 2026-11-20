@@ -7,6 +7,18 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.4.2-beta] — 2026-11-20
+
+### Fixed
+
+- Hunts with a local model stopped with "the prompt filled the context" once the evidence outgrew the model's
+  window (every hunt on an 8192-token context could fail this way). The hunt now switches to compact prompts and
+  tries again, then once more keeping only the latest result in full, and records each step in the hunt log.
+- A high or critical alert whose dismissal is held for an analyst showed the AI's lower severity (for example
+  LOW) next to a check saying it was high. The check now says what severity the alert came in with, and the case
+  keeps that severity until an analyst decides.
+- The web UI had no favicon, so every page load logged a 404.
+
 ## [0.4.1-beta] — 2026-11-20
 
 ### Security

@@ -519,3 +519,26 @@ def test_benign_with_intel_match_goes_to_analyst(tmp_path):
     v = h["verdict"]
     assert v["outcome"] == "telemetry_found_benign" and v["needs_review"] and v["confidence"] == 50
     assert any("intel lookup matched (E3)" in c for c in v["checks"])
+
+
+def test_context_full_switches_to_compact_and_finishes(tmp_path):
+    full = RuntimeError("Ollama error: the prompt filled the 8192-token context and was cut; raise "
+                        "llm.providers.ollama.num_ctx or use prompt_mode: compact")
+    big = json.dumps({"hits": [{"msg": "x" * 9000}]})
+    r, llm = run(tmp_path, [call(index="events", time_from="now-1d", query="enc"), full,
+                            {"action": "verdict", "outcome": "no_results", "summary": "nothing found"}],
+                 hub=Hub(results={"search": big}))
+    assert r["outcome"] != "error" and "error" not in (r.get("status") or "")
+    notes = [s.get("note") or "" for s in HuntStore(tmp_path / "h.sqlite").get(r["id"])["steps"]]
+    assert any("switched to compact prompts" in n for n in notes)
+    retry = llm.roles["analyst"].seen[-1]
+    assert all(len(m["content"]) < 8000 for m in retry)            # the retried prompt carries shortened results
+
+
+def test_context_full_twice_squeezes_then_gives_up(tmp_path):
+    full = RuntimeError("Ollama error: the prompt filled the 8192-token context and was cut")
+    eng = HuntEngine(LLM(PLAN, [full, full, full]), Hub(), HuntStore(tmp_path / "h.sqlite"), HuntLimits(max_steps=5))
+    eng.n = 0
+    with pytest.raises(RuntimeError, match="filled"):
+        eng._ask_analyst("h1", [{"role": "system", "content": "s"}], [])
+    assert eng.limits.compact and eng._squeeze                      # both fallbacks were tried first

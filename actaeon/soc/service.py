@@ -173,10 +173,16 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
     ver = (v.get("verification") or {}).get("result")
     if serious and v["verdict"] in ("false_positive", "benign") and ver != "confirmed":
         # A high or critical alert is never quietly dismissed: without an independent confirmation it waits for
-        # a person (the verdict stays as the AI's proposal).
+        # a person (the verdict stays as the AI's proposal). The case keeps the severity it came in with, so the
+        # queue does not show it as low while it waits.
         status = "needs_analyst"
-        v["checks"] = [*v["checks"], "a high or critical alert is not dismissed without an independent "
-                       "confirmation; an analyst must decide"]
+        came = int(case.get("severity") or 0)
+        v["checks"] = [*v["checks"], f"the alert came in as {severity_label(came)} (severity {came}): it is not "
+                       "dismissed without an independent confirmation; an analyst must decide"]
+        if int(v.get("severity") or 0) < came:
+            v["checks"] = [*v["checks"], f"the AI rated it {severity_label(int(v.get('severity') or 0))}; "
+                           f"the case keeps {severity_label(came)} until an analyst decides"]
+            v["severity"] = came
     store.set_case(case_id, status=status, verdict=v["verdict"], confidence=v["confidence"], severity=v["severity"],
                    severity_label=severity_label(v["severity"]), summary=v["summary"], report=v, attack=v["attack"],
                    triaged_at=iso(), usage=usage, title=v["title"] or case["title"])

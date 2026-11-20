@@ -151,6 +151,25 @@ class HuntEngine:
             raise RuntimeError(res.error)
         return res.text or ""
 
+    def _ask_analyst(self, hid, base: list[dict], transcript: list[dict]) -> str:
+        """The analyst's next reply. When the prompt no longer fits the model's context window, the hunt switches
+        to compact prompts (shorter tool results, older ones trimmed hard) and tries again, then once more with
+        only the latest result kept, before giving up. A small local model then still finishes the hunt."""
+        for attempt in range(3):
+            try:
+                return self._ask("analyst", self._messages(base, transcript))
+            except RuntimeError as exc:
+                if "context" not in str(exc) or "filled" not in str(exc) or attempt == 2:
+                    raise
+                if not self.limits.compact:
+                    self.limits.compact = True
+                    note = "the prompt filled the model's context window; switched to compact prompts"
+                else:
+                    self._squeeze = True
+                    note = "the prompt still did not fit; kept only the latest tool result in full"
+                self.store.add_step(hid, self._next(), "note", ok=True, note=note)
+        raise RuntimeError("unreachable")
+
     def _tokens_used(self) -> int:
         return tokens_used(self.llm)
 
@@ -284,6 +303,8 @@ class HuntEngine:
         so providers with prompt caching serve it from cache (billed at a fraction of normal input)."""
         msgs = list(base)
         keep, trim = (2, 600) if self.limits.compact else (KEEP_FULL, TRIM_TO)
+        if getattr(self, "_squeeze", False):
+            keep, trim = 1, 300
         results = [i for i, m in enumerate(transcript) if m.get("_result")]
         frozen = getattr(self, "_frozen", None)
         if frozen is None:
@@ -291,6 +312,8 @@ class HuntEngine:
         full = [i for i in results if i not in frozen]
         if len(full) > keep + TRIM_BATCH - 1:
             frozen.update(full[:-keep])
+        if getattr(self, "_squeeze", False):
+            frozen.update(results[:-1])           # last resort: only the latest result stays in full
         old = {i for i in results if i in frozen}
         for i, m in enumerate(transcript):
             content = m["content"]
@@ -374,7 +397,7 @@ class HuntEngine:
                                         note=f"token budget reached ({self._tokens_used()} of "
                                              f"{self.limits.max_tokens}); asked for the verdict")
                 transcript.append({"role": "user", "content": "Tool budget used up. Give the verdict now."})
-            text = self._ask("analyst", self._messages(base, transcript))
+            text = self._ask_analyst(hid, base, transcript)
             action = action_object(text)
             if not action or action.get("action") not in ("call", "verdict"):
                 parse_fail += 1
@@ -415,7 +438,7 @@ class HuntEngine:
                     transcript.append({"role": "assistant", "content": json.dumps(action)[:3000]})
                     transcript.append({"role": "user", "content": "No more tool calls are possible. Reply with the "
                                        "verdict JSON object only, based on the evidence you already have."})
-                    action = action_object(self._ask("analyst", self._messages(base, transcript))) or {}
+                    action = action_object(self._ask_analyst(hid, base, transcript)) or {}
                 if action.get("action") != "verdict":
                     return self._finalize({"outcome": "inconclusive",
                                            "summary": "Step limit reached without a verdict."}, tools)
