@@ -7,6 +7,8 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.4.3-beta] — 2026-11-20
+
 ### Added
 
 - Hunts page: a link to `#hunts?hypothesis=...&context=...&from=...` fills in a new hunt (for example handed over
