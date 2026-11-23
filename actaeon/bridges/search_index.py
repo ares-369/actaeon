@@ -132,7 +132,14 @@ class SearchIndexBridge:
     def _post(self, path: str, body: dict) -> dict:
         r = self.http.post(f"{self.url}/{path}", json=body, timeout=self.timeout)
         check_status(r)
-        return r.json()
+        res = r.json()
+        # A search over a half-available index answers 200 with whatever the live parts hold. That is not "no hits":
+        # an empty answer would read as "nothing happened", and alert intake would move past the gap for good.
+        sh = res.get("_shards") or {}
+        if sh.get("failed") or res.get("timed_out"):
+            raise ToolInputError(f"incomplete result: {sh.get('failed', 0)} of {sh.get('total', '?')} index parts did not "
+                                 "answer" + (" (timed out)" if res.get("timed_out") else "") + "; the index is recovering or unhealthy")
+        return res
 
     # ---- tools ----
     def list_indices(self, args: dict) -> dict:

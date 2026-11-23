@@ -343,3 +343,15 @@ def test_relative_times_with_rounding(monkeypatch):
     assert parse_time("now/h", default="now").isoformat() == "2026-11-12T15:00:00+00:00"
     assert parse_time("now/w", default="now").isoformat() == "2026-11-09T00:00:00+00:00"
     assert parse_time("now-2h", default="now").isoformat() == "2026-11-12T13:47:30+00:00"
+
+
+def test_search_index_refuses_partial_results():
+    hits = {"hits": {"total": {"value": 0}, "hits": []}, "_shards": {"total": 10, "successful": 2, "failed": 8}}
+    b = SearchIndexBridge("https://idx.example", ["events-*"], session=FakeSession({"_search": hits, "_count": {
+        "count": 0, "_shards": {"total": 10, "failed": 1}}}))
+    for call in (b.search, b.count):
+        with pytest.raises(ToolInputError, match="incomplete result"):
+            call({"index": "events-*", "query": "*"})
+    ok = {**hits, "_shards": {"total": 10, "successful": 10, "failed": 0}}
+    b = SearchIndexBridge("https://idx.example", ["events-*"], session=FakeSession({"_search": ok}))
+    assert b.search({"index": "events-*", "query": "*"})["returned"] == 0

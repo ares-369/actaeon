@@ -21,6 +21,11 @@ behaviour may still change between releases.
 - Handed-over hunt context and intel reports reach the model as untrusted data, and cannot close their own block
   (also after JSON decoding); advisory links are clickable only for http(s); non-ASCII tokens are refused cleanly.
 
+### Fixed
+
+- Search index bridge: a partial answer (index recovering after a crash, or a timeout) is an error, not "no hits";
+  alert intake no longer moves its bookmark past a gap it could not read.
+
 ## [0.4.3-beta] — 2026-11-20
 
 ### Added
