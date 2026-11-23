@@ -81,3 +81,12 @@ def test_query_override_and_report(env):
     assert "1 of 1 scored" in md and "0 in an Actaeon case" in md
     with pytest.raises(ValueError):
         dc.load_run(json.dumps({"target": "x"}))
+
+
+def test_tests_too_close_together_are_unknown(env):
+    near = {**T, "name": "b", "started": "2026-01-05T10:20:00+00:00", "finished": "2026-01-05T10:21:00+00:00"}
+    far = {**near, "started": "2026-01-05T11:20:00+00:00", "finished": "2026-01-05T11:21:00+00:00"}
+    def layers(*ts):
+        return [x["layer"] for x in dc.check(env[0], env[1], Hub(), dc.load_run(json.dumps(list(ts))))["tests"]]
+    assert "unknown" in layers(T, near)
+    assert layers(T, far) == ["missed", "missed"]

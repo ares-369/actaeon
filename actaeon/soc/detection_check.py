@@ -12,7 +12,7 @@ gets the furthest layer it reached:
 * ``alert``: Actaeon stored an alert, but it opened no case (suppressed, below the threshold)
 * ``source``: the alert source has an alert, Actaeon did not take it in
 * ``missed``: nothing
-* ``unknown``: the test did not run, or a lookup failed. Never counted as missed or as detected.
+* ``unknown``: the test did not run, another test from the same address was too close, or a lookup failed. Never counted as missed or as detected.
 
 An alert belongs to a test when its time is inside the test (plus ``grace`` minutes) and it names the tester's
 address; without a ``source`` in the test, the target's. A rule that also fired for the same address in the
@@ -95,6 +95,15 @@ def source_alerts(cfg, hub, src: dict, t: dict, grace: timedelta, query: str | N
     return out
 
 
+def _overlaps(t: dict, tests: list[dict], grace: timedelta) -> bool:
+    """Whether another test of the run, for the same address, falls into this test's control window or the test."""
+    end = t["_to"] + grace
+    start0 = t["_from"] - (end - t["_from"])
+    addr = str(t.get("source") or t["target"])
+    return any(o is not t and str(o.get("source") or o["target"]) == addr
+               and o["_from"] <= end and o["_to"] + grace >= start0 for o in tests)
+
+
 def _rules(alerts: list[dict]) -> list[str]:
     return sorted({f"{a.get('rule_id') or '-'}: {(a.get('title') or '')[:80]}" for a in alerts})
 
@@ -108,6 +117,9 @@ def check(cfg, store, hub, tests: list[dict], *, grace_min: int = 10, query: str
         rows.append(row)
         if str(t.get("status") or "ok") != "ok":
             row["note"] = f"the test did not complete ({str(t['status'])[:80]})"
+            continue
+        if _overlaps(t, tests, grace):
+            row["note"] = "another test from the same address is too close: leave a gap longer than both windows"
             continue
         if t["_to"] + grace > now():
             row["note"] = f"too early: wait until {grace_min} minutes after the test"
