@@ -7,6 +7,8 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.5.0-beta] — 2026-11-23
+
 ### Added
 
 - `actaeon detection-check RUN`: scores a run file of authorised tests by the layer each reached (alert source,
@@ -18,11 +20,15 @@ behaviour may still change between releases.
 
 ### Security
 
+- Cross-origin state-changing requests are refused in every auth mode (before: only local and OIDC). Behind a proxy
+  that does not pass the public host name, set the external URL.
 - Handed-over hunt context and intel reports reach the model as untrusted data, and cannot close their own block
   (also after JSON decoding); advisory links are clickable only for http(s); non-ASCII tokens are refused cleanly.
 
 ### Fixed
 
+- Alert intake re-reads `soc.intake.overlap_min` (default 30) minutes before its bookmark, so alerts indexed late are
+  taken in; known alerts are skipped and not counted as repeats.
 - Search index bridge: a partial answer (index recovering after a crash, or a timeout) is an error, not "no hits";
   alert intake no longer moves its bookmark past a gap it could not read.
 

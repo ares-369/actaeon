@@ -894,3 +894,28 @@ def test_held_dismissal_keeps_the_incoming_severity(home):
     assert c["status"] == "needs_analyst" and c["severity"] >= 65 and c["severity_label"] in ("high", "critical")
     checks = c["report"]["checks"]
     assert any("came in as" in x for x in checks) and any("the case keeps" in x for x in checks)
+
+
+def test_poll_overlap_takes_in_alerts_indexed_late(home):
+    import json as _json
+
+    from actaeon.soc.intake import poll_source
+    from actaeon.soc.util import parse_iso
+    cfg, store = cfg_store(home)
+
+    class Hub:
+        items: list = []
+
+        def call(self, name, tool, args, **kw):
+            self.args = args
+            return {"content": _json.dumps({"hits": self.items}), "is_error": False, "truncated": False}
+    src = {"connector": "logs", "tool": "search", "arguments": {"size": 50}, "name": "s", "lookback": "now-1d"}
+    hub = Hub()
+    hub.items = [{**FLAT, "id": "one"}]
+    assert poll_source(cfg, store, hub, src)["new"] == 1
+    mark = store.bookmark("intake:s")
+    hub.items = [{**FLAT, "id": "one"}, {**FLAT, "id": "late"}]
+    out = poll_source(cfg, store, hub, src)
+    assert (parse_iso(mark) - parse_iso(hub.args["time_from"])).total_seconds() == cfg.soc.intake.overlap_min * 60
+    assert out["new"] == 1 and out["known"] == 1 and out["duplicates"] == 0
+    assert all(a["dup_count"] == 0 for a in store.alerts())

@@ -46,7 +46,7 @@ def suppression_for(store: SocStore, alert: dict, rules: list[dict] | None = Non
     return None
 
 
-def ingest(cfg, store: SocStore, raw_alerts: list[dict], *, source: str = "webhook") -> dict:
+def ingest(cfg, store: SocStore, raw_alerts: list[dict], *, source: str = "webhook", skip_known: bool = False) -> dict:
     """Store a batch of raw alerts. Returns counts and the cases that were opened or grew."""
     if not isinstance(raw_alerts, list):
         raise ValueError("send a JSON object or a list of objects")
@@ -66,6 +66,9 @@ def ingest(cfg, store: SocStore, raw_alerts: list[dict], *, source: str = "webho
             a = normalize(raw, source=source, field_map=cfg.soc.intake.field_map, severity_scale=cfg.soc.intake.severity_scale)
         except (ValueError, TypeError):
             out["invalid"] += 1
+            continue
+        if skip_known and store.get_alert(a["id"]):     # read again on purpose: not a repeat of the alert
+            out["known"] = out.get("known", 0) + 1
             continue
         sup = suppression_for(store, a, rules)
         if sup:
@@ -103,11 +106,19 @@ def ingest(cfg, store: SocStore, raw_alerts: list[dict], *, source: str = "webho
 
 
 def poll_source(cfg, store: SocStore, hub, src: dict) -> dict:
-    """Run one ``soc.intake.sources`` entry: call the tool from the last bookmark and ingest what it returns."""
+    """Run one ``soc.intake.sources`` entry: call the tool from the last bookmark and ingest what it returns.
+
+    Each poll starts ``soc.intake.overlap_min`` before the bookmark: an alert can reach the index some time after
+    the moment it carries. Alerts already stored are skipped. A longer delay than the overlap is not covered."""
     key = f"intake:{src['name']}"
     last = store.bookmark(key)
     args = dict(src.get("arguments") or {})
     time_key = next((k for k in ("time_from", "since", "from", "start") if k in args or k == "time_from"), "time_from")
+    if last:
+        try:
+            last = iso(parse_iso(last) - timedelta(minutes=cfg.soc.intake.overlap_min))
+        except ValueError:
+            pass
     args[time_key] = last or src.get("lookback") or "now-15m"
     started = iso()
     # No model reads this result, so it is not cut to the size used for prompts.
@@ -120,7 +131,7 @@ def poll_source(cfg, store: SocStore, hub, src: dict) -> dict:
     items = hits_from_result(res["content"])
     if items is None:
         raise RuntimeError(f"{src['name']}: the result is not JSON with a list of alerts")
-    out = ingest(cfg, store, items[:MAX_BATCH], source=src["name"])
+    out = ingest(cfg, store, items[:MAX_BATCH], source=src["name"], skip_known=True)
     asked = next((args[k] for k in ("size", "limit", "max_results") if isinstance(args.get(k), int)), None)
     if asked and len(items) >= asked:
         out["page_full"] = True     # there may be more alerts in this window than one poll returns

@@ -92,6 +92,7 @@ soc:
   playbook_dirs: []              # extra playbook folders (docs/playbooks.md)
   intake:                        # POST /api/alerts always works; sources are polled
     poll_interval_sec: 60
+    overlap_min: 30              # each poll re-reads this long before its bookmark (alerts indexed late)
     group_window_min: 120        # alerts sharing a host/user/indicator within this window join one case
     no_group: []                 # shared infrastructure never used to group, e.g. ["dc01*", "proxy*"]
     severity_scale: auto         # numeric severities: auto | 4 | 10 | 15 | 100

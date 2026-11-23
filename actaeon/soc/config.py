@@ -10,6 +10,7 @@ from typing import Any
 class IntakeConfig:
     poll_interval_sec: int = 60
     sources: list[dict] = field(default_factory=list)   # [{connector, tool, arguments, lookback}]
+    overlap_min: int = 30            # each poll re-reads this long before its bookmark (late-indexed alerts)
     group_window_min: int = 120      # alerts that share an entity within this window join one case
     webhook_token_env: str = ""      # bearer token for POST /api/alerts from other systems
     field_map: dict[str, list[str]] = field(default_factory=dict)   # extra source keys per normal field
@@ -131,6 +132,7 @@ def _intake(i: dict, connector_names: set[str]) -> IntakeConfig:
     return IntakeConfig(
         poll_interval_sec=max(10, int(i.get("poll_interval_sec", 60))),
         sources=sources,
+        overlap_min=max(0, min(1440, int(i.get("overlap_min", 30)))),
         group_window_min=max(1, int(i.get("group_window_min", 120))),
         webhook_token_env=str(i.get("webhook_token_env", "") or ""),
         field_map={str(k): [str(x) for x in (v if isinstance(v, list) else [v])] for k, v in fm.items()},

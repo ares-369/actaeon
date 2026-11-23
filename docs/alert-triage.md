@@ -226,6 +226,8 @@ something different on each.
 
 ## Grouping and suppressions
 
+- `overlap_min` (default 30): each poll re-reads this many minutes before its bookmark, so alerts that reach the
+  source late are taken in. Alerts already stored are skipped.
 - `group_window_min` (default 120): how far apart related alerts may be to join one case.
 - `no_group`: entity values (globs) never used for grouping, for shared infrastructure.
 - Suppressions (Tuning page, a case's tuning proposal, or `POST /api/suppressions`) match a rule id
