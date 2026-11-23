@@ -331,3 +331,9 @@ actaeon triage-bench --table results.jsonl                    # the suitability 
 queue is not touched). The score reports recall on true positives, precision, cases handed to an analyst,
 wrong closures (a real threat called benign or a false positive: the dangerous miss), the share of findings
 that cite evidence, tokens and time. Providers with no recorded run are listed as not measured.
+## Verdict limits (`soc.never_dismiss`, `soc.authorised_tests`)
+
+`never_dismiss` lists rules (id or name, `*` allowed) whose alerts cannot end as benign or false positive; `verdict` is what
+they become instead (`needs_analyst`, the default, or `true_positive`). `authorised_tests` names a JSON-lines file in the data
+folder, written before each test: `name`, `source`, `target`, `started`, `finished` (planned end, at most 6 hours). Only a case
+in which every alert matches source, target and time is labelled an authorised test. It is not closed for you.

@@ -7,6 +7,13 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Added
+
+- `soc.never_dismiss`: rules whose alerts the model cannot call benign or a false positive (decoys, canaries); applied
+  after every model pass. `soc.authorised_tests`: recorded test windows; a case is labelled an authorised test only when
+  every alert matches a window's source, target and time; another alert that joins removes the label and sends the case
+  back to triage.
+
 ## [0.5.0-beta] — 2026-11-23
 
 ### Added

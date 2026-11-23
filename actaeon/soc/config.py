@@ -45,6 +45,8 @@ class SocConfig:
     min_severity: int = 0            # cases below this severity wait for a person
     auto_close_confidence: int = 0   # close false_positive/benign verdicts at or above this confidence; 0 = never
     playbook_dirs: list[str] = field(default_factory=list)
+    never_dismiss: list[dict] = field(default_factory=list)   # rules the model cannot call benign (soc/floor.py)
+    authorised_tests: str = ""       # file in the data folder with recorded test windows (soc/floor.py)
     analysis: str = "ai"             # ai: fixed checks, then the model | rules: fixed checks only, no model
     collect: bool = True             # run the fixed evidence checks before the model
     collect_max_calls: int = 12
@@ -71,7 +73,10 @@ def parse(raw: Any, connector_names: set[str]) -> SocConfig:
     dirs = [str(x) for x in raw.get("playbook_dirs") or []]
     from .playbooks import load as load_playbooks
     load_playbooks(dirs)                                   # fail fast on a bad playbook
+    from .floor import validate as validate_floor
+    never, tests = validate_floor(raw.get("never_dismiss") or [], raw.get("authorised_tests"))
     return SocConfig(
+        never_dismiss=never, authorised_tests=tests,
         auto=bool(raw.get("auto", True)), first_look=bool(raw.get("first_look", True)),
         verify=bool(raw.get("verify", True)), verify_dismissals=bool(raw.get("verify_dismissals", True)),
         workers=_int(raw, "workers", 2, 1, 16), max_steps=_int(raw, "max_steps", 15, 1, 200),

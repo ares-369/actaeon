@@ -158,6 +158,11 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
             log.exception("second look failed for %s", case_id)
             v["checks"] = [*v["checks"], f"the second look failed ({type(exc).__name__}); not verified"]
             v["confidence"] = min(v["confidence"], 60)
+    # Fixed limits, last: nothing above (model, second look, escalation) can overrule them.
+    from .floor import apply as apply_floor
+    v = apply_floor(cfg, store.alerts(case_id=case_id, limit=100000), v)
+    if v.get("floor"):
+        v["severity"] = max(int(v.get("severity") or 0), int(case.get("severity") or 0))
     v["model_calls"] = llm.calls[-200:]
     removed = getattr(llm.llm, "secrets_removed", None)
     if removed:
@@ -171,7 +176,7 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
     if v["verdict"] in ("needs_analyst", "logs_missing") or v["injection"]:
         status = "needs_analyst"
     ver = (v.get("verification") or {}).get("result")
-    if serious and v["verdict"] in ("false_positive", "benign") and ver != "confirmed":
+    if serious and v["verdict"] in ("false_positive", "benign") and ver != "confirmed" and not v.get("authorised_test"):
         # A high or critical alert is never quietly dismissed: without an independent confirmation it waits for
         # a person (the verdict stays as the AI's proposal). The case keeps the severity it came in with, so the
         # queue does not show it as low while it waits.
@@ -190,7 +195,7 @@ def triage_case(cfg, case_id: str, *, actor: str = "actaeon", checkpoint=None, m
     response.propose(cfg, store, case_id, v)
     auto = cfg.soc.auto_close_confidence
     if (auto and status == "triaged" and v["verdict"] in ("false_positive", "benign") and v["confidence"] >= auto
-            and not v["injection"] and not manual):
+            and not v["injection"] and not manual and not v.get("authorised_test")):
         store.set_case(case_id, status="closed", closed_at=iso(), closed_by="actaeon (auto)")
         store.add_note(case_id, "actaeon", f"Closed automatically: {v['verdict']} at confidence {v['confidence']} "
                        f"(soc.auto_close_confidence {auto}).")

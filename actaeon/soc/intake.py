@@ -96,6 +96,15 @@ def ingest(cfg, store: SocStore, raw_alerts: list[dict], *, source: str = "webho
             if cid not in out["cases_opened"] and cid not in out["cases_updated"]:
                 out["cases_updated"].append(cid)
             case = store.get_case(cid, full=False) or {}
+            if (case.get("report") or {}).get("authorised_test"):
+                # A repeat (same rule and host) joins any open case. Not quietly one labelled as a test: the label
+                # holds only while every alert matches, so triage the case again.
+                from .floor import test_for, windows
+                if not test_for(a, windows(cfg)):
+                    store.set_case(cid, status="new", verdict=None, report={})
+                    store.add_note(cid, "actaeon", f"An alert outside the authorised test joined: {a['title'][:200]}. "
+                                   "The label was removed; triage again.")
+                    continue
             if case.get("status") in ("triaged", "needs_analyst"):
                 store.add_note(cid, "actaeon", f"New alert after triage: {a['title'][:200]} ({a['id'][:80]})")
         else:
