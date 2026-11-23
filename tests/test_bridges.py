@@ -352,6 +352,10 @@ def test_search_index_refuses_partial_results():
     for call in (b.search, b.count):
         with pytest.raises(ToolInputError, match="incomplete result"):
             call({"index": "events-*", "query": "*"})
+    b = SearchIndexBridge("https://idx.example", ["events-*"], session=FakeSession({"_search": {
+        **hits, "_shards": {"total": 10, "successful": 2, "failed": 0}}}))        # no live copy: not in "failed"
+    with pytest.raises(ToolInputError, match="8 of 10"):
+        b.search({"index": "events-*", "query": "*"})
     ok = {**hits, "_shards": {"total": 10, "successful": 10, "failed": 0}}
     b = SearchIndexBridge("https://idx.example", ["events-*"], session=FakeSession({"_search": ok}))
     assert b.search({"index": "events-*", "query": "*"})["returned"] == 0

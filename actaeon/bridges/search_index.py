@@ -136,8 +136,10 @@ class SearchIndexBridge:
         # A search over a half-available index answers 200 with whatever the live parts hold. That is not "no hits":
         # an empty answer would read as "nothing happened", and alert intake would move past the gap for good.
         sh = res.get("_shards") or {}
-        if sh.get("failed") or res.get("timed_out"):
-            raise ToolInputError(f"incomplete result: {sh.get('failed', 0)} of {sh.get('total', '?')} index parts did not "
+        # Parts with no live copy are missing from "successful" but not always counted in "failed".
+        down = max(int(sh.get("failed") or 0), int(sh.get("total") or 0) - int(sh.get("successful", sh.get("total")) or 0))
+        if down or res.get("timed_out"):
+            raise ToolInputError(f"incomplete result: {down} of {sh.get('total', '?')} index parts did not "
                                  "answer" + (" (timed out)" if res.get("timed_out") else "") + "; the index is recovering or unhealthy")
         return res
 
