@@ -9,6 +9,8 @@ behaviour may still change between releases.
 
 ### Added
 
+- `actaeon detection-check RUN`: scores a run file of authorised tests by the layer each reached (alert source,
+  Actaeon alert, case), with a control window so background alerts do not count. Reads only.
 - CI: a UI smoke test opens every page of the offline demo in headless Chromium (desktop and phone width) and
   fails on script errors, failed requests or "undefined" on screen.
 - Autopilot `intel_sources`: connector tools that return reports rated relevant to this environment become a

@@ -37,6 +37,12 @@ def add_parsers(sub) -> None:
     p.add_argument("--label", default="", help="name of the case set in the results file")
     p.add_argument("--table", help="print the suitability table of a results file and exit")
     p.add_argument("--analysis", choices=["ai", "rules"], help="override soc.analysis for this run (rules = no model)")
+    p = sub.add_parser("detection-check", help="score a run file of authorised tests: which were alerted on, and which "
+                       "opened a case (reads only; runs no tests)")
+    p.add_argument("run", help="JSON lines: name, target, source, started, finished (e.g. oniops assess --record FILE)")
+    p.add_argument("--grace", type=int, default=10, help="minutes after a test in which its alerts still count")
+    p.add_argument("--query", help="query for the alert source instead of the intake one (to see lower-level alerts)")
+    p.add_argument("--json", help="write the full result to this file")
     p = sub.add_parser("shift-report", help="markdown summary of the last N hours of alert cases")
     p.add_argument("--hours", type=int, default=12)
 
@@ -64,7 +70,7 @@ def print_case(c: dict, *, full: bool = False) -> None:
 
 def run(a) -> int | None:
     """Handle the command if it is one of ours; None otherwise."""
-    if a.cmd not in ("alerts", "cases", "triage", "triage-bench", "shift-report"):
+    if a.cmd not in ("alerts", "cases", "triage", "triage-bench", "shift-report", "detection-check"):
         return None
     if a.cmd == "triage-bench":
         return _bench(a)
@@ -125,6 +131,20 @@ def run(a) -> int | None:
             for c in store.cases(limit=a.limit, open_only=a.open):
                 print(f"{c['id']}  {c['status']:13} {(c.get('verdict') or '-'):15} {c.get('confidence') or 0:3}  "
                       f"{c['severity_label']:8} {c['alert_count']:3} alerts  {c['title'][:60]}")
+        return 0
+    if a.cmd == "detection-check":
+        from ..connectors import get_hub
+        from .detection_check import check, load_run, markdown
+        try:
+            tests = load_run(Path(a.run).read_text())
+        except (OSError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        res = check(cfg, store, get_hub(cfg), tests, grace_min=max(0, a.grace), query=a.query)
+        get_hub().close()
+        if a.json:
+            Path(a.json).write_text(json.dumps(res, indent=1))
+        print(markdown(res))
         return 0
     if a.cmd == "shift-report":
         from .report import shift_markdown
