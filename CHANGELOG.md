@@ -14,6 +14,11 @@ behaviour may still change between releases.
 - Autopilot `intel_sources`: connector tools that return reports rated relevant to this environment become a
   planner input; hunts started from them carry the report as context, and a report is hunted once.
 
+### Security
+
+- Handed-over hunt context and intel reports reach the model as untrusted data, and cannot close their own block
+  (also after JSON decoding); advisory links are clickable only for http(s); non-ASCII tokens are refused cleanly.
+
 ## [0.4.3-beta] — 2026-11-20
 
 ### Added

@@ -18,13 +18,19 @@ SYSTEM_RULE = (
 )
 
 
+def neutral(text: str) -> str:
+    """Text with any copy of the marker made harmless. Apply it last, on what the model sees: decoding JSON can
+    bring a marker back (``UNTRUSTED\\u002dDATA``)."""
+    return (text or "").replace("UNTRUSTED-DATA", "UNTRUSTED_DATA")
+
+
 def wrap(connector: str, tool: str, text: str, max_bytes: int) -> dict:
     raw = text.encode("utf-8", "replace")
     truncated = len(raw) > max_bytes
     if truncated:
         text = raw[:max_bytes].decode("utf-8", "ignore")
     nonce = secrets.token_hex(4)
-    text = text.replace("UNTRUSTED-DATA", "UNTRUSTED_DATA")
+    text = neutral(text)
     block = (f"<<UNTRUSTED-DATA {nonce} source={connector}/{tool}>>\n{text}\n"
              f"<<END-UNTRUSTED-DATA {nonce}>>")
     return {"connector": connector, "tool": tool, "truncated": truncated, "content": block}

@@ -264,9 +264,14 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
         if request.method == "GET":
             return jsonify(store_for(get_config()).list(limit=min(200, int(request.args.get("limit", 50)))))
         b = request.get_json(silent=True) or {}
+        context = str(b.get("context", ""))[:8000]
+        if context and b.get("context_untrusted"):
+            # handed over by another tool: built from collected reports, so data for the model, not instructions
+            from .hunt.service import untrusted_context
+            context = untrusted_context(context, str(b.get("context_from", "") or "another tool")[:60])
         try:
             hid = start_hunt(jobs, get_config(), str(b.get("hypothesis", ""))[:4000], actor=_actor(),
-                             context=str(b.get("context", ""))[:8000], max_steps=b.get("max_steps"),
+                             context=context, max_steps=b.get("max_steps"),
                              profile=str(b.get("profile") or "") or None)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400

@@ -259,14 +259,21 @@ async function hunts() {
   const ctx = h("textarea", { "data-need": "op", class: "short", placeholder: "Context for the hunt (optional): indicators, techniques, sources" });
   if (q.get("hypothesis")) hyp.value = q.get("hypothesis").slice(0, 4000);
   if (q.get("context")) ctx.value = q.get("context").slice(0, 8000);
-  const handed = q.get("hypothesis") ? h("p", { class: "warn small" }, icon("file-import"),
-    ` Handed over${q.get("from") ? " from " + q.get("from").slice(0, 60) : ""}. Review the hypothesis and context, then press Start.`) : null;
+  // Words that try to steer a model, in text that came from another tool: shown to the analyst before Start.
+  const steer = /ignore (all |any )?(previous|prior|above) (instructions|prompts)|disregard (the |all )?(previous|above)|you are now|system prompt|do not (report|flag|mention)|mark (this|it) as (benign|false positive)/i;
+  const handedText = (q.get("hypothesis") || "") + " " + (q.get("context") || "");
+  const handed = q.get("hypothesis") || q.get("context") ? h("div", {},
+    h("p", { class: "warn small" }, icon("file-import"),
+      ` Handed over${q.get("from") ? " from " + q.get("from").slice(0, 60) : ""}. Review the hypothesis and context, then press Start. The context is passed to the model as untrusted data.`),
+    steer.test(handedText) ? h("p", { class: "bad small" }, icon("alert-circle-outline"), " The handed-over text contains wording that tries to instruct an AI. Check it before starting.") : null) : null;
   const pick = h("select", { onchange: () => { if (pick.value) hyp.value = pick.value; } },
     h("option", { value: "" }, "Starter hypotheses..."),
     lib.starters.map((s) => h("option", { value: s.hypothesis }, `${s.name} (${s.attack.join(", ")})`)));
   const start = async () => {
     if (!hyp.value.trim()) return toast("Write a hypothesis first.");
-    const r = await api("/api/hunts", { hypothesis: hyp.value, context: ctx.value || undefined, max_steps: steps.value ? +steps.value : undefined,
+    const r = await api("/api/hunts", { hypothesis: hyp.value, context: ctx.value || undefined,
+      context_untrusted: q.get("hypothesis") || q.get("context") ? true : undefined, context_from: q.get("from") || undefined,
+      max_steps: steps.value ? +steps.value : undefined,
       profile: profile.value === "standard" ? undefined : profile.value });
     if (r.error) return toast(r.error);
     location.hash = "#hunt/" + r.hunt_id;
@@ -687,7 +694,7 @@ async function intel() {
       } }, icon("content-save"), "Save actor")))));
   const advs = await api("/api/intel/advisories");
   main.append(section("Advisories", "file-document-outline", h("table", {}, h("tbody", {}, advs.length ? advs.map((a) => h("tr", {},
-    h("td", {}, a.url ? h("a", { href: a.url, target: "_blank", rel: "noopener noreferrer" }, a.title) : a.title,
+    h("td", {}, a.url && /^https?:\/\//i.test(a.url) ? h("a", { href: a.url, target: "_blank", rel: "noopener noreferrer" }, a.title) : a.title,
       h("div", { class: "muted small" }, `${when(a.added)}  ${a.source}  ${a.indicator_count} indicators  ${a.techniques.join(", ")}`)),
     h("td", { class: "small" }, a.relevance ? [
       h("span", { class: a.relevance.relevant ? "warn" : "muted" }, a.relevance.relevant ? `Relevant (${a.relevance.score})` : "Not relevant"),

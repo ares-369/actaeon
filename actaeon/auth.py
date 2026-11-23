@@ -183,7 +183,7 @@ def verify_user(cfg, user: str, pw: str) -> bool:
     if user in users:
         ok = _check_hash(stored, pw)
     else:
-        ok = hmac.compare_digest(user or "", cfg.auth.username) and _verify_password(cfg, pw)
+        ok = hmac.compare_digest((user or "").encode(), str(cfg.auth.username).encode()) and _verify_password(cfg, pw)
     if ok:
         if len(_VERIFIED) > 1000:
             _VERIFIED.clear()
@@ -195,7 +195,7 @@ def _verify_password(cfg, pw: str) -> bool:
     if cfg.auth.password_hash:
         return _check_hash(cfg.auth.password_hash, pw)
     if cfg.auth.password:
-        return hmac.compare_digest(pw, cfg.auth.password)
+        return hmac.compare_digest(pw.encode(), str(cfg.auth.password).encode())
     return False
 
 
@@ -260,7 +260,7 @@ def init_auth(app, cfg) -> None:
             mc = (cfg.raw or {}).get("mcp") or {}
             tok = os.getenv(str(mc.get("token_env", "")), "") if mc.get("token_env") else ""
             got = request.headers.get("Authorization", "")
-            if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), tok):
+            if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip().encode(), tok.encode()):
                 role = str(mc.get("token_role", "operator")).lower()
                 g.actaeon_role = role if role in _VALID_ROLES else "viewer"
                 g.actaeon_user = "mcp-token"
@@ -271,7 +271,7 @@ def init_auth(app, cfg) -> None:
             env = getattr(getattr(getattr(cfg, "soc", None), "intake", None), "webhook_token_env", "") or ""
             tok = os.getenv(env, "") if env else ""
             got = request.headers.get("Authorization", "")
-            if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), tok):
+            if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip().encode(), tok.encode()):
                 g.actaeon_role = "operator"          # this token can only send alerts
                 g.actaeon_user = "alert-webhook"
                 g.actaeon_groups = []
@@ -281,7 +281,7 @@ def init_auth(app, cfg) -> None:
             tc = (cfg.raw or {}).get("tickets") or {}
             tok = os.getenv(str(tc.get("token_env", "")), "") if tc.get("token_env") else ""
             got = request.headers.get("Authorization", "")
-            if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip(), tok):
+            if tok and got.startswith("Bearer ") and hmac.compare_digest(got[7:].strip().encode(), tok.encode()):
                 g.actaeon_role = "operator"
                 g.actaeon_user = "ticket-token"
                 g.actaeon_groups = parse_groups(tc.get("token_groups") or [])

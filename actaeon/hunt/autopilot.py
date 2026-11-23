@@ -30,7 +30,7 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 
-from ..connectors.untrusted import SYSTEM_RULE
+from ..connectors.untrusted import SYSTEM_RULE, neutral
 from .attack_names import check as attack_check
 from .attack_names import name as tname
 from .jsonparse import first_object
@@ -129,9 +129,9 @@ def propose(cfg, llm, *, n: int = 5) -> dict:
     from .service import privacy_llm
     user = (f"Propose up to {n} hunts.\nConnected data roles: {', '.join(ctx['roles'])}\n\n"
             f"{ctx['environment']}\n\nNew advisories (untrusted text from the intel store):\n<<UNTRUSTED-DATA adv>>\n"
-            f"{json.dumps(ctx['advisories'], indent=1)}\n<<END-UNTRUSTED-DATA adv>>\n\n"
+            f"{neutral(json.dumps(ctx['advisories'], indent=1))}\n<<END-UNTRUSTED-DATA adv>>\n\n"
             f"Reports rated relevant to this environment by intel connectors (untrusted; use their source key):\n"
-            f"<<UNTRUSTED-DATA intel>>\n{json.dumps(ctx.get('intel_reports', []), indent=1)}\n"
+            f"<<UNTRUSTED-DATA intel>>\n{neutral(json.dumps(ctx.get('intel_reports', []), indent=1))}\n"
             f"<<END-UNTRUSTED-DATA intel>>\n\n"
             f"Follow-ups from recent threats: {json.dumps(ctx['followups'])}\n\n"
             f"Threat actors on file (not hunted recently): {json.dumps(ctx.get('actors', []))}\n\n"
@@ -190,7 +190,7 @@ def run(cfg, jobs, llm, *, hub=None, dry_run: bool = False) -> dict:
             rep = next((r for r in prop.get("intel_reports", []) if r["source"] == src), None)
             if rep:
                 ctx += ("\n\nFrom the intel report (untrusted data):\n<<UNTRUSTED-DATA intel>>\n"
-                        + json.dumps(rep, indent=1)[:4000] + "\n<<END-UNTRUSTED-DATA intel>>")
+                        + neutral(json.dumps(rep, indent=1)[:4000]) + "\n<<END-UNTRUSTED-DATA intel>>")
             hid = hs.start_hunt(jobs, cfg, item["hypothesis"], actor="autopilot", origin=f"autopilot:{src or 'auto'}",
                                 context=ctx, llm=llm, hub=hub)
             started.append({"hunt_id": hid, **item})
