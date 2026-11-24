@@ -7,6 +7,8 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.5.1-beta] — 2026-11-24
+
 ### Added
 
 - An assistant panel opens from the title bar (Ctrl+I) on every page.
