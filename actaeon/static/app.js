@@ -84,8 +84,8 @@ window.addEventListener("unhandledrejection", (e) => { if (e.reason && e.reason.
 // ---------------- Who am I ----------------
 let ME = { user: "", role: "viewer" };
 // Buttons marked data-need="op" or "admin" are hidden for roles that cannot use them (the server enforces it too).
-const meReady = api("/api/me").then((m) => { ME = m; document.body.dataset.role = m.role || "viewer"; fill(document.getElementById("me"), icon("account-circle-outline"), " ", m.name || m.user, " ",
-  h("span", { class: "badge" }, m.role)); }).catch(() => {});
+const meReady = api("/api/me").then((m) => { ME = m; document.body.dataset.role = m.role || "viewer"; fill(document.getElementById("me"), icon("account-circle-outline"),
+  h("span", { class: "who" }, m.name || m.user, " ", h("span", { class: "badge" }, m.role))); }).catch(() => {});
 const SEV = (s) => h("span", { class: "sev sev-" + s }, s);
 const STATUS = (s) => h("span", { class: "badge st-" + s }, s.replace("_", " "));
 const RES = { true_positive: "True positive", benign_true_positive: "Benign true positive", false_positive: "False positive",
@@ -128,7 +128,7 @@ async function leads() {
   };
   main.append(section("Leads", "briefcase-outline",
     h("p", { class: "muted small" }, "A lead opens for every threat or result that needs review. Everyone can see every lead, except leads from hunts over sources limited to certain groups."),
-    bar, h("table", {}, h("thead", {}, h("tr", {}, ["Lead", "Severity", "Status", "Title", "Assignee", "Opened / resolution"].map((x) => h("th", {}, x)))), body)));
+    bar, h("table", { class: "lead-list" }, h("thead", {}, h("tr", {}, ["Lead", "Severity", "Status", "Title", "Assignee", "Opened / resolution"].map((x) => h("th", {}, x)))), body)));
   await load();
   poll = setInterval(load, 15000);
 }
@@ -596,9 +596,9 @@ async function library() {
       h("td", { class: "small" }, when(s.last_run) || "-", s.last_hunt_id ? [" ", h("a", { href: "#hunt/" + s.last_hunt_id }, "view")] : null),
       h("td", {}, s.last_hits === null ? "-" : s.last_hits),
       h("td", {}, h("div", { class: "row" },
-        h("button", { "data-need": "op", class: "ghost", onclick: async () => { await api(`/api/library/${s.id}`, { interval_minutes: +every.value || 0 }); toast("Saved"); } }, icon("content-save")),
-        h("button", { "data-need": "op", class: "ghost", onclick: async () => { await post(`/api/library/${s.id}/run`); toast("Replay queued"); } }, icon("replay")),
-        h("button", { "data-need": "op", class: "danger", onclick: async () => { if (confirm("Delete this saved hunt?")) { await post(`/api/library/${s.id}/delete`); route(); } } }, icon("delete")))));
+        h("button", { "data-need": "op", class: "ghost", onclick: async () => { await api(`/api/library/${s.id}`, { interval_minutes: +every.value || 0 }); toast("Saved"); }, title: "Save the interval", "aria-label": "Save the interval" }, icon("content-save")),
+        h("button", { "data-need": "op", class: "ghost", onclick: async () => { await post(`/api/library/${s.id}/run`); toast("Replay queued"); }, title: "Run now", "aria-label": "Run now" }, icon("replay")),
+        h("button", { "data-need": "op", class: "danger", onclick: async () => { if (confirm("Delete this saved hunt?")) { await post(`/api/library/${s.id}/delete`); route(); } }, title: "Delete", "aria-label": "Delete" }, icon("delete")))));
   });
   main.append(section("Saved hunts", "bookshelf",
     h("p", { class: "muted small" }, "Replays run the saved searches again without a model and flag matches for review."),
@@ -839,7 +839,7 @@ async function settings() {
   });
   const diff = h("pre", { class: "hidden" });
   const testOut = h("pre", { class: "hidden" });
-  const collect = () => Object.fromEntries([...document.querySelectorAll("[data-role]")].map((e) => [e.dataset.role, { provider: e.value, model: $(`[data-model="${e.dataset.role}"]`).value }]));
+  const collect = () => Object.fromEntries([...document.querySelectorAll("select[data-role]")].map((e) => [e.dataset.role, { provider: e.value, model: $(`[data-model="${e.dataset.role}"]`).value }]));
   main.append(section("Models", "brain", h("p", { class: "muted small" }, "One provider and model per role. Keys stay in .env. Admins only."), rows,
     h("div", { class: "row" }, h("button", { "data-need": "admin", onclick: async () => {
       const p = await api("/api/settings/llm", { roles: collect(), preview: true });
@@ -881,3 +881,20 @@ async function settings() {
 }
 
 meReady.then(route);
+
+// ---------------- Assistant panel (suite.js draws it) ----------------
+window.SUITE_BOT = {
+  intro: "Ask about your leads, hunts and logs. Hunts started here are read-only and stored with their evidence.",
+  tries: ["What are my open leads?", "Has anything talked to a known bad address this week?"],
+  async send(text, st) {
+    st.before = st.cid ? (await api("/api/assistant/" + st.cid)).messages.length : 0;
+    st.cid = (await post("/api/assistant", { message: text, conversation_id: st.cid || null })).conversation_id;
+    return { done: false };
+  },
+  async poll(st) {
+    const ms = (await api("/api/assistant/" + st.cid)).messages, m = ms[ms.length - 1];
+    if (ms.length < st.before + 2 || m.role === "user") return { done: false };
+    return { done: true, text: m.content, links: [...(m.links.hunts || []).map((x) => ["#hunt/" + x, "Open hunt " + x]),
+      ...(m.links.cases || []).map((x) => ["#lead/" + x, "Open lead #" + x])] };
+  },
+};

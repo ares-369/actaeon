@@ -9,10 +9,24 @@ behaviour may still change between releases.
 
 ### Added
 
+- An assistant panel opens from the title bar (Ctrl+I) on every page.
+- Column sorting, a loading bar, a skip link, and keyboard access to rows that open something.
 - `soc.never_dismiss`: rules whose alerts the model cannot call benign or a false positive (decoys, canaries); applied
   after every model pass. `soc.authorised_tests`: recorded test windows; a case is labelled an authorised test only when
   every alert matches a window's source, target and time; another alert that joins removes the label and sends the case
   back to triage.
+
+### Changed
+
+- The web UI has the same frame in OniOps, Actaeon and Zarqa: an icon sidebar that opens on hover and can be pinned, a
+  title bar, dark and light themes, and on phones a bottom bar and tables shown as labelled records. New logo.
+
+### Fixed
+
+- Save on the Settings page stopped with an error, so model changes were not saved.
+- Lead and case titles are shown on phones.
+- Approving a response action asks first, naming the action, the target and whether it can be undone.
+- Controls have accessible names and readable contrast.
 
 ## [0.5.0-beta] — 2026-11-23
 

@@ -6,11 +6,13 @@
 .mdi-account-arrow-right-outline::before{content:"\F0B54"}
 .mdi-account-circle-outline::before{content:"\F0B55"}
 .mdi-account-network-outline::before{content:"\F0BE6"}
+.mdi-alert::before{content:"\F0026"}
 .mdi-alert-circle-outline::before{content:"\F05D6"}
 .mdi-archive::before{content:"\F003C"}
+.mdi-assistant::before{content:"\F0064"}
+.mdi-axis::before{content:"\F0D48"}
 .mdi-bookmark-plus::before{content:"\F00C5"}
 .mdi-bookshelf::before{content:"\F125F"}
-.mdi-bow-arrow::before{content:"\F1841"}
 .mdi-brain::before{content:"\F09D1"}
 .mdi-briefcase-outline::before{content:"\F0814"}
 .mdi-cancel::before{content:"\F073A"}
@@ -71,6 +73,7 @@
 .mdi-magnify-scan::before{content:"\F1276"}
 .mdi-map-outline::before{content:"\F0982"}
 .mdi-map-search-outline::before{content:"\F0985"}
+.mdi-menu::before{content:"\F035C"}
 .mdi-mine::before{content:"\F0DDA"}
 .mdi-network::before{content:"\F06F3"}
 .mdi-note-text-outline::before{content:"\F11D7"}
@@ -97,7 +100,11 @@
 .mdi-target::before{content:"\F04FE"}
 .mdi-text::before{content:"\F09A8"}
 .mdi-text-box-outline::before{content:"\F09ED"}
+.mdi-timeline::before{content:"\F0BD1"}
 .mdi-timeline-clock-outline::before{content:"\F11FC"}
 .mdi-tools::before{content:"\F1064"}
+.mdi-tooltip::before{content:"\F0523"}
 .mdi-upload::before{content:"\F0552"}
+.mdi-weather-night::before{content:"\F0594"}
 .mdi-web::before{content:"\F059F"}
+.mdi-white-balance-sunny::before{content:"\F05A8"}

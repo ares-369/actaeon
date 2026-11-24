@@ -14,7 +14,7 @@ def client(home):
 def test_index_and_health(client):
     assert client.get("/healthz").json == {"ok": True}
     r = client.get("/")
-    assert r.status_code == 200 and b"mdi-bow-arrow" in r.data
+    assert r.status_code == 200 and b"/static/img/logo.svg" in r.data
 
 
 def test_status(client):

@@ -83,7 +83,7 @@ async function queue(filter) {
     h("td", { class: "muted small" }, ago(c.last_alert || c.created))));
   main.append(section("Cases", "format-list-bulleted", tools,
     cases.length ? h("table", { class: "cases" }, h("thead", {}, h("tr", {}, ["Severity", "AI verdict", "Conf.", "Case", "Alerts", "Status", "Last alert"].map((x) => h("th", {}, x)))),
-      h("tbody", {}, rows)) : h("p", { class: "muted" }, "No cases here. Alerts arrive through POST /api/alerts, a polled source, or haymdhal alerts import.")));
+      h("tbody", {}, rows)) : h("p", { class: "muted" }, "No cases here. Alerts arrive through POST /api/alerts, a polled source, or actaeon alerts import.")));
   if (cases.some((c) => c.status === "triaging" || c.status === "new")) poll = setInterval(() => { if (!document.hidden) route(); }, 5000);
 }
 
@@ -205,7 +205,7 @@ function actionsSection(c) {
       h("span", { class: "muted small" }, { reversible: "undo: reversible", compensating: "undo: partial (a follow-up action, not a full restore)", none: "no undo" }[a.undo_kind || "none"]),
       h("span", { class: "grow" }),
       a.status === "proposed" ? [
-        h("button", { "data-need": "op", onclick: async () => { const r = await post(`/api/actions/${a.id}/approve`); toast(r.waiting_for ? "Waiting for a second approver" : `Action ${r.status}`); route(); } }, icon("check-all"), "Approve"),
+        h("button", { "data-need": "op", onclick: async () => { if (!confirm(`Run "${a.name.replace(/_/g, " ")}" on ${a.target}?\nMode: ${c.response_mode}. ${a.undo_kind === "none" || !a.undo_kind ? "This cannot be undone." : "It can be undone afterwards."}`)) return; const r = await post(`/api/actions/${a.id}/approve`); toast(r.waiting_for ? "Waiting for a second approver" : `Action ${r.status}`); route(); } }, icon("check-all"), "Approve"),
         h("button", { class: "ghost", "data-need": "op", onclick: async () => { await post(`/api/actions/${a.id}/reject`); route(); } }, icon("cancel"), "Reject")] : null,
       (a.status === "executed" || a.status === "dry_run") && a.undo ? h("button", { class: "ghost", "data-need": "op",
         onclick: async () => { await post(`/api/actions/${a.id}/undo`); toast("Undone"); route(); } }, icon("restore"), "Undo") : null),
