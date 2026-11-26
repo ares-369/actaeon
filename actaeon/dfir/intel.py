@@ -85,6 +85,8 @@ def check(cfg, store, cid: str, *, hub=None, limit: int = 500) -> dict[str, Any]
     conns: list[str] = []
     if hub is not None:
         for spec in hub.connectors_for_role("intel"):
+            if spec.name == "local-intel":           # the built-in connector over the same store, read directly above
+                continue
             try:
                 if any(t["name"] == "lookup" and t.get("allowed") for t in hub.tools(spec.name)):
                     conns.append(spec.name)

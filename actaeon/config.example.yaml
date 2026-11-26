@@ -141,6 +141,7 @@ dfir:
   rule_dirs: []                    # extra Sigma folders, e.g. ["/opt/sigma/rules/windows"] (large sets are slow)
   story_events: 250                # events the model sees for the story (starred and detected first)
   evtx_dump: ""                    # optional path to the evtx_dump tool: much faster .evtx reading
+  yara_dirs: []                    # YARA rule folders: evidence is scanned at import (needs actaeon[yara])
 
 # Describe your environment so hunts fit it (all optional).
 environment: {}

@@ -28,6 +28,18 @@ behaviour may still change between releases.
   marked. Markdown report and CSV export, `actaeon dfir`, read-only MCP tools. Extra `actaeon[dfir]`
   (python-evtx); optional `dfir.evtx_dump` for faster event log reading.
 - The local Sigma matcher also evaluates `fieldref` and items with no field name.
+- Investigations: each cited event is checked against its statement without a model (detection tactic or a shared
+  significant word); events that do not fit are marked and a part with no fitting event is flagged.
+- Investigations: imports, analysis, intel checks and connector pulls run as jobs (queue-mode workers run them);
+  uploads are kept until imported and an interrupted import can run again.
+- Investigations: word search through a full-text index (FTS5, or a GIN index on PostgreSQL).
+- Investigations: process tree around any event; accounts view with sources and hosts first seen late.
+- Investigations: check indicators against the intel store and intel connectors (Zarqa); YARA scanning of evidence
+  at import (extra `actaeon[yara]`); Volatility 3 JSON; pull evidence from a read-only connector tool; a host for
+  evidence that names none.
+- Investigations: hunt for an event's activity in the live logs; open an investigation from an alert case;
+  assignee, discussion and an activity log; ATT&CK Navigator layers for a case and for rule coverage.
+- `actaeon rules regress`: run labelled evidence through the analyzers and fail when a rule stops matching.
 - `actaeon rules` (list, show, test, lint, coverage, draft, import, export), a zip export, and read-only MCP tools
   `list_rules`, `get_rule`, `rule_coverage`. Rules are never deployed into a log platform.
 

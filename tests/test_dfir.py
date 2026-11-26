@@ -430,7 +430,7 @@ class FakeHub:
         self.calls = []
 
     def connectors_for_role(self, role):
-        return [type("S", (), {"name": "zarqa"})()] if role == "intel" else []
+        return [type("S", (), {"name": n})() for n in ("local-intel", "zarqa")] if role == "intel" else []
 
     def tools(self, name):
         return [{"name": "lookup", "allowed": True}]
@@ -538,3 +538,78 @@ def test_yara_at_import(on, tmp_path, home):
     assert ev["data"]["member"] == "tools/m.ps1" and len(ev["data"]["sha256"]) == 64
     S.analyze(cfg, c["id"])
     assert "YARA: Mimi" in {x["title"] for x in st.detection_summary(c["id"])}
+
+
+VOL = [{"PID": 4, "PPID": 0, "ImageFileName": "System", "CreateTime": "2026-11-20T09:00:00+00:00", "__children": [
+    {"PID": 600, "PPID": 4, "ImageFileName": "smss.exe", "CreateTime": "2026-11-20T09:00:01+00:00", "__children": []}]},
+       {"PID": 3200, "PPID": 900, "ImageFileName": "rundll32.exe", "CreateTime": "2026-11-20 10:00:00.000000",
+        "__children": []}]
+
+
+def test_volatility_json_and_default_host(on, tmp_path):
+    from actaeon.dfir import service as S
+    p = tmp_path / "windows.pstree.PsTree.json"
+    p.write_text(json.dumps(VOL))
+    st = S.store_for(on)
+    c = st.create_case("Case", "", actor="a")
+    r = S.import_file(on, c["id"], p, p.name, actor="a", host="WS09")
+    assert r["events"] == 3
+    rows, _ = st.search(c["id"], order="ts")
+    assert [e["channel"] for e in rows] == ["windows.pstree"] * 3 and {e["host"] for e in rows} == {"WS09"}
+    smss = st.search(c["id"], q="smss")[0][0]
+    assert smss["summary"].strip().startswith("smss.exe pid 600 ppid 4") and smss["data"]["tree_depth"] == 1
+    assert smss["ts"] == "2026-11-20T09:00:01.000Z"
+
+
+def test_pull_from_connector(on, monkeypatch):
+    from actaeon.dfir import service as S
+
+    class Hub:
+        def tools(self, name):
+            return [{"name": "collection_results", "allowed": True}, {"name": "run_collection", "allowed": False}]
+
+        def call(self, conn, tool, args, **kw):
+            rows = [win("4624", "Security", "2026-11-20T10:00:00Z", TargetUserName="eve", LogonType="10",
+                        IpAddress="45.33.32.156")]
+            return {"content": "<<UNTRUSTED-DATA x>>\n" + json.dumps({"rows": rows}) + "\n<<END-UNTRUSTED-DATA x>>"}
+    monkeypatch.setattr("actaeon.connectors.get_hub", lambda cfg: Hub())
+    st = S.store_for(on)
+    c = st.create_case("Case", "", actor="a")
+    r = S.pull_from_connector(on, c["id"], "velo", "collection_results", {"flow_id": "F.1"}, actor="a")
+    assert r["events"] == 1 and r["status"] == "done"
+    assert st.sources(c["id"])[0]["origin"] == "connector velo.collection_results"
+    with pytest.raises(ValueError, match="not an allowed"):
+        S.pull_from_connector(on, c["id"], "velo", "run_collection", {}, actor="a")
+    assert st.activity(c["id"])[0]["action"] == "pull"
+
+
+def test_from_soc_case(on):
+    from actaeon.dfir import service as S
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import store_for as soc_store
+    alert = {"id": "a1", "@timestamp": "2026-11-01T10:00:00Z", "rule": {"id": "R1", "name": "Bad thing", "level": 12},
+             "host": {"name": "WS1"}, "user": {"name": "alice"}}
+    ss = soc_store(on)
+    case_id = ingest(on, ss, [alert])["cases_opened"][0]
+    hits = json.dumps({"total": 1, "hits": [{"timestamp": "2026-11-01T09:59:00Z", "host.name": "WS1", "message": "x ran"}]})
+    ss.add_step(case_id, 1, "call", connector="logs", tool="search", ok=True,
+                result=f"<<UNTRUSTED-DATA a>>\n{hits}\n<<END-UNTRUSTED-DATA a>>")
+    r = S.from_soc_case(on, case_id, actor="a")
+    assert r["existing"] is False and r["events"] == 2
+    st = S.store_for(on)
+    assert st.case(r["id"])["soc_case"] == case_id and len(st.sources(r["id"])) == 2
+    assert S.from_soc_case(on, case_id, actor="a") == {"id": r["id"], "existing": True}
+    with pytest.raises(KeyError):
+        S.from_soc_case(on, "nope", actor="a")
+
+
+def test_assignee_comments_activity(on, tmp_path):
+    from actaeon.web import create_app
+    cl = create_app(on).test_client()
+    cid = cl.post("/api/dfir/cases", json={"title": "Team case"}).get_json()["id"]
+    assert cl.post(f"/api/dfir/cases/{cid}", json={"assignee": "carol"}).get_json()["assignee"] == "carol"
+    assert cl.post(f"/api/dfir/cases/{cid}/notes", json={"kind": "comment", "text": "I take the DC"}).status_code == 201
+    o = cl.get(f"/api/dfir/cases/{cid}").get_json()
+    assert [n["kind"] for n in o["notes"]] == ["comment"]
+    assert [a["action"] for a in o["activity"]][:2] == ["comment", "update"]
+    assert cl.get("/api/dfir/from-soc/none").get_json() == []

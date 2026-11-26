@@ -49,6 +49,37 @@ async function list() {
 }
 
 // ---------------- overview ----------------
+function assignBox(cid, o) {
+  const inp = h("input", { class: "w12", value: o.assignee || "", placeholder: "unassigned", list: "dfirUsers", "aria-label": "Assignee" });
+  const dl = h("datalist", { id: "dfirUsers" });
+  api("/api/users").then((us) => fill(dl, [...new Set([ME.user, ...us.map((u) => u.user)])].filter(Boolean).map((u) => h("option", { value: u })))).catch(() => {});
+  const save = busy(async () => { await post("/api/dfir/cases/" + cid, { assignee: inp.value.trim() }); toast("Saved"); route(); });
+  return h("div", { class: "row small", "data-need": "op" }, "Assigned to", inp, dl,
+    h("button", { class: "ghost", onclick: save }, icon("content-save"), "Save"),
+    h("button", { class: "ghost", onclick: busy(async () => { inp.value = ME.user; await save({ currentTarget: document.createElement("button") }); }) }, "Take it"));
+}
+
+function pullBox(cid, o) {
+  const conn = h("select", { "aria-label": "Connector" }, h("option", { value: "" }, "connector"));
+  const tool = h("select", { "aria-label": "Tool" }, h("option", { value: "" }, "tool"));
+  const args = h("textarea", { class: "mono", rows: 3, placeholder: '{"client_id": "C.123", "flow_id": "F.456"}', "aria-label": "Arguments (JSON)" });
+  const host = h("input", { class: "w12", placeholder: "host (optional)", "aria-label": "Host" });
+  api("/api/connectors").then((cs) => cs.forEach((c) => conn.append(h("option", { value: c.name }, c.name)))).catch(() => {});
+  conn.addEventListener("change", async () => {
+    fill(tool, h("option", { value: "" }, "tool"));
+    if (!conn.value) return;
+    const ts = await api(`/api/connectors/${encodeURIComponent(conn.value)}/tools`).catch(() => []);
+    (ts || []).filter((t) => t.allowed).forEach((t) => tool.append(h("option", { value: t.name, title: t.description || "" }, t.name)));
+  });
+  return h("details", { "data-need": "op" }, h("summary", { class: "small" }, "Pull evidence from a connector (for example a Velociraptor MCP server)"),
+    h("p", { class: "muted small" }, "Calls one read-only tool and imports what it returns as an evidence file, hashed like an upload. Only tools the connector's policy allows can be called."),
+    h("div", { class: "row" }, conn, tool, host), args,
+    h("button", { class: "ghost", disabled: !!(o.work && o.work.running), onclick: busy(async () => {
+      let a = {}; if (args.value.trim()) { try { a = JSON.parse(args.value); } catch (e) { toast("Arguments are not valid JSON"); return; } }
+      await post(`/api/dfir/cases/${cid}/pull`, { connector: conn.value, tool: tool.value, arguments: a, host: host.value }); toast("Pulling"); route(); }) },
+      icon("connection"), "Pull and import"));
+}
+
 function workBanner(o) {
   const w = o.work;
   if (!w) return null;
@@ -69,18 +100,22 @@ async function overview(cid) {
     workBanner(o), h("div", { class: "kpi-row" }, kpi(o.events, "Events", `#inv/${cid}/timeline`), kpi(o.hosts.filter((x) => x.host).length, "Hosts"),
       kpi(o.detections.reduce((a, d) => a + d.n, 0), "Detections", `#inv/${cid}/timeline?detected=1`), kpi(o.sources.length, "Evidence files")),
     h("p", { class: "small muted" }, `From ${when(sp.first) || "-"} to ${when(sp.last) || "-"} (UTC).`,
-      o.attack.length ? `  ATT&CK: ${o.attack.join(", ")}` : "")));
+      o.attack.length ? `  ATT&CK: ${o.attack.join(", ")}` : ""),
+    o.soc_case ? h("p", { class: "small" }, "Opened from ", h("a", { href: "#case/" + o.soc_case }, "alert case " + o.soc_case)) : null,
+    assignBox(cid, o)));
 
   const files = h("input", { type: "file", multiple: true, "aria-label": "Evidence files" });
+  const upHost = h("input", { class: "w12", placeholder: "host (optional)", title: "For evidence that names no host, such as memory-image output", "aria-label": "Host for this evidence" });
   main.append(section("Evidence", "upload",
     h("p", { class: "muted small" }, "Windows event logs (.evtx), JSON or JSON lines (Velociraptor, Hayabusa, osquery, exported event logs), CSV (Plaso, Hayabusa, any with a time column), syslog and auth.log, .gz, and .zip collections. Each file's SHA-256 is recorded before it is read; the same file twice is skipped."),
-    h("div", { class: "row", "data-need": "op" }, files, h("button", { disabled: !!(o.work && o.work.running), onclick: busy(async () => {
+    h("div", { class: "row", "data-need": "op" }, files, upHost, h("button", { disabled: !!(o.work && o.work.running), onclick: busy(async () => {
       if (!files.files.length) { toast("Choose one or more files"); return; }
-      const fd = new FormData(); for (const f of files.files) fd.append("files", f);
+      const fd = new FormData(); for (const f of files.files) fd.append("files", f); fd.append("host", upHost.value);
       const r = await fetch(`/api/dfir/cases/${cid}/upload`, { method: "POST", body: fd });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { toast(j.error || `Upload failed (${r.status})`); return; }
       toast(`Importing ${j.files.length} file(s)`); route(); }) }, icon("upload"), "Upload and import")),
+    pullBox(cid, o),
     o.sources.length ? h("table", {}, h("thead", {}, h("tr", {}, ["File", "Kind", "Events", "Unreadable", "SHA-256", "Status"].map((x) => h("th", {}, x)))),
       h("tbody", {}, capped(o.sources.map((s) => h("tr", {}, h("td", {}, s.name, h("div", { class: "muted small" }, (s.hosts || []).slice(0, 4).join(", "))),
         h("td", { class: "small" }, s.kind), h("td", { class: "num" }, String(s.events)),
@@ -136,6 +171,11 @@ async function overview(cid) {
       h("tbody", {}, capped(an.logons.slice(0, 200).map((x) => h("tr", {}, h("td", { class: "small" }, x.account), h("td", { class: "small" }, x.source || "-"),
         h("td", { class: "num" }, String(x.ok)), h("td", { class: "num " + (x.failed > 9 ? "warn" : "") }, String(x.failed)),
         h("td", { class: "small" }, Object.entries(x.types || {}).map(([k, v]) => `${k}:${v}`).join(" ")), h("td", { class: "small" }, when(x.first)), h("td", { class: "small" }, when(x.last)))), 15, "accounts")))));
+  }
+  if ((o.activity || []).length) {
+    main.append(section("Activity", "history", h("table", {}, h("tbody", {}, capped(o.activity.map((x) => h("tr", {},
+      h("td", { class: "small" }, when(x.ts)), h("td", { class: "small" }, x.actor || "-"), h("td", { class: "small" }, x.action),
+      h("td", { class: "small muted" }, x.detail || ""))), 10, "entries")))));
   }
   main.append(section("Report and export", "export-variant", h("div", { class: "row" },
     h("a", { class: "button ghost", href: `/api/dfir/cases/${cid}/report.md`, download: "" }, icon("language-markdown-outline"), "Report (Markdown)"),
@@ -244,16 +284,25 @@ async function timeline(cid) {
 // ---------------- story ----------------
 async function story(cid) {
   const [o, s] = await Promise.all([api("/api/dfir/cases/" + cid), api(`/api/dfir/cases/${cid}/story`)]);
+  const notes = o.notes.filter((n) => n.kind !== "comment");
+  const comments = o.notes.filter((n) => n.kind === "comment");
   const kind = h("select", { "aria-label": "Note kind" }, ["hypothesis", "question", "finding", "note"].map((k) => h("option", { value: k }, k)));
   const text = h("input", { class: "grow", placeholder: "e.g. The attacker came in through RDP on WEB01", "aria-label": "Note" });
   const evs = h("input", { class: "w8", placeholder: "E12, E40", "aria-label": "Events (optional)" });
   main.append(sub(cid, "story"), section("Hypotheses, questions and findings", "lightbulb-on-outline",
-    o.notes.length ? h("table", {}, h("tbody", {}, o.notes.map((n) => h("tr", {}, h("td", { class: "small" }, n.kind), h("td", {}, n.text, h("div", {}, (n.events || []).map((x) => evLink(cid, x)))),
+    notes.length ? h("table", {}, h("tbody", {}, notes.map((n) => h("tr", {}, h("td", { class: "small" }, n.kind), h("td", {}, n.text, h("div", {}, (n.events || []).map((x) => evLink(cid, x)))),
       h("td", { class: "small muted" }, n.author || ""), h("td", {}, h("select", { "data-need": "op", "aria-label": "Status", onchange: async (e) => { await post(`/api/dfir/cases/${cid}/notes/${n.id}/status`, { status: e.target.value }); } },
         ["open", "confirmed", "refuted", "answered", "closed"].map((x) => h("option", { value: x, selected: x === n.status }, x)))))))) : h("p", { class: "muted" }, "Write down what you think happened and what you still need to know. The model sees these."),
     h("div", { class: "row", "data-need": "op" }, kind, text, evs, h("button", { onclick: busy(async () => {
       await post(`/api/dfir/cases/${cid}/notes`, { kind: kind.value, text: text.value, events: (evs.value.match(/\d+/g) || []).map(Number) }); route(); }) }, icon("plus"), "Add"))));
 
+  const say = h("textarea", { rows: 2, placeholder: "Write to the other analysts on this case", "aria-label": "Comment" });
+  main.append(section("Discussion", "comment", comments.length ? h("div", {}, comments.map((n) => h("div", { class: "card" },
+      h("div", { class: "small muted" }, `${n.author || "-"}, ${when(n.ts)}`), h("div", {}, n.text), h("div", {}, (n.events || []).map((x) => evLink(cid, x))))))
+      : h("p", { class: "muted small" }, "No comments yet."),
+    h("div", { "data-need": "op" }, say, h("button", { class: "ghost", onclick: busy(async () => {
+      if (!say.value.trim()) return; await post(`/api/dfir/cases/${cid}/notes`, { kind: "comment", text: say.value, events: (say.value.match(/\bE(\d+)\b/g) || []).map((x) => Number(x.slice(1))) }); route(); }) },
+      icon("send"), "Post"))));
   const latest = (s.stories || [])[0];
   const b = latest && latest.body;
   main.append(section("What happened", "robot-outline",

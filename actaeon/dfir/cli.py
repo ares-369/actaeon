@@ -20,6 +20,7 @@ def add_parsers(sub) -> None:
     p.add_argument("--detected", action="store_true", help="timeline/export: only events with a detection")
     p.add_argument("--limit", type=int, default=100)
     p.add_argument("--year", type=int, default=None, help="import: year for syslog lines that have none")
+    p.add_argument("--host", default="", help="import: host name for evidence that names none (memory images)")
     p.add_argument("--out", help="report/export: file to write")
     p.add_argument("--json", action="store_true")
     p.add_argument("--user", default="cli")
@@ -61,7 +62,7 @@ def run(a) -> int | None:
         bad = 0
         for f in files:
             try:
-                r = S.import_file(cfg, cid, f, f.name, actor=a.user, year=a.year)
+                r = S.import_file(cfg, cid, f, f.name, actor=a.user, year=a.year, host=a.host)
             except Exception as exc:
                 print(f"FAIL {f}: {exc}")
                 bad += 1

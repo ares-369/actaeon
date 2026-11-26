@@ -20,6 +20,8 @@ dfir:
   rule_dirs: []                    # extra Sigma folders, e.g. a SigmaHQ checkout's rules/windows
   story_events: 250                # events the model sees for the story
   evtx_dump: ""                    # optional: path to the evtx_dump tool for much faster .evtx reading
+  yara_dirs: []                    # YARA rule folders: evidence files are scanned at import
+  yara_max_mb: 512
 ```
 
 Reading `.evtx` files needs `pip install 'actaeon[dfir]'` (python-evtx, Apache-2.0).
@@ -32,9 +34,16 @@ Reading `.evtx` files needs `pip install 'actaeon[dfir]'` (python-evtx, Apache-2
 | JSON or JSON lines | Velociraptor results, Hayabusa JSONL (its detections are kept as "imported"), event logs exported as JSON, osquery, or any records with a time field |
 | CSV | Plaso l2tcsv (UTC rows) and psort's dynamic output, Hayabusa CSV, or any CSV with a time column |
 | syslog, auth.log | RFC 3164 and ISO time stamps; SSH logons, failures, sudo commands and new users are recognised. Lines without a year get `--year` (CLI) or the current year. |
+| Volatility 3 JSON | `vol -r json` output; nested rows (`__children`) are flattened with their depth and parent pid; the plugin name comes from the file name (`windows.pslist.PsList.json`) |
 | `.gz`, `.zip` | `.gz` of any text format; `.zip` collections are read member by member (at most 5000 files) |
+| A connector | "Pull evidence from a connector" calls one read-only tool (for example a Velociraptor MCP server's collection results) and imports what it returns, hashed like an upload. The connector's policy decides which tools are allowed. |
 
-Each file's SHA-256 is recorded before it is read, with its name, size, who imported it and when. The same file
+Evidence that names no host (memory-image output, for example) can be given one at upload (`--host` on the
+command line).
+
+Imports and analysis run as jobs: with `jobs.mode: queue` a worker (`actaeon worker`) runs them. Uploaded files are
+kept until their import finishes; an import cut off by a restart shows as "interrupted" with an "Import again"
+button that uses the kept file. Each file's SHA-256 is recorded before it is read, with its name, size, who imported it and when. The same file
 twice in one case is skipped. Unreadable records are counted and a few are kept as samples; the rest of the file
 is still read. All times are stored in UTC.
 
@@ -62,9 +71,57 @@ comsvcs LSASS dump, the shadow-copy deletion, LSASS access by mimikatz, procdump
 9 hosts. With the SigmaHQ Windows rules added (2,432 rules, all evaluated by the local matcher), 345 rules matched
 and analysis took 71 seconds.
 
+- **Accounts**: per account, logons, failures, hosts and sources, and any source or host first seen more than a day
+  after the account's first logon (often where lateral movement shows).
+
+## Indicators and intel
+
+"Check indicators against intel" takes addresses, DNS names and hashes from the fields that hold them, and URLs,
+domains and addresses from command lines and scripts, skips private, loopback and link-local addresses, and looks
+up the 500 most common in Actaeon's intel store and every intel connector with a `lookup` tool (Zarqa, for
+example). Only the indicator value is sent, never the event. Known indicators become high detections on the
+events that carry them; running the analyzers again keeps them.
+
+## YARA
+
+With `pip install 'actaeon[yara]'` and `dfir.yara_dirs` set, every evidence file (and every member of a zip) is
+scanned when it is imported. A match becomes an event (log `yara`) with a detection; the level comes from the
+rule's `severity`, `level` or `score` metadata (high when it has none). A rule file that does not compile is
+skipped and named in the import note.
+
+## Process tree
+
+"Process tree" on any event rebuilds the parents above its process and the children below it on that host, from
+Sysmon process GUIDs or from Security 4688 process ids and times. Events that only name a process (network,
+file, registry, process access) are mapped to the process that made them. Processes with a high or critical
+detection are marked.
+
+## Hunting what you found
+
+"Hunt for this in the live logs" on an event opens the Hunts page with a hypothesis and the event's key fields
+filled in, to check whether the same activity happens on other hosts or accounts. Nothing runs until you start
+the hunt.
+
+## Alert cases
+
+"Open an investigation" on an alert case copies its alerts and the log events its investigation found into a
+new investigation (two evidence sources, hashed like files) and links the two; the alert case then shows an
+"Investigation" button.
+
+## Working as a team
+
+An investigation has an assignee, a discussion (comments, which may name events as E123), and an activity log of
+imports, analysis, marks, notes, stories, questions and changes, with who did each and when.
+
+## ATT&CK Navigator
+
+"ATT&CK Navigator layer" downloads the investigation's techniques (scored by events with detections) as a layer
+file for the MITRE ATT&CK Navigator. The rule library's Coverage page has the same for rule coverage.
+
 ## Timeline
 
-Search words anywhere in an event, or `field:value` (for example `Image:powershell`, `TargetUserName:admin`).
+Words are searched through a full-text index (every word must appear; the last one may be the start of a word, so
+`mimi` finds `mimikatz`); `field:value` matches inside one field (for example `Image:powershell`, `TargetUserName:admin`).
 Filter by host, time range (UTC), detections only, starred only, tag or rule. Open an event to see every field,
 add tags and a comment; star the events that matter. Export the timeline (or only detections) as CSV.
 
@@ -83,9 +140,12 @@ The prompt is fitted to the model: with Ollama, `num_ctx` (minus the reply and a
 fits. The case facts take at most 40% of it; events fill the rest in priority order (starred, then detections by
 level), and the story says how many events were left out.
 
-What the check proves: every cited id is an event the model was shown. It does not prove the event supports the
-sentence. In a test with a local 7B model, one cited event was a registry backdoor listed under credential theft.
-Open the cited events before you rely on a statement.
+What the checks prove: every cited id is an event the model was shown, and each cited event is tested against
+its statement without a model: it fits when one of its detections belongs to the phase's ATT&CK tactic, or when
+it shares a significant word (a tool, host, account or file name) with the statement. Events that do not fit are
+marked with a "?", and a part where no cited event fits is flagged. This catches citations that point at
+unrelated events (in a test with a local 7B model, a registry backdoor cited for credential theft); it does not
+prove the statement is true. Open the cited events before you rely on it.
 
 Measured on a 4 GB GPU with Ollama (EVTX-ATTACK-SAMPLES case, `num_ctx: 8192`, `story_events: 40`):
 qwen2.5-coder:7b wrote the story in 93 seconds from 25 events, with every citation valid. With 250 events and a
@@ -122,10 +182,11 @@ Read-only tools: `list_investigations`, `get_investigation`, `search_investigati
 
 ## Limits
 
-- Search uses the database's LIKE matching, so it slows down on cases with millions of events.
+- `field:value` searches use LIKE matching and slow down on cases with millions of events; word searches use the
+  index (a few milliseconds on 37,000 events).
 - python-evtx is slow on large logs; use the CLI, or set `dfir.evtx_dump`.
 - Plaso l2tcsv rows in a time zone other than UTC get no time stamp; export from Plaso in UTC.
 - Registry hives, prefetch, the MFT, shimcache, amcache, SRUM and memory images are not parsed directly; process
   them with your usual tools (Plaso, Velociraptor, Volatility) and load their CSV or JSON output.
-- An import or analysis started from the web page runs in the server process; a restart in the middle leaves the
-  file marked "importing". Import it again.
+- Measured on the EVTX-ATTACK-SAMPLES case: the process tree rebuilt cmd.exe, powershell.exe, cmd.exe,
+  vssadmin.exe (the shadow-copy deletion) in order; YARA with a two-string mimikatz rule matched 4 event log files.

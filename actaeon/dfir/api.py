@@ -91,8 +91,10 @@ def register(app, jobs) -> None:
         if request.method == "POST":
             if not case_or_404(cid):
                 return bad("not found", 404)
-            S.store_for(c).update_case(cid, **{k: str(v) for k, v in body().items()
-                                               if k in ("title", "description", "status")})
+            ch = {k: str(v)[:4000] for k, v in body().items() if k in ("title", "description", "status", "assignee")}
+            S.store_for(c).update_case(cid, **ch)
+            if ch:
+                S.store_for(c).log(cid, actor(), "update", ", ".join(f"{k}: {v[:80]}" for k, v in ch.items()))
         work = job_state(cid)          # read before the overview: a job that ends in between must not leave old numbers
         o = S.overview(c, cid)
         if not o:
@@ -132,7 +134,8 @@ def register(app, jobs) -> None:
             f.save(p)
             saved.append([str(p), name])
         if not start(cid, f"importing {len(saved)} file(s)", "dfir-import",
-                     {"case_id": cid, "files": saved, "actor": actor()}):
+                     {"case_id": cid, "files": saved, "actor": actor(),
+                      "host": str(request.form.get("host", ""))[:200]}):
             for p, _ in saved:
                 Path(p).unlink(missing_ok=True)
             return bad("an import or analysis is already running for this investigation", 409)
@@ -153,6 +156,39 @@ def register(app, jobs) -> None:
         if not start(cid, "checking indicators against intel", "dfir-intel", {"case_id": cid, "actor": actor()}):
             return bad("an import or analysis is already running for this investigation", 409)
         return jsonify({"started": True}), 202
+
+    @app.route("/api/dfir/cases/<cid>/pull", methods=["POST"])
+    def dfir_pull(cid):
+        if not case_or_404(cid):
+            return bad("not found", 404)
+        b = body()
+        conn, tool = str(b.get("connector", ""))[:100], str(b.get("tool", ""))[:100]
+        args = b.get("arguments") or {}
+        if not conn or not tool or not isinstance(args, dict):
+            return bad("send connector, tool and arguments (a JSON object)")
+        from ..connectors import get_hub
+        try:
+            allowed = {t["name"] for t in get_hub(get_config()).tools(conn) if t.get("allowed")}
+        except Exception as exc:
+            return bad(f"connector {conn}: {exc}")
+        if tool not in allowed:
+            return bad(f"{conn}.{tool} is not an allowed (read-only) tool")
+        if not start(cid, f"pulling {conn}.{tool}", "dfir-pull", {"case_id": cid, "connector": conn, "tool": tool,
+                                                                 "arguments": args, "actor": actor(),
+                                                                 "host": str(b.get("host", ""))[:200]}):
+            return bad("an import or analysis is already running for this investigation", 409)
+        return jsonify({"started": True}), 202
+
+    @app.route("/api/dfir/from-soc/<sid>", methods=["GET", "POST"])
+    def dfir_from_soc(sid):
+        c = get_config()
+        if request.method == "GET":
+            return jsonify(S.store_for(c).by_soc_case(sid))
+        try:
+            r = S.from_soc_case(c, sid, actor=actor())
+        except KeyError:
+            return bad("alert case not found", 404)
+        return jsonify(r), (200 if r["existing"] else 201)
 
     @app.route("/api/dfir/cases/<cid>/sources/<sid>/retry", methods=["POST"])
     def dfir_retry(cid, sid):
@@ -190,6 +226,8 @@ def register(app, jobs) -> None:
             e = st.mark(cid, seq, star=b.get("star") if isinstance(b.get("star"), bool) else None,
                         tags=[str(t) for t in b["tags"]] if isinstance(b.get("tags"), list) else None,
                         comment=str(b["comment"]) if "comment" in b else None)
+            if e:
+                st.log(cid, actor(), "mark", f"E{seq} " + ", ".join(k for k in ("star", "tags", "comment") if k in b))
         else:
             e = st.event(cid, seq)
         return jsonify(e) if e else bad("not found", 404)
@@ -208,9 +246,11 @@ def register(app, jobs) -> None:
             return bad("not found", 404)
         b = body()
         try:
-            return jsonify(S.store_for(get_config()).add_note(
+            n = S.store_for(get_config()).add_note(
                 cid, str(b.get("kind", "note")), str(b.get("text", "")), author=actor(),
-                events=[int(x) for x in b.get("events") or [] if str(x).isdigit()][:50])), 201
+                events=[int(x) for x in b.get("events") or [] if str(x).isdigit()][:50])
+            S.store_for(get_config()).log(cid, actor(), n["kind"], n["text"][:200])
+            return jsonify(n), 201
         except ValueError as exc:
             return bad(exc)
 
@@ -232,9 +272,11 @@ def register(app, jobs) -> None:
             st = S.store_for(c)
             return jsonify({"stories": st.stories(cid, "story", 5), "answers": st.stories(cid, "answer", 20)})
         try:
-            return jsonify(ai.story(c, llm(), cid, actor=actor())), 201
+            r = ai.story(c, llm(), cid, actor=actor())
         except ValueError as exc:
             return bad(exc)
+        S.store_for(c).log(cid, actor(), "story", f"{r['events_given']} events, {r['weak_parts']} weak part(s)")
+        return jsonify(r), 201
 
     @app.route("/api/dfir/cases/<cid>/ask", methods=["POST"])
     def dfir_ask(cid):
@@ -242,9 +284,11 @@ def register(app, jobs) -> None:
         if not case_or_404(cid):
             return bad("not found", 404)
         try:
-            return jsonify(ai.ask(get_config(), llm(), cid, str(body().get("question", "")), actor=actor()))
+            r = ai.ask(get_config(), llm(), cid, str(body().get("question", "")), actor=actor())
         except ValueError as exc:
             return bad(exc)
+        S.store_for(get_config()).log(cid, actor(), "ask", r["question"][:200])
+        return jsonify(r)
 
     @app.route("/api/dfir/cases/<cid>/export.csv")
     def dfir_export(cid):

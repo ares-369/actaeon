@@ -15,7 +15,7 @@ from typing import Any
 from .. import db
 from ..soc.util import dumps, iso, loads, new_id
 
-NOTE_KINDS = ("hypothesis", "question", "finding", "note")
+NOTE_KINDS = ("hypothesis", "question", "finding", "note", "comment")
 LEVELS = ("informational", "low", "medium", "high", "critical")
 
 _SCHEMA = """
@@ -495,3 +495,7 @@ class DfirStore:
         for r in rows:
             r["body"] = loads(r["body"], {})
         return rows
+
+    def by_soc_case(self, soc_case: str) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute("SELECT id, title, created FROM dfir_cases WHERE soc_case=?", (soc_case,))]

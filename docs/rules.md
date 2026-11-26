@@ -108,6 +108,20 @@ real event before it can be marked ready.
 - Export: the zip from the Rules page or `actaeon rules export --out rules.zip [--status ready,testing]` holds
   `<status>/<title>_<id>.yml`, `.tests.json` and converted queries, plus `INDEX.txt` with versions and approvers.
 
+## Regression check
+
+`actaeon rules regress SAMPLES --baseline FILE` runs a file or folder of labelled evidence (attack samples, your
+own recorded tests) through the investigation analyzers with the current rules, in a throw-away SQLite store, and
+compares which rules match each file with the baseline. A rule that matched before and no longer does is listed
+as LOST and the command exits with 1, so it suits CI or a timer after rule changes. Record the baseline once
+with `--update`. Files that cannot be read are reported, not fatal. Measured: 41 files of the public
+EVTX-ATTACK-SAMPLES "Credential Access" folder took 97 seconds (python-evtx is most of it).
+
+## ATT&CK Navigator
+
+The Coverage page downloads rule coverage as an ATT&CK Navigator layer: the score is the number of ready rules
+for a technique, and gaps are listed with score 0 and their reasons.
+
 ## Command line
 
 ```
@@ -119,6 +133,7 @@ actaeon rules coverage
 actaeon rules draft T1059.001 [--context @advisory.txt]
 actaeon rules import PATH
 actaeon rules export --out rules.zip [--status ready]
+actaeon rules regress SAMPLES --baseline rules-baseline.json [--update]
 ```
 
 `actaeon rules test --all` suits a scheduled check or CI on an exported rule set.

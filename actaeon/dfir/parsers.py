@@ -102,7 +102,7 @@ def parse_time(v: Any, *, year: int | None = None) -> str:
 # ---------------------------------------------------------------- normalising
 
 _TIME_KEYS = re.compile(r"(?i)(^|\.)(@timestamp|timestamp|systemtime|timecreated|eventtime|event_time|datetime|"
-                        r"_ts|ts|time|_time|date|created|starttime|logtime)$")
+                        r"_ts|ts|time|_time|date|created|createtime|starttime|logtime)$")
 _HOST_KEYS = re.compile(r"(?i)(^|\.)(computer|computername|hostname|host\.name|host|fqdn|device(name)?|agent\.name|"
                         r"clientid|endpoint)$")
 _USER_KEYS = re.compile(r"(?i)(^|\.)(targetusername|subjectusername|user\.name|username|user|account(name)?|upn)$")
@@ -208,6 +208,15 @@ def summary(d: dict) -> str:
         return f"Service {_g(d, 'param1')} is {_g(d, 'param2')}"
     if eid == "4104":
         return "PowerShell script block: " + _g(d, "ScriptBlockText")[:300]
+    if d.get("vol_plugin"):                                   # Volatility 3 rows
+        if "ForeignAddr" in d:
+            return (f"{_g(d, 'Owner')} (pid {_g(d, 'PID')}) {_g(d, 'Proto')} {_g(d, 'LocalAddr')}:{_g(d, 'LocalPort')} -> "
+                    f"{_g(d, 'ForeignAddr')}:{_g(d, 'ForeignPort')} {_g(d, 'State')}")
+        if "Protection" in d:
+            return f"{_g(d, 'Process', 'ImageFileName')} (pid {_g(d, 'PID')}) memory {_g(d, 'Protection')} at {_g(d, 'Start VPN')}"
+        if "ImageFileName" in d:
+            return (f"{'  ' * int(d.get('tree_depth') or 0)}{_g(d, 'ImageFileName')} pid {_g(d, 'PID')} ppid {_g(d, 'PPID')}"
+                    + (f": {_g(d, 'Args', 'Cmd')}" if _g(d, "Args", "Cmd") else ""))
     if d.get("RuleTitle"):
         det = d.get("Details")
         return f"{d['RuleTitle']}: {det if isinstance(det, str) else ''}".strip(": ")
@@ -234,7 +243,8 @@ def normalise(data: dict, *, year: int | None = None, ts: str = "") -> dict:
                 if ts:
                     break
     return {"ts": ts, "host": _pick(data, _HOST_KEYS)[:200], "channel": str(data.get("Channel", "") or
-                                                                          data.get("program", "") or "")[:120],
+                                                                          data.get("program", "") or
+                                                                          data.get("vol_plugin", "") or "")[:120],
             "event_id": eid[:20], "user": _pick(data, _USER_KEYS)[:200],
             "process": _pick(data, _PROC_KEYS, avoid=("parent",))[:400], "summary": summary(data)[:500], "data": data}
 
@@ -367,7 +377,29 @@ def _from_obj(obj: dict, year: int | None) -> dict:
     return normalise(d, year=year)
 
 
-def _json(fh: io.TextIOBase, year: int | None) -> Iterator[dict]:
+def _vol_rows(rows: list, depth: int = 0, parent: dict | None = None) -> Iterator[dict]:
+    """Volatility 3 JSON (``vol -r json``): rows with nested ``__children`` (process trees and the like)."""
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        kids = r.get("__children") or []
+        row = {k: v for k, v in r.items() if k != "__children"}
+        if depth:
+            row["tree_depth"] = depth
+        if parent and "PID" in parent and "PPID" not in row:
+            row["PPID"] = parent["PID"]
+        yield row
+        yield from _vol_rows(kids, depth + 1, row)
+
+
+def _plugin(name: str) -> str:
+    """windows.pslist.PsList.json or windows.netscan.json -> windows.pslist / windows.netscan."""
+    stem = Path(name).name.split(".json")[0]
+    parts = [p for p in stem.split(".") if p]
+    return ".".join(parts[:2]) if len(parts) >= 2 and parts[0] in ("windows", "linux", "mac") else stem
+
+
+def _json(fh: io.TextIOBase, year: int | None, name: str = "") -> Iterator[dict]:
     head = fh.read(1)
     while head and head.isspace():
         head = fh.read(1)
@@ -376,6 +408,11 @@ def _json(fh: io.TextIOBase, year: int | None) -> Iterator[dict]:
             data = json.loads(head + fh.read())
         except ValueError as exc:
             raise ParseError(f"not valid JSON: {exc}") from exc
+        if any(isinstance(r, dict) and "__children" in r for r in data[:50]):
+            plugin = _plugin(name)
+            for row in _vol_rows(data):
+                yield normalise({**flat(row), "vol_plugin": plugin}, year=year)
+            return
         for i, obj in enumerate(data):
             yield _from_obj(obj, year) if isinstance(obj, dict) else {"_error": f"item {i} is not an object"}
         return
@@ -475,11 +512,11 @@ def kind_of(name: str, head: bytes) -> str:
     return ""
 
 
-def _text(path: Path, kind: str, year: int | None, opener=None) -> Iterator[dict]:
+def _text(path: Path, kind: str, year: int | None, opener=None, name: str = "") -> Iterator[dict]:
     raw = opener() if opener else path.open("rb")
     with io.TextIOWrapper(raw, encoding="utf-8-sig", errors="replace", newline="") as fh:
         if kind == "json":
-            yield from _json(fh, year)
+            yield from _json(fh, year, name)
         elif kind == "csv":
             yield from _csv(fh, year)
         else:
@@ -508,13 +545,13 @@ def parse_file(path: Path, name: str = "", *, year: int | None = None, max_unpac
         if ik not in ("json", "csv", "syslog"):
             raise ParseError(f"{name}: only text logs are read from .gz files")
         yield {"_kind": f"{ik}.gz"}
-        yield from _text(path, ik, year, opener=lambda: gzip.open(path, "rb"))  # noqa: SIM115 - closed by the TextIOWrapper in _text
+        yield from _text(path, ik, year, opener=lambda: gzip.open(path, "rb"), name=inner)  # noqa: SIM115 - closed by the TextIOWrapper in _text
     elif kind == "zip":
         yield {"_kind": "zip"}
         yield from _zip(path, year, max_unpacked, evtx_dump)
     else:
         yield {"_kind": kind}
-        yield from _text(path, kind, year)
+        yield from _text(path, kind, year, name=name)
 
 
 def _zip(path: Path, year: int | None, max_unpacked: int, evtx_dump: str = "") -> Iterator[dict]:

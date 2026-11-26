@@ -77,13 +77,21 @@ def triage(p: dict, ctl, jobs) -> dict:
 
 def dfir_import(p: dict, ctl, jobs) -> dict:
     from .dfir.service import import_uploads
-    return {"files": import_uploads(_cfg(), p["case_id"], p["files"], actor=p.get("actor", ""))}
+    return {"files": import_uploads(_cfg(), p["case_id"], p["files"], actor=p.get("actor", ""),
+                                    host=p.get("host", ""))}
 
 
 def dfir_analyze(p: dict, ctl, jobs) -> dict:
     from .dfir.service import analyze
     res = analyze(_cfg(), p["case_id"], actor=p.get("actor", ""))
     return {"rules": res["sigma"]["rules"], "hits": res["sigma"]["hits"]}
+
+
+def dfir_pull(p: dict, ctl, jobs) -> dict:
+    from .dfir.service import pull_from_connector
+    r = pull_from_connector(_cfg(), p["case_id"], p["connector"], p["tool"], p.get("arguments") or {},
+                            actor=p.get("actor", ""), host=p.get("host", ""))
+    return {"events": r.get("events"), "status": r.get("status")}
 
 
 def dfir_intel(p: dict, ctl, jobs) -> dict:
@@ -95,7 +103,7 @@ def dfir_intel(p: dict, ctl, jobs) -> dict:
 TASKS: dict[str, Any] = {"triage": triage, "hunt": hunt, "replay": replay, "sweep": sweep, "actor-sweep": actor_sweep,
                          "web-intel": web_intel, "drift": drift, "autopilot": autopilot, "chat": chat, "ask": assistant,
                          "ticket-reply": ticket_reply, "dfir-import": dfir_import, "dfir-analyze": dfir_analyze,
-                         "dfir-intel": dfir_intel}
+                         "dfir-intel": dfir_intel, "dfir-pull": dfir_pull}
 
 
 def run_task(name: str, params: dict, ctl=None, *, jobs=None) -> dict:

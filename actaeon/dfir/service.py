@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import secrets
 import threading
 from pathlib import Path
 from typing import Any
@@ -41,14 +42,16 @@ def uploads_dir(cfg, cid: str) -> Path:
     return p
 
 
-def import_uploads(cfg, cid: str, files: list, *, actor: str) -> list[dict]:
+def import_uploads(cfg, cid: str, files: list, *, actor: str, host: str = "") -> list[dict]:
     out = []
-    for path, name in files:
+    for item in files:
+        path, name = item[0], item[1]
         p = Path(path)
         if not p.exists():
             out.append({"name": name, "status": "failed", "note": "the uploaded file is gone"})
             continue
-        r = import_file(cfg, cid, p, name, actor=actor, keep=p)
+        r = import_file(cfg, cid, p, name, actor=actor, keep=p, host=host,
+                        origin=item[2] if len(item) > 2 else "upload")
         out.append(r)
         if r.get("status") == "done" or r.get("duplicate"):
             p.unlink(missing_ok=True)
@@ -83,7 +86,8 @@ def retry_source(cfg, cid: str, sid: str, *, actor: str) -> list:
 
 
 def import_file(cfg, cid: str, path: Path, name: str, *, actor: str, year: int | None = None,
-                keep: Path | None = None, store: DfirStore | None = None) -> dict:
+                keep: Path | None = None, store: DfirStore | None = None, host: str = "",
+                origin: str = "") -> dict:
     """Parse one evidence file into the case. The file's SHA-256 is recorded first; the same file twice is skipped."""
     st = store or store_for(cfg)
     if not st.case(cid):
@@ -97,7 +101,9 @@ def import_file(cfg, cid: str, path: Path, name: str, *, actor: str, year: int |
     with _lock(cid):
         sid = st.add_source(cid, name=name, sha256=digest, size=path.stat().st_size, actor=actor)
         if keep:
-            st.set_source(sid, upload_path=str(keep), origin="upload")
+            st.set_source(sid, upload_path=str(keep), origin=origin or "upload")
+        elif origin:
+            st.set_source(sid, origin=origin)
         seq = st.next_seq(cid)
         room = dc.max_events_per_case - st.count(cid)
         kind, members, errors, samples, hosts = "", [], 0, [], set()
@@ -121,6 +127,8 @@ def import_file(cfg, cid: str, path: Path, name: str, *, actor: str, year: int |
                 if n >= room:
                     note = f"stopped at dfir.max_events_per_case ({dc.max_events_per_case} events per case)"
                     break
+                if host and not ev["host"]:                      # e.g. a memory image's output names no host
+                    ev["host"] = host[:200]
                 batch.append((seq, ev))
                 seq += 1
                 n += 1
@@ -277,3 +285,88 @@ def check_intel(cfg, cid: str, *, actor: str = "") -> dict:
         res = check(cfg, st, cid, hub=hub)
     st.log(cid, actor, "check indicators", f"{res['checked']} checked, {res['matched']} known")
     return res
+
+
+def pull_from_connector(cfg, cid: str, connector: str, tool: str, arguments: dict, *, actor: str,
+                        host: str = "") -> dict:
+    """Call one read-only connector tool (a Velociraptor MCP server's collection results, for example) and
+    import what it returns as an evidence file. The connector's own policy decides which tools may be called."""
+    import json as _json
+
+    from ..connectors import get_hub
+    from ..hunt.signals import payload
+    st = store_for(cfg)
+    if not st.case(cid):
+        raise KeyError(cid)
+    if not isinstance(arguments, dict):
+        raise ValueError("arguments must be a JSON object")
+    hub = get_hub(cfg)
+    tools = {t["name"]: t for t in hub.tools(connector)}
+    if tool not in tools or not tools[tool].get("allowed"):
+        raise ValueError(f"{connector}.{tool} is not an allowed (read-only) tool")
+    r = hub.call(connector, tool, arguments, actor=f"dfir {actor}".strip(), hunt_id=f"dfir-{cid}",
+                 max_bytes=of(cfg).max_upload_mb << 20)
+    if r.get("is_error"):
+        raise ValueError(f"the tool returned an error: {payload(r.get('content') or '')[:300]}")
+    text = payload(r.get("content") or "")
+    try:
+        data = _json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict):                     # the rows are usually under a key
+        rows = next((data[k] for k in ("rows", "results", "hits", "events", "items", "data") if isinstance(data.get(k), list)), None)
+        if rows is not None:
+            text = "\n".join(_json.dumps(x) for x in rows if isinstance(x, dict))
+    name = f"{connector}.{tool}.jsonl"
+    p = uploads_dir(cfg, cid) / f"pull-{secrets.token_hex(4)}-{name}"
+    p.write_text(text, encoding="utf-8")
+    try:
+        res = import_file(cfg, cid, p, name, actor=actor, host=host, origin=f"connector {connector}.{tool}")
+    finally:
+        p.unlink(missing_ok=True)
+    st.log(cid, actor, "pull", f"{connector}.{tool} {_json.dumps(arguments)[:200]}")
+    return res
+
+
+def from_soc_case(cfg, soc_case_id: str, *, actor: str) -> dict:
+    """Open an investigation from an alert case: its alerts and the log events its investigation found become
+    evidence (two sources, hashed like any file)."""
+    import json as _json
+
+    from ..access import can_see
+    from ..rules.testing import events_from_result
+    from ..soc.service import store_for as soc_store
+    sc = soc_store(cfg).get_case(soc_case_id)
+    if not sc or not can_see(sc.get("restricted") or []):
+        raise KeyError(soc_case_id)
+    st = store_for(cfg)
+    existing = st.by_soc_case(soc_case_id)
+    if existing:
+        return {"id": existing[0]["id"], "existing": True}
+    c = st.create_case(f"Alert case: {sc.get('title') or soc_case_id}"[:300],
+                       (f"Opened from alert case {soc_case_id}. AI verdict: {sc.get('verdict') or '-'}. "
+                        f"{sc.get('summary') or ''}")[:4000], actor=actor)
+    st.update_case(c["id"], soc_case=soc_case_id)
+    folder = uploads_dir(cfg, c["id"])
+    files = []
+    alerts = [{**(a.get("raw") or {}), "alert_title": a.get("title"), "alert_rule": a.get("rule_name"),
+               "alert_severity": a.get("severity_label"), "timestamp": a.get("ts")} for a in sc.get("alerts") or []]
+    if alerts:
+        p = folder / f"soc-{soc_case_id}-alerts.jsonl"
+        p.write_text("\n".join(_json.dumps(x, default=str) for x in alerts), encoding="utf-8")
+        files.append((p, f"alert case {soc_case_id} alerts.jsonl"))
+    found = []
+    for s in sc.get("steps") or []:
+        if s.get("kind") == "call" and s.get("ok"):
+            found += events_from_result(s.get("result") or "", limit=200)
+    if found:
+        p = folder / f"soc-{soc_case_id}-evidence.jsonl"
+        p.write_text("\n".join(_json.dumps(x, default=str) for x in found[:20000]), encoding="utf-8")
+        files.append((p, f"alert case {soc_case_id} investigation results.jsonl"))
+    for p, name in files:
+        try:
+            import_file(cfg, c["id"], p, name, actor=actor, origin=f"alert case {soc_case_id}")
+        finally:
+            p.unlink(missing_ok=True)
+    st.log(c["id"], actor, "opened from alert case", soc_case_id)
+    return {"id": c["id"], "existing": False, "events": st.count(c["id"])}

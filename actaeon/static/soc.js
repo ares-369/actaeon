@@ -48,6 +48,20 @@ function tipShow(evt, lines) {
 }
 const tipHide = () => tipEl().classList.add("hidden");
 
+// Open an offline investigation from this case (its alerts and the events its investigation found become evidence).
+function dfirButton(c) {
+  const slot = h("span");
+  api("/api/dfir/status").then(async (st) => {
+    if (!st.enabled) return;
+    const have = await api("/api/dfir/from-soc/" + c.id).catch(() => []);
+    if (have.length) { fill(slot, h("a", { class: "button ghost", href: "#inv/" + have[0].id }, icon("folder-search-outline"), "Investigation")); return; }
+    fill(slot, h("button", { class: "ghost", "data-need": "op", title: "Copy the alerts and the events found into an offline investigation",
+      onclick: async (e) => { e.currentTarget.disabled = true; const r = await post("/api/dfir/from-soc/" + c.id); location.hash = "inv/" + r.id; } },
+      icon("folder-search-outline"), "Open an investigation"));
+  }).catch(() => {});
+  return slot;
+}
+
 // ---------------- Queue ----------------
 async function queue(filter) {
   filter = filter || "open";
@@ -108,6 +122,7 @@ async function caseDetail(id) {
       h("button", { class: "ghost", "data-need": "op", title: "Start a full hunt for the same activity elsewhere",
         onclick: async () => { const r = await post(`/api/cases/${c.id}/hunt`); toast("Hunt started"); location.hash = "hunt/" + r.hunt_id; } },
         icon("target"), "Hunt this"),
+      dfirButton(c),
       h("a", { class: "button ghost", href: `/api/cases/${c.id}/report.md` }, icon("language-markdown-outline"), "Report"),
       h("a", { class: "button ghost", href: `/api/cases/${c.id}/evidence.json`, title: "Sealed evidence bundle (JSON)" }, icon("lock"), "Evidence")),
     c.error ? h("p", { class: "bad" }, c.error) : null);
