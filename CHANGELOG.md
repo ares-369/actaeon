@@ -7,6 +7,20 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Added
+
+- Rule library (`rules:`, off by default; docs/rules.md): Sigma rules with versions and a draft, testing, ready,
+  retired status. Each rule has sample-event tests that run locally with a built-in Sigma matcher (no log platform
+  needed). A rule can be marked ready only with passing tests, at least one real event it must catch, one it must
+  not, no check errors, and an approver other than the last editor. Checks warn about noisy values, missing ATT&CK
+  tags, fields never seen in your data and duplicate logic.
+- ATT&CK coverage by ready rules, with gaps from hunts that found threats, true-positive cases and
+  `rules.priorities`. A model can draft a rule for a gap; its example events are marked synthetic and never count
+  as real tests.
+- A hunt's detection draft can be added to the library; the events behind the hunt's findings become real tests.
+- `actaeon rules` (list, show, test, lint, coverage, draft, import, export), a zip export, and read-only MCP tools
+  `list_rules`, `get_rule`, `rule_coverage`. Rules are never deployed into a log platform.
+
 ## [0.5.1-beta] — 2026-11-24
 
 ### Added

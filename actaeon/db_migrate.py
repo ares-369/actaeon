@@ -31,9 +31,10 @@ def _create_tables(data_dir: Path) -> None:
     from .intel import IntelStore
     from .jobs import JobManager
     from .leads import LeadStore
+    from .rules.store import RuleStore
     hp = data_dir / "hunts.sqlite"
     for cls in (HuntStore, Library, HuntMemory, LeadStore, ChatLog, DetectionStore, Conversations, EntityStore,
-                DriftStore):
+                DriftStore, RuleStore):
         cls(hp)
     IntelStore(data_dir / "intel.sqlite")
     AuditLog(data_dir / "audit.sqlite")

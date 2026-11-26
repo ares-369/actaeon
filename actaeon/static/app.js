@@ -66,11 +66,12 @@ function route() {
   const [tab, arg] = path.split("/");
   window.ROUTE_QUERY = new URLSearchParams(query || "");  // e.g. #hunts?hypothesis=...&context=... from another tool
   const navTab = { hunt: "hunts", lead: "leads", case: "cases", approvals: "cases", socalerts: "cases", socdash: "cases",
-    tuning: "cases" }[tab] || tab;
+    tuning: "cases", rule: "rules", rulecov: "rules" }[tab] || tab;
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === navTab));
   const pages = { leads, lead: () => leadDetail(arg), hunts, hunt: () => huntDetail(arg), ask, library, intel,
     entities: () => entities(arg), coverage, reports, connectors, settings };
   Object.assign(pages, window.SOC_PAGES || {});   // alert triage pages (soc.js)
+  Object.assign(pages, window.RULES_PAGES || {}); // detection rule library (rules.js)
   const token = ++navToken;
   const view = h("div");
   main = view;
@@ -513,6 +514,9 @@ function detectionBox(hu) {
     (d.problems || []).length ? h("ul", {}, d.problems.map((p) => h("li", { class: "warn small" }, p))) : null,
     d.sigma ? [h("h3", {}, "Sigma draft"), h("pre", {}, d.sigma)] : null,
     d.notes ? h("p", { class: "small" }, d.notes) : null,
+    d.sigma && d.valid && window.RULES_ON ? h("button", { "data-need": "op", class: "ghost", onclick: async (e) => { e.target.disabled = true;
+      try { const r = await post(`/api/rules/from-hunt/${hu.id}`, { sigma: d.sigma }); location.hash = "rule/" + r.id; } finally { e.target.disabled = false; } } },
+      icon("shield-plus"), "Add to the rule library") : null,
     (d.converted || []).length ? [h("h3", {}, "Converted for your connectors (pySigma)"),
       ...d.converted.map((c) => h("div", {}, h("div", { class: "muted small" }, `${c.connector} (${c.backend})`
         + (c.backtest ? (c.backtest.error ? `  backtest: ${c.backtest.error}` : `  ${c.backtest.matches ?? "?"} match(es) in ${c.backtest.days} days`) : "")),

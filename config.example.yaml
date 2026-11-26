@@ -119,6 +119,17 @@ soc:
     #    arguments: {hostname: "{target}"}
     #    undo: {tool: release_host, arguments: {hostname: "{target}"}, kind: reversible}
 
+# Detection rule library (docs/rules.md): Sigma rules with versions, sample-event tests, a review step
+# and ATT&CK coverage. Rules are never pushed into a log platform; export them for your own review.
+rules:
+  enabled: false
+  min_real_tests: 1              # real events a rule must catch before it can be marked ready
+  min_no_match_tests: 1          # events it must not catch
+  allow_self_approval: false     # true: the last editor may also mark a rule ready (one-person teams)
+  field_map: {}                  # Sigma field -> your field names, e.g. {Image: ["data.win.eventdata.image"]}
+  priorities: []                 # ATT&CK techniques you want rules for, e.g. [T1059.001, T1003.001]
+  draft_samples: true            # model drafts come with example events (marked synthetic, never count as real)
+
 # Describe your environment so hunts fit it (all optional).
 environment: {}
 #  summary: "Mostly Windows endpoints, a few Linux web servers, one cloud tenant."

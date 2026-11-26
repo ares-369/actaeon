@@ -668,6 +668,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     p_w.add_argument("--scheduler", action="store_true", help="also run the scheduler (one process gets the lock)")
     from .soc import cli as soc_cli
     soc_cli.add_parsers(sub)
+    from .rules import cli as rules_cli
+    rules_cli.add_parsers(sub)
     p_demo = sub.add_parser("demo", help="set up a demo with labelled sample data (and optionally run a hunt)")
     p_demo.add_argument("--dir", default="", help="demo home (default ~/.actaeon-demo)")
     p_demo.add_argument("--offline", action="store_true", help="use a scripted run instead of a model (not AI)")
@@ -746,6 +748,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     soc_rc = soc_cli.run(a)
     if soc_rc is not None:
         sys.exit(soc_rc)
+    rules_rc = rules_cli.run(a)
+    if rules_rc is not None:
+        sys.exit(rules_rc)
     if a.cmd == "hunt":
         sys.exit(cmd_hunt(a))
     if a.cmd == "intel":

@@ -97,6 +97,7 @@ class Config:
     path: Path
     allow_unauthenticated_network: bool = False
     soc: Any = None            # alert triage settings (actaeon/soc/config.py)
+    rules: Any = None          # detection rule library (actaeon/rules/config.py)
 
     def secret(self, name: str) -> str:
         return os.getenv(name, "") or ""
@@ -174,6 +175,8 @@ def load_config() -> Config:
     specs = parse_connectors(list(data.get("connectors", []) or []))  # fail fast on a bad connector
     from .soc.config import parse as parse_soc
     soc = parse_soc(data.get("soc"), {s.name for s in specs})
+    from .rules.config import parse as parse_rules
+    rules = parse_rules(data.get("rules"))
     intel = data.get("intel", {}) or {}
     intel.setdefault("local", True)
     from .intel.feeds import validate_feed
@@ -215,7 +218,7 @@ def load_config() -> Config:
         allow_unauthenticated_network=(
             _truthy(os.getenv("ACTAEON_ALLOW_UNAUTHENTICATED_NETWORK", ""))
             or bool(srv.get("allow_unauthenticated_network", False))),
-        soc=soc,
+        soc=soc, rules=rules,
     )
 
 

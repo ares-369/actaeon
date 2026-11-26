@@ -151,6 +151,8 @@ def build(cfg, jobs, *, role_of=lambda: "admin", llm=None, hub=None) -> McpServe
 
     from .soc.mcp import add_tools as add_case_tools
     add_case_tools(add, cfg, jobs, work=WORK)
+    from .rules.mcp import add_tools as add_rule_tools
+    add_rule_tools(add, cfg)
 
     expose = mcp_cfg.get("expose")
     if expose:

@@ -8,7 +8,7 @@ CSS = ROOT / "actaeon/static/mdi/css/icons.css"
 
 
 def _named() -> set[str]:
-    js = (ROOT / "actaeon/static/app.js").read_text() + (ROOT / "actaeon/static/soc.js").read_text()
+    js = "".join((ROOT / "actaeon/static" / n).read_text() for n in ("app.js", "soc.js", "rules.js"))
     html = "".join((ROOT / "actaeon/templates" / n).read_text() for n in ("index.html", "login.html"))
     names = set(re.findall(r"mdi-([a-z0-9-]+)", js + html)) - {"set"}
     names |= set(re.findall(r'\bicon\("([a-z0-9-]+)"\)', js))

@@ -235,6 +235,8 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
 
     from .soc.api import register as register_soc
     register_soc(app, jobs, start_scheduler=start_scheduler)
+    from .rules.api import register as register_rules
+    register_rules(app)
 
     def _actor():
         from flask import g
