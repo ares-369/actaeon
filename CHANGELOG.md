@@ -7,6 +7,8 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.6.0-beta] — 2026-11-26
+
 ### Added
 
 - Rule library (`rules:`, off by default; docs/rules.md): Sigma rules with versions and a draft, testing, ready,
