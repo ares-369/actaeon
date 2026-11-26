@@ -183,7 +183,8 @@ Read-only tools: `list_investigations`, `get_investigation`, `search_investigati
 ## Limits
 
 - `field:value` searches use LIKE matching and slow down on cases with millions of events; word searches use the
-  index (a few milliseconds on 37,000 events).
+  index on SQLite (a few milliseconds on 37,000 events). On PostgreSQL word searches match substrings without an
+  index, so they slow down on very large cases there.
 - python-evtx is slow on large logs; use the CLI, or set `dfir.evtx_dump`.
 - Plaso l2tcsv rows in a time zone other than UTC get no time stamp; export from Plaso in UTC.
 - Registry hives, prefetch, the MFT, shimcache, amcache, SRUM and memory images are not parsed directly; process

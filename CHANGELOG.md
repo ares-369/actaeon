@@ -34,7 +34,7 @@ behaviour may still change between releases.
   significant word); events that do not fit are marked and a part with no fitting event is flagged.
 - Investigations: imports, analysis, intel checks and connector pulls run as jobs (queue-mode workers run them);
   uploads are kept until imported and an interrupted import can run again.
-- Investigations: word search through a full-text index (FTS5, or a GIN index on PostgreSQL).
+- Investigations: word search through a full-text index on SQLite (FTS5); substring matching on PostgreSQL.
 - Investigations: process tree around any event; accounts view with sources and hosts first seen late.
 - Investigations: check indicators against the intel store and intel connectors (Zarqa); YARA scanning of evidence
   at import (extra `actaeon[yara]`); Volatility 3 JSON; pull evidence from a read-only connector tool; a host for

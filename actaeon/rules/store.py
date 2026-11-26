@@ -17,6 +17,8 @@ from .. import db
 from ..soc.util import dumps, iso, loads
 
 STATUSES = ("draft", "testing", "ready", "retired")
+_READY: set[tuple] = set()
+_READY_LOCK = threading.Lock()
 EXPECT = ("match", "no_match")
 ORIGINS = ("real", "synthetic")
 
@@ -74,8 +76,13 @@ class RuleStore:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
-        with self._conn() as c:
-            c.executescript(_SCHEMA)
+        key = (str(self.path), db.url() or "", db.schema() if db.is_pg() else "")
+        with _READY_LOCK:                 # once per process and database (see dfir/store.py)
+            if key in _READY:
+                return
+            with self._conn() as c:
+                c.executescript(_SCHEMA)
+            _READY.add(key)
 
     def _conn(self):
         return db.connect(self.path)
@@ -182,7 +189,7 @@ class RuleStore:
     def delete(self, rule_id: str) -> None:
         with self._lock, self._conn() as c:
             for t in ("rules_tests", "rules_runs", "rules_versions"):
-                c.execute(f"DELETE FROM {t} WHERE rule_id=?", (rule_id,))
+                c.execute(f"DELETE FROM {t} WHERE rule_id=?", (rule_id,))  # nosec B608 - fixed table names
             c.execute("DELETE FROM rules_rules WHERE id=?", (rule_id,))
 
     def by_fingerprint(self, fp: str) -> list[str]:

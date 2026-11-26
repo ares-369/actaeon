@@ -47,11 +47,9 @@ CREATE TABLE IF NOT EXISTS dfir_activity (
   id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT, ts TEXT, actor TEXT, action TEXT, detail TEXT);
 CREATE INDEX IF NOT EXISTS dfir_activity_case ON dfir_activity(case_id);
 """
-# Full-text index over each event's summary and field values. SQLite: an FTS5 table (case_id and seq unindexed);
-# PostgreSQL: a GIN index on the same text (the 'simple' configuration, like FTS5's default: no stemming).
+# Full-text index over each event's summary and field values (SQLite: an FTS5 table, case_id and seq unindexed).
+# On PostgreSQL word search matches substrings instead (see search()).
 _FTS_SQLITE = "CREATE VIRTUAL TABLE IF NOT EXISTS dfir_fts USING fts5(case_id UNINDEXED, seq UNINDEXED, text)"
-_FTS_PG = ("CREATE INDEX IF NOT EXISTS dfir_events_fts ON dfir_events USING GIN "
-           "(to_tsvector('simple', coalesce(summary,'') || ' ' || coalesce(data,'')))")
 _WORD = re.compile(r"[\w-]+")
 
 
@@ -69,6 +67,9 @@ def fts_query(words: str) -> str:
     parts[-1] += "*"
     return " AND ".join(parts)
 
+_READY: set[tuple] = set()
+_READY_LOCK = threading.Lock()
+
 ORDER_COLS = {"ts": "ts", "-ts": "ts DESC", "level": "level DESC, ts", "host": "host, ts"}
 
 
@@ -80,15 +81,23 @@ class DfirStore:
         self.scratch = scratch
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        # The schema is checked once per process and database: on PostgreSQL even CREATE INDEX IF NOT EXISTS takes
+        # a table lock, and running it on every request deadlocked against a running import or analysis.
+        key = (str(self.path), scratch, db.url() if self._pg() else "", db.schema() if self._pg() else "")
+        with _READY_LOCK:
+            if key in _READY:
+                return
+            self._setup()
+            _READY.add(key)
+
+    def _setup(self) -> None:
         with self._conn() as c:
             c.executescript(_SCHEMA)
             for col in ("job_id", "job_what", "assignee", "soc_case"):
                 db.add_column(c, "dfir_cases", col, "TEXT")
             for col in ("upload_path", "origin"):
                 db.add_column(c, "dfir_sources", col, "TEXT")
-            if self._pg():
-                c.execute(_FTS_PG)
-            else:
+            if not self._pg():
                 c.execute(_FTS_SQLITE)
         if not self._pg():
             self._backfill_fts()
@@ -311,11 +320,11 @@ class DfirStore:
         if words:
             fq = fts_query(" ".join(words))
             if fq and self._pg():
-                toks = re.findall(r"\w+", " ".join(words))[:8]
-                tsq = " & ".join([*toks[:-1], toks[-1] + ":*"]) if toks else ""
-                where.append("to_tsvector('simple', coalesce(e.summary,'') || ' ' || coalesce(e.data,'')) "
-                             "@@ to_tsquery('simple', ?)")
-                args.append(tsq)
+                # PostgreSQL's text parser keeps addresses, paths and versions as single tokens, so prefix queries
+                # miss parts of them; match each word as a substring instead (what SQLite's index finds, and more).
+                for w in words[:8]:
+                    where.append("(e.summary ILIKE ? OR e.data ILIKE ?)")
+                    args += [f"%{w}%", f"%{w}%"]
             elif fq:
                 where.append("e.seq IN (SELECT seq FROM dfir_fts WHERE dfir_fts MATCH ? AND case_id=?)")
                 args += [fq, cid]
