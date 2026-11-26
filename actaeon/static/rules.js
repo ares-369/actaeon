@@ -149,7 +149,8 @@ async function coverage() {
     h("p", { class: "muted small" }, "The model sees the technique, your environment profile, field names from your data and events from hunts that found it. Its example events are marked synthetic and never count as real tests."),
     ctx, h("div", { class: "row" }, tech, h("button", { onclick: busy(() => draft(tech.value.trim())) }, icon("file-code-outline"), "Draft")))));
   const rows = cov.techniques;
-  main.append(section("ATT&CK coverage by rules", "grid", h("p", { class: "muted small" }, cov.note),
+  main.append(section("ATT&CK coverage by rules", "grid", h("p", { class: "muted small" }, cov.note,
+    "  ", h("a", { href: "/api/rules/coverage/navigator.json", download: "" }, "Download as an ATT&CK Navigator layer")),
     rows.length ? h("table", {}, h("thead", {}, h("tr", {}, ["Technique", "Rules", "Why it matters", ""].map((x) => h("th", {}, x)))),
       h("tbody", {}, rows.map((x) => h("tr", {},
         h("td", {}, h("b", {}, x.technique), " ", x.name, h("div", { class: "muted small" }, (x.tactics || []).join(", "))),

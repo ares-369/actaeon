@@ -285,7 +285,7 @@ def run_profile(store, cid: str, *, burst: int = 10, window_min: int = 30) -> tu
 
 
 def run_all(cfg, dcfg, store, cid: str) -> dict[str, Any]:
-    store.clear_detections(cid, ("library", "builtin", "folder", "imported", "analyzer"))
+    store.clear_detections(cid, ("library", "builtin", "folder", "imported", "analyzer"))   # intel, yara stay
     rules, skipped = load_rules(cfg, dcfg)
     sig = run_sigma(store, cid, rules, max_hits=dcfg.max_rule_hits)
     sig["skipped"] = skipped[:200]

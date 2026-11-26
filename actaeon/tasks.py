@@ -86,9 +86,16 @@ def dfir_analyze(p: dict, ctl, jobs) -> dict:
     return {"rules": res["sigma"]["rules"], "hits": res["sigma"]["hits"]}
 
 
+def dfir_intel(p: dict, ctl, jobs) -> dict:
+    from .dfir.service import check_intel
+    res = check_intel(_cfg(), p["case_id"], actor=p.get("actor", ""))
+    return {"checked": res["checked"], "matched": res["matched"]}
+
+
 TASKS: dict[str, Any] = {"triage": triage, "hunt": hunt, "replay": replay, "sweep": sweep, "actor-sweep": actor_sweep,
                          "web-intel": web_intel, "drift": drift, "autopilot": autopilot, "chat": chat, "ask": assistant,
-                         "ticket-reply": ticket_reply, "dfir-import": dfir_import, "dfir-analyze": dfir_analyze}
+                         "ticket-reply": ticket_reply, "dfir-import": dfir_import, "dfir-analyze": dfir_analyze,
+                         "dfir-intel": dfir_intel}
 
 
 def run_task(name: str, params: dict, ctl=None, *, jobs=None) -> dict:

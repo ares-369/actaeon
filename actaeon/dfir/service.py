@@ -83,9 +83,9 @@ def retry_source(cfg, cid: str, sid: str, *, actor: str) -> list:
 
 
 def import_file(cfg, cid: str, path: Path, name: str, *, actor: str, year: int | None = None,
-                keep: Path | None = None) -> dict:
+                keep: Path | None = None, store: DfirStore | None = None) -> dict:
     """Parse one evidence file into the case. The file's SHA-256 is recorded first; the same file twice is skipped."""
-    st = store_for(cfg)
+    st = store or store_for(cfg)
     if not st.case(cid):
         raise KeyError(cid)
     dc = of(cfg)
@@ -139,6 +139,30 @@ def import_file(cfg, cid: str, path: Path, name: str, *, actor: str, year: int |
             status, note = "failed", str(exc)
         if members:
             note = (note + "; " if note else "") + f"{len(members)} file(s) read from the zip"
+        yara_hits = 0
+        if dc.yara_dirs:
+            from .yarascan import scan
+            try:
+                hits, problems = scan(dc.yara_dirs, path, name, max_mb=dc.yara_max_mb)
+            except Exception as exc:                      # a scan failure must not lose the parsed events
+                hits, problems = [], [f"YARA scan failed: {exc}"[:300]]
+            rows, dets = [], []
+            for h in hits:
+                where = name + (f" ({h['member']})" if h["member"] else "")
+                ev = {"ts": "", "host": "", "channel": "yara", "event_id": "", "user": "", "process": "",
+                      "summary": f"YARA rule {h['rule']} matched {where}", "data": {**h, "sha256": digest}}
+                rows.append((seq, ev))
+                dets.append((seq, f"yara:{h['namespace']}:{h['rule']}", f"YARA: {h['rule']}", h["level"], "yara", []))
+                seq += 1
+            st.add_events(cid, sid, rows)
+            st.add_detections(cid, dets)
+            if dets:
+                st.refresh_levels(cid)
+            yara_hits = len(hits)
+            n += len(rows)
+            if hits or problems:
+                note = (note + "; " if note else "") + f"YARA: {yara_hits} match(es)" + (
+                    "; " + "; ".join(problems[:3]) if problems else "")
         st.finish_source(sid, kind=kind, events=n, errors=errors, error_samples=samples, hosts=hosts, first_ts=first,
                          last_ts=last, status=status, note=note)
         st.update_case(cid, events=st.count(cid))
@@ -237,3 +261,19 @@ def report_markdown(cfg, cid: str) -> str:
     if o["notes"]:
         L += ["", "## Notes", ""] + [f"- {n['kind']} ({n['status']}, {n['author'] or '-'}): {n['text']}" for n in o["notes"]]
     return "\n".join(L) + "\n"
+
+
+def check_intel(cfg, cid: str, *, actor: str = "") -> dict:
+    from ..connectors import get_hub
+    from .intel import check
+    st = store_for(cfg)
+    if not st.case(cid):
+        raise KeyError(cid)
+    try:
+        hub = get_hub(cfg)
+    except Exception:
+        hub = None
+    with _lock(cid):
+        res = check(cfg, st, cid, hub=hub)
+    st.log(cid, actor, "check indicators", f"{res['checked']} checked, {res['matched']} known")
+    return res

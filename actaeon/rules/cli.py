@@ -6,12 +6,12 @@ import json
 import sys
 from pathlib import Path
 
-ACTIONS = ["list", "show", "import", "test", "lint", "export", "coverage", "draft"]
+ACTIONS = ["list", "show", "import", "test", "lint", "export", "coverage", "draft", "regress"]
 
 
 def add_parsers(sub) -> None:
     p = sub.add_parser("rules", help="detection rule library: list | show ID | import PATH | test ID|--all | lint ID | "
-                                     "export --out FILE.zip | coverage | draft TECHNIQUE")
+                                     "export --out FILE.zip | coverage | draft TECHNIQUE | regress SAMPLES --baseline F")
     p.add_argument("action", choices=ACTIONS)
     p.add_argument("target", nargs="?", help="rule id, a file/folder to import, or a technique id to draft")
     p.add_argument("--status", default="", help="list: only this status; export: comma list (default ready)")
@@ -19,6 +19,8 @@ def add_parsers(sub) -> None:
     p.add_argument("--out", help="export: zip file to write")
     p.add_argument("--context", default="", help="draft: notes or an advisory for the model (text or @file)")
     p.add_argument("--json", action="store_true", help="print JSON")
+    p.add_argument("--baseline", help="regress: baseline file (JSON) to compare with")
+    p.add_argument("--update", action="store_true", help="regress: write the current result as the baseline")
     p.add_argument("--user", default="cli")
 
 
@@ -54,6 +56,31 @@ def run(a) -> int | None:
                   f"{x['name']}  ({'; '.join(x['reasons']) or 'no demand recorded'})")
         print(f"\n{cov['ready']} technique(s) with a ready rule, {cov['gaps']} gap(s). {cov['note']}")
         return 0
+    if a.action == "regress":
+        from . import regress
+        if not a.target or not a.baseline:
+            print("regress needs a samples file or folder and --baseline FILE", file=sys.stderr)
+            return 2
+        now = regress.run(cfg, Path(a.target))
+        if a.update:
+            Path(a.baseline).write_text(json.dumps(now, indent=1, sort_keys=True), encoding="utf-8")
+            print(f"baseline written: {len(now)} file(s), {sum(len(v) for v in now.values())} rule match(es)")
+            return 0
+        res = regress.compare(regress.load(Path(a.baseline)), now)
+        if a.json:
+            out(res)
+        else:
+            for x in res["lost"]:
+                print(f"LOST   {x['file']}: {x['rule']} (matched {x['was']} event(s) before)")
+            for x in res["fewer"]:
+                print(f"fewer  {x['file']}: {x['rule']} {x['was']} -> {x['now']}")
+            for x in res["new"]:
+                print(f"new    {x['file']}: {x['rule']} ({x['now']})")
+            for f, e in res["errors"].items():
+                print(f"error  {f}: {e}")
+            print(f"{len(res['lost'])} lost, {len(res['fewer'])} fewer, {len(res['new'])} new"
+                  + (f", {len(res['missing_files'])} baseline file(s) missing" if res["missing_files"] else ""))
+        return 0 if res["ok"] else 1
     if a.action == "import":
         if not a.target:
             print("import needs a file or folder of Sigma YAML", file=sys.stderr)

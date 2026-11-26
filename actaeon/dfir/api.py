@@ -146,6 +146,14 @@ def register(app, jobs) -> None:
             return bad("an import or analysis is already running for this investigation", 409)
         return jsonify({"started": True}), 202
 
+    @app.route("/api/dfir/cases/<cid>/intel", methods=["POST"])
+    def dfir_intel(cid):
+        if not case_or_404(cid):
+            return bad("not found", 404)
+        if not start(cid, "checking indicators against intel", "dfir-intel", {"case_id": cid, "actor": actor()}):
+            return bad("an import or analysis is already running for this investigation", 409)
+        return jsonify({"started": True}), 202
+
     @app.route("/api/dfir/cases/<cid>/sources/<sid>/retry", methods=["POST"])
     def dfir_retry(cid, sid):
         c = get_config()
@@ -248,6 +256,18 @@ def register(app, jobs) -> None:
                             rule=a.get("rule", "")[:300])
         return Response(text, mimetype="text/csv",
                         headers={"Content-Disposition": f"attachment; filename=investigation-{cid}.csv"})
+
+    @app.route("/api/dfir/cases/<cid>/navigator.json")
+    def dfir_navigator(cid):
+        import json
+
+        from ..navigator import case_layer
+        c = case_or_404(cid)
+        if not c:
+            return bad("not found", 404)
+        body = case_layer(c["title"], S.store_for(get_config()).detection_summary(cid))
+        return Response(json.dumps(body, indent=1), mimetype="application/json",
+                        headers={"Content-Disposition": f"attachment; filename=investigation-{cid}-layer.json"})
 
     @app.route("/api/dfir/cases/<cid>/report.md")
     def dfir_report(cid):

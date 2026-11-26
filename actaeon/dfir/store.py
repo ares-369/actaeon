@@ -73,8 +73,11 @@ ORDER_COLS = {"ts": "ts", "-ts": "ts DESC", "level": "level DESC, ts", "host": "
 
 
 class DfirStore:
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, scratch: bool = False):
+        """``scratch``: always a SQLite file at ``path``, even when the deployment uses PostgreSQL (throw-away
+        stores, such as the rule regression run, must never share tables with real cases)."""
         self.path = Path(path)
+        self.scratch = scratch
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         with self._conn() as c:
@@ -83,12 +86,15 @@ class DfirStore:
                 db.add_column(c, "dfir_cases", col, "TEXT")
             for col in ("upload_path", "origin"):
                 db.add_column(c, "dfir_sources", col, "TEXT")
-            if db.is_pg():
+            if self._pg():
                 c.execute(_FTS_PG)
             else:
                 c.execute(_FTS_SQLITE)
-        if not db.is_pg():
+        if not self._pg():
             self._backfill_fts()
+
+    def _pg(self) -> bool:
+        return db.is_pg() and not self.scratch
 
     def _backfill_fts(self) -> None:
         """Cases imported before the full-text index existed get indexed once."""
@@ -113,6 +119,11 @@ class DfirStore:
             yield batch
 
     def _conn(self):
+        if self.scratch:
+            import sqlite3
+            c = sqlite3.connect(self.path, timeout=10)
+            c.row_factory = sqlite3.Row
+            return c
         return db.connect(self.path)
 
     # ---- cases ----
@@ -145,7 +156,7 @@ class DfirStore:
 
     def delete_case(self, cid: str) -> None:
         with self._lock, self._conn() as c:
-            if not db.is_pg():
+            if not self._pg():
                 c.execute("DELETE FROM dfir_fts WHERE case_id=?", (cid,))
             for t in ("dfir_events", "dfir_detections", "dfir_sources", "dfir_notes", "dfir_stories", "dfir_analysis",
                       "dfir_activity"):
@@ -172,7 +183,7 @@ class DfirStore:
 
     def delete_source(self, cid: str, sid: str) -> None:
         with self._lock, self._conn() as c:
-            if not db.is_pg():
+            if not self._pg():
                 c.execute("DELETE FROM dfir_fts WHERE case_id=? AND seq IN (SELECT seq FROM dfir_events WHERE case_id=? "
                           "AND source_id=?)", (cid, cid, sid))
             c.execute("DELETE FROM dfir_detections WHERE case_id=? AND seq IN (SELECT seq FROM dfir_events WHERE "
@@ -236,7 +247,7 @@ class DfirStore:
             else:
                 for v in vals:
                     c.execute(sql, v)
-            if not db.is_pg():
+            if not self._pg():
                 c.executemany("INSERT INTO dfir_fts (case_id, seq, text) VALUES (?,?,?)",
                               [(cid, seq, fts_text(e)) for seq, e in rows_list])
         return len(vals)
@@ -299,7 +310,7 @@ class DfirStore:
                     words.append(term)
         if words:
             fq = fts_query(" ".join(words))
-            if fq and db.is_pg():
+            if fq and self._pg():
                 toks = re.findall(r"\w+", " ".join(words))[:8]
                 tsq = " & ".join([*toks[:-1], toks[-1] + ":*"]) if toks else ""
                 where.append("to_tsvector('simple', coalesce(e.summary,'') || ' ' || coalesce(e.data,'')) "
@@ -383,6 +394,10 @@ class DfirStore:
         with self._lock, self._conn() as c:
             c.execute(f"DELETE FROM dfir_detections WHERE case_id=? AND origin IN ({q})", (cid, *origins))  # nosec B608
             c.execute("UPDATE dfir_events SET level=0 WHERE case_id=?", (cid,))
+
+    def clear_intel(self, cid: str) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("DELETE FROM dfir_detections WHERE case_id=? AND origin='intel'", (cid,))
 
     def add_detections(self, cid: str, rows: list[tuple[int, str, str, str, str, list[str]]]) -> None:
         if not rows:

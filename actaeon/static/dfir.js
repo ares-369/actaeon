@@ -97,7 +97,13 @@ async function overview(cid) {
   main.append(section("Detections", "shield-search",
     h("div", { class: "row", "data-need": "op" }, h("button", { disabled: !o.events || !!(o.work && o.work.running), onclick: busy(async () => {
       await post(`/api/dfir/cases/${cid}/analyze`); toast("Analyzers started"); route(); }) }, icon("play"), o.analyzed ? "Run the analyzers again" : "Run the analyzers"),
-      o.analyzed ? h("span", { class: "small muted" }, `last run ${when(o.analyzed)}`) : null),
+      o.analyzed ? h("span", { class: "small muted" }, `last run ${when(o.analyzed)}`) : null,
+      h("button", { class: "ghost", disabled: !o.events || !!(o.work && o.work.running), onclick: busy(async () => {
+        await post(`/api/dfir/cases/${cid}/intel`); toast("Checking indicators"); route(); }) }, icon("shield-search"), "Check indicators against intel"),
+      h("a", { class: "button ghost", href: `/api/dfir/cases/${cid}/navigator.json`, download: "" }, icon("grid"), "ATT&CK Navigator layer")),
+    an.intel ? h("p", { class: "small " + (an.intel.matched ? "warn" : "muted") }, `Intel: ${an.intel.checked} indicator(s) checked against ${an.intel.sources.join(", ")}; ${an.intel.matched} known.`,
+      an.intel.matches.slice(0, 8).map((m) => h("div", {}, h("a", { href: `#inv/${cid}/timeline?rule=${encodeURIComponent("intel:" + m.value)}` }, m.value),
+        ` in ${m.count} event(s): `, m.hits.map((x) => x.source + (x.tags.length ? " (" + x.tags.join(", ") + ")" : "")).join("; ")))) : null,
     sig ? h("p", { class: "small muted" }, `${sig.rules} Sigma rules run (rule library, built-in checks and rule folders), ${sig.matched_rules} matched; ${sig.imported} detections came with the evidence; ${sig.skipped_count} rule(s) could not be evaluated.`) : null,
     o.detections.length ? h("table", {}, h("thead", {}, h("tr", {}, ["Level", "Rule", "Events", "Hosts", "First", "Last"].map((x) => h("th", {}, x)))),
       h("tbody", {}, capped(o.detections.map((d) => h("tr", { class: "click", onclick: () => { location.hash = `inv/${cid}/timeline?rule=${encodeURIComponent(d.rule_key)}`; } },
@@ -140,6 +146,20 @@ async function overview(cid) {
       await post(`/api/dfir/cases/${cid}/delete`); location.hash = "dfir"; }) }, icon("delete"), "Delete investigation"))));
 }
 
+// Hunt for what an event shows across the live log sources (opens the Hunts page with the hypothesis filled in).
+function huntLink(e) {
+  const d = e.data || {};
+  const proc = (d.Image || d.NewProcessName || e.process || "").split("\\").pop();
+  const ind = d.DestinationIp || d.IpAddress || d.QueryName || d.DestinationHostname || "";
+  const what = proc && d.CommandLine ? `${proc} run with a command line like "${String(d.CommandLine).slice(0, 160)}"`
+    : ind ? `activity involving ${ind}` : proc ? `${proc} running` : (e.summary || "").slice(0, 160);
+  const hyp = `Is ${what} seen on other hosts or accounts than ${e.host || "this host"}?`;
+  const ctx = `From an offline investigation, event E${e.seq} (${e.ts || "time unknown"}, host ${e.host || "-"}): ${(e.summary || "").slice(0, 600)}\n` +
+    Object.entries(d).filter(([k, v]) => typeof v === "string" && /image|commandline|user|ip|hash|queryname|target|service|task/i.test(k)).slice(0, 15).map(([k, v]) => `${k}: ${v.slice(0, 300)}`).join("\n");
+  return h("a", { class: "button ghost", "data-need": "op", href: "#hunts?" + new URLSearchParams({ hypothesis: hyp, context: ctx }) },
+    icon("target"), "Hunt for this in the live logs");
+}
+
 // Process tree: the chain of parents above the event's process, and its children below.
 function treeBox(cid, e) {
   const box = h("div");
@@ -167,7 +187,7 @@ function detail(cid, e, onSave) {
   return h("div", { class: "card" },
     h("div", { class: "row" }, h("b", {}, "E" + e.seq), h("span", { class: "small" }, when(e.ts)), h("span", { class: "small" }, e.host),
       (e.detections || []).flatMap((d) => [lvBadge(d.level), h("span", { class: "small" }, d.title)])),
-    h("table", {}, h("tbody", {}, rows)), treeBox(cid, e),
+    h("table", {}, h("tbody", {}, rows)), h("div", { class: "row" }, treeBox(cid, e), huntLink(e)),
     h("div", { "data-need": "op" }, h("div", { class: "row" }, tags), comment, h("button", { class: "ghost", onclick: busy(async () => {
       await post(`/api/dfir/cases/${cid}/events/${e.seq}`, { tags: tags.value.split(",").map((t) => t.trim()).filter(Boolean), comment: comment.value });
       toast("Saved"); if (onSave) onSave(); }) }, icon("content-save"), "Save tags and comment")));

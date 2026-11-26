@@ -140,6 +140,12 @@ def register(app) -> None:
     def rules_coverage():
         return jsonify(S.coverage(get_config()))
 
+    @app.route("/api/rules/coverage/navigator.json")
+    def rules_navigator():
+        from ..navigator import rules_layer
+        return Response(__import__("json").dumps(rules_layer(S.coverage(get_config())), indent=1), mimetype="application/json",
+                        headers={"Content-Disposition": "attachment; filename=actaeon-rule-coverage-layer.json"})
+
     @app.route("/api/rules/draft", methods=["POST"])
     def rules_draft():
         from ..hunt.service import privacy_llm
