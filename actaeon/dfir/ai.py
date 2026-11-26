@@ -135,6 +135,30 @@ def _ids(v: Any) -> list[int]:
     return out
 
 
+_STOP = set(["about", "after", "again", "against", "also", "among", "another", "attack", "attacker", "attackers", "before", "being", "between", "case", "could", "data", "during", "each", "event", "events", "every", "first", "following", "from", "have", "having", "hosts", "host", "into", "likely", "made", "more", "most", "multiple", "other", "over", "same", "several", "some", "such", "than", "that", "their", "them", "then", "there", "these", "they", "this", "those", "through", "used", "uses", "using", "very", "were", "what", "when", "where", "which", "while", "with", "within", "would", "system", "systems", "activity", "activities", "various", "possible"])
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9_.$-]{4,}", text.lower()) if w not in _STOP and not w.isdigit()}
+
+
+def support(phase: str, text: str, events: list[dict]) -> list[dict]:
+    """Does each cited event fit the statement? It fits when one of its detections belongs to the phase's ATT&CK
+    tactic, or when it shares a significant word (a tool, host, account or file) with the statement. No model."""
+    from ..hunt.attack_names import info
+    tactic = phase.replace(" ", "-")
+    want = _words(text)
+    out = []
+    for e in events:
+        tactics = {t for d in e.get("detections") or [] for tech in d.get("attack") or [] for t in info(tech).get("t", [])}
+        hay = " ".join([e.get("summary") or "", " ".join(d["title"] for d in e.get("detections") or []),
+                        " ".join(str(v) for v in (e.get("data") or {}).values() if isinstance(v, (str, int)))]).lower()
+        shared = sorted(w for w in want if w in hay)[:5]
+        why = "ATT&CK tactic" if tactic in tactics else ("shared words: " + ", ".join(shared) if shared else "")
+        out.append({"event": e["seq"], "fits": bool(why), "why": why})
+    return out
+
+
 def _model_name(llm, role: str) -> str:
     try:
         b = llm.for_role(role)
@@ -157,6 +181,7 @@ def story(cfg, llm, cid: str, *, actor: str) -> dict:
     lines, dropped_events = fit([_line(e) for e in evs], head, budget)
     evs = sorted(evs[:len(lines)], key=lambda e: (e["ts"] or "", e["seq"]))
     shown = {e["seq"] for e in evs}
+    by_seq = {e["seq"]: e for e in evs}
     msg = head + "\n".join(_line(e) for e in evs)
     res = llm.for_role("reporter").chat([{"role": "system", "content": STORY_SYSTEM},
                                          {"role": "user", "content": msg}], max_tokens=3000)
@@ -173,8 +198,11 @@ def story(cfg, llm, cid: str, *, actor: str) -> dict:
         good = [i for i in ids if i in shown]
         dropped += len(ids) - len(good)
         ph = str(p.get("phase", "other")).lower()
-        phases.append({"phase": ph if ph in PHASES else "other", "when": str(p.get("when", ""))[:120],
-                       "what": str(p.get("what", ""))[:1500], "events": good, "uncited": not good})
+        ph = ph if ph in PHASES else "other"
+        what = str(p.get("what", ""))[:1500]
+        sup = support(ph, what, [by_seq[i] for i in good])
+        phases.append({"phase": ph, "when": str(p.get("when", ""))[:120], "what": what, "events": good,
+                       "uncited": not good, "support": sup, "weak": bool(good) and not any(x["fits"] for x in sup)})
     body = {"summary": str(obj.get("summary", ""))[:3000], "phases": phases,
             "hosts_involved": [str(x)[:200] for x in obj.get("hosts_involved") or []][:30],
             "accounts_involved": [str(x)[:200] for x in obj.get("accounts_involved") or []][:30],
@@ -182,7 +210,9 @@ def story(cfg, llm, cid: str, *, actor: str) -> dict:
             "next_steps": [str(x)[:500] for x in obj.get("next_steps") or []][:15],
             "confidence": str(obj.get("confidence", ""))[:10], "events_given": len(evs),
             "events_left_out": dropped_events,
-            "citations_removed": dropped, "unsupported_parts": sum(1 for p in phases if p["uncited"])}
+            "citations_removed": dropped, "unsupported_parts": sum(1 for p in phases if p["uncited"]),
+            "weak_parts": sum(1 for p in phases if p["weak"]),
+            "citations_not_fitting": sum(1 for p in phases for x in p["support"] if not x["fits"])}
     sid = st.save_story(cid, "story", body, author=actor, model=_model_name(llm, "reporter"))
     return {"id": sid, **body}
 
@@ -232,7 +262,10 @@ def ask(cfg, llm, cid: str, question: str, *, actor: str, max_searches: int = 3)
             continue
         ids = _ids(obj.get("events"))
         good = [i for i in ids if i in uniq]
-        body = {"question": question, "answer": str(obj.get("answer") or res.text or "")[:6000], "events": good,
+        answer = str(obj.get("answer") or res.text or "")[:6000]
+        sup = support("", answer, [uniq[i] for i in good])
+        body = {"question": question, "answer": answer, "events": good, "support": sup,
+                "weak": bool(good) and not any(x["fits"] for x in sup),
                 "citations_removed": len(ids) - len(good), "confidence": str(obj.get("confidence", ""))[:10],
                 "searches": searches}
         st.save_story(cid, "answer", body, author=actor, model=_model_name(llm, "analyst"))

@@ -235,7 +235,8 @@ def test_web(on, tmp_path, home):
     assert r.status_code == 202 and r.get_json()["files"] == ["e.jsonl"]
     o = wait_idle(cl, cid)
     assert o["events"] == 17 and o["sources"][0]["name"] == "e.jsonl", o["work"]
-    assert not list(home.glob("data/dfir-*"))                                # upload temp folder removed
+    assert not [p for p in home.glob("data/dfir-uploads/**/*") if p.is_file()]   # kept only until imported
+    assert o["activity"][0]["action"] == "import" and o["interrupted"] == []
     assert cl.post(f"/api/dfir/cases/{cid}/analyze").status_code == 202
     o = wait_idle(cl, cid)
     assert o["detections"] and o["analyzed"]
@@ -331,3 +332,93 @@ def test_facts_never_crowd_out_events():
     big = {"case": "c", "detections": [{"title": "x" * 100}] * 500, "hosts": ["h" * 30] * 300}
     t = facts_text(big, 2000)
     assert len(t) <= 2000 and t.startswith("{") and t.endswith("}")
+
+
+def test_word_search_uses_the_index(on, tmp_path):
+    from actaeon.dfir import service as S
+    st = S.store_for(on)
+    c = st.create_case("Case", "", actor="a")
+    S.import_file(on, c["id"], make_evidence(tmp_path), "e.jsonl", actor="a")
+    assert st.search(c["id"], q="winword")[1] == 1            # a word inside a path
+    assert st.search(c["id"], q="powersh")[1] == 2            # the last word is a prefix
+    assert st.search(c["id"], q="powershell winword")[1] == 1  # every word must appear
+    assert st.search(c["id"], q="nothing-like-this")[1] == 0
+
+
+def test_process_tree(on, tmp_path):
+    from actaeon.dfir import service as S
+    from actaeon.dfir.views import process_tree
+    sy = "Microsoft-Windows-Sysmon/Operational"
+    rows = [win("1", sy, "2026-11-20T10:00:00Z", ProcessGuid="{A}", ParentProcessGuid="{X}", ProcessId="100",
+                Image="C:\\o\\winword.exe", ParentImage="C:\\w\\explorer.exe"),
+            win("1", sy, "2026-11-20T10:00:05Z", ProcessGuid="{B}", ParentProcessGuid="{A}", ProcessId="200",
+                ParentProcessId="100", Image="C:\\w\\powershell.exe", CommandLine="powershell -enc x"),
+            win("1", sy, "2026-11-20T10:00:09Z", ProcessGuid="{C}", ParentProcessGuid="{B}", ProcessId="300",
+                Image="C:\\w\\whoami.exe"),
+            win("3", sy, "2026-11-20T10:00:07Z", ProcessGuid="{B}", Image="C:\\w\\powershell.exe",
+                DestinationIp="203.0.113.9", DestinationPort="443"),
+            # Security 4688 links by hex process ids and time
+            win("4688", "Security", "2026-11-20T11:00:00Z", NewProcessId="0x1f4", ProcessId="0x4",
+                NewProcessName="C:\\w\\cmd.exe"),
+            win("4688", "Security", "2026-11-20T11:00:02Z", NewProcessId="0x258", ProcessId="0x1f4",
+                NewProcessName="C:\\w\\net.exe", CommandLine="net user x /add")]
+    p = tmp_path / "t.jsonl"
+    p.write_text(jl(rows))
+    st = S.store_for(on)
+    c = st.create_case("Case", "", actor="a")
+    S.import_file(on, c["id"], p, "t.jsonl", actor="a")
+    t = process_tree(st, c["id"], 2)                               # the powershell event
+    assert [a["image"].rsplit("\\", 1)[-1] for a in t["ancestors"]] == ["winword.exe"]
+    assert t["focus"]["children"][0]["image"].endswith("whoami.exe")
+    t = process_tree(st, c["id"], 4)                               # the network event maps to its process
+    assert t["focus"]["seq"] == 2
+    t = process_tree(st, c["id"], 6)                               # net.exe under cmd.exe by pid
+    assert t["ancestors"][0]["image"].endswith("cmd.exe")
+
+
+def test_accounts_flag_new_late_sources(on, tmp_path):
+    from actaeon.dfir import service as S
+    rows = [win("4624", "Security", "2026-11-01T09:00:00Z", TargetUserName="bob", LogonType="3", IpAddress="10.0.0.5"),
+            win("4624", "Security", "2026-11-01T10:00:00Z", TargetUserName="bob", LogonType="3", IpAddress="10.0.0.5"),
+            win("4624", "Security", "2026-11-05T02:00:00Z", TargetUserName="bob", LogonType="10", IpAddress="198.51.100.7")]
+    p = tmp_path / "l.jsonl"
+    p.write_text(jl(rows))
+    st = S.store_for(on)
+    c = st.create_case("Case", "", actor="a")
+    S.import_file(on, c["id"], p, "l.jsonl", actor="a")
+    S.analyze(on, c["id"])
+    a = st.analysis(c["id"])["accounts"][0]
+    assert a["account"] == "bob" and a["ok"] == 3 and a["types"] == {"3": 2, "10": 1}
+    assert a["new_later"] == [{"kind": "source", "value": "198.51.100.7", "first": "2026-11-05T02:00:00.000Z"}]
+
+
+def test_support_check():
+    from actaeon.dfir.ai import support
+    lsass = {"seq": 1, "summary": "rundll32 comsvcs MiniDump lsass", "data": {},
+             "detections": [{"title": "LSASS memory dumped", "attack": ["T1003.001"]}]}
+    sticky = {"seq": 2, "summary": "reg.exe SetValue Image File Execution Options sethc.exe", "data": {},
+              "detections": [{"title": "Sticky key backdoor", "attack": ["T1546.008"]}]}
+    res = support("credential access", "Credential theft from LSASS using Dumpert and Mimikatz", [lsass, sticky])
+    assert res[0]["fits"] and res[0]["why"] == "ATT&CK tactic"
+    assert not res[1]["fits"]
+    assert support("other", "sethc.exe replaced", [sticky])[0]["why"] == "shared words: sethc.exe"
+
+
+def test_interrupted_import_can_run_again(on, tmp_path, home):
+    from actaeon.dfir import service as S
+    from actaeon.web import create_app
+    cl = create_app(on).test_client()
+    st = S.store_for(on)
+    c = st.create_case("Case", "", actor="a")
+    kept = S.uploads_dir(on, c["id"]) / "k-e.jsonl"
+    kept.write_bytes(make_evidence(tmp_path).read_bytes())
+    sid = st.add_source(c["id"], name="e.jsonl", sha256="x" * 64, size=1, actor="a")
+    st.set_source(sid, upload_path=str(kept))
+    st.add_events(c["id"], sid, [(1, {"ts": "", "host": "h", "channel": "", "event_id": "", "user": "", "process": "",
+                                      "summary": "half", "data": {}})])
+    o = cl.get(f"/api/dfir/cases/{c['id']}").get_json()
+    assert o["interrupted"] == [sid]
+    assert cl.post(f"/api/dfir/cases/{c['id']}/sources/{sid}/retry").status_code == 202
+    o = wait_idle(cl, c["id"])
+    assert o["events"] == 17 and [s["status"] for s in o["sources"]] == ["done"] and not kept.exists()
+    assert cl.post(f"/api/dfir/cases/{c['id']}/sources/{sid}/retry").status_code == 409

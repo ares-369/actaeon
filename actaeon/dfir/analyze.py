@@ -166,6 +166,7 @@ def run_profile(store, cid: str, *, burst: int = 10, window_min: int = 30) -> tu
     """Logons, stacking and metrics in one pass. Returns (results, detections for brute-force successes)."""
     from datetime import datetime
     logons: dict[tuple[str, str], dict] = {}
+    accounts: dict[str, dict] = {}
     fails: dict[tuple[str, str], list] = defaultdict(list)
     procs: Counter = Counter()
     pairs: Counter = Counter()
@@ -203,6 +204,18 @@ def run_profile(store, cid: str, *, burst: int = 10, window_min: int = 30) -> tu
             x = logons.setdefault(key, {"account": acct, "source": src, "ok": 0, "failed": 0, "types": Counter(),
                                         "first": ev["ts"], "last": ev["ts"], "hosts": set()})
             x["ok" if ok else "failed"] += 1
+            a = accounts.setdefault(acct, {"account": acct, "ok": 0, "failed": 0, "first": ev["ts"], "last": ev["ts"],
+                                           "hosts": {}, "sources": {}, "types": Counter()})
+            a["ok" if ok else "failed"] += 1
+            if ev["ts"]:
+                a["first"] = min(a["first"] or ev["ts"], ev["ts"])
+                a["last"] = max(a["last"] or "", ev["ts"])
+            if ev["host"]:
+                a["hosts"].setdefault(ev["host"], ev["ts"])
+            if src and ok:
+                a["sources"].setdefault(src, ev["ts"])
+            if d.get("LogonType"):
+                a["types"][str(d["LogonType"])] += 1
             x["last"] = ev["ts"] or x["last"]
             x["hosts"].add(ev["host"])
             if d.get("LogonType"):
@@ -247,7 +260,21 @@ def run_profile(store, cid: str, *, burst: int = 10, window_min: int = 30) -> tu
     for x in lg:
         x["types"] = dict(x["types"])
         x["hosts"] = sorted(h for h in x["hosts"] if h)[:20]
+    acc = []
+    for a in accounts.values():
+        start = t(a["first"]) if a["first"] else None
+        late = []
+        for kind in ("sources", "hosts"):
+            for v, first in a[kind].items():
+                ft = t(first) if first else None
+                if start and ft and (ft - start).total_seconds() > 86400:
+                    late.append({"kind": kind[:-1], "value": v, "first": first})
+        acc.append({"account": a["account"], "ok": a["ok"], "failed": a["failed"], "first": a["first"],
+                    "last": a["last"], "hosts": sorted(a["hosts"])[:30], "sources": sorted(a["sources"])[:30],
+                    "types": dict(a["types"]), "new_later": sorted(late, key=lambda x: x["first"])[:20]})
+    acc.sort(key=lambda a: (-len(a["new_later"]), -a["failed"], -a["ok"]))
     return {
+        "accounts": acc[:500],
         "logons": lg,
         "stacking": {"processes": rare(procs, "p:"), "parent_child": rare(pairs, "pp:"),
                      "services": rare(services, "s:"), "tasks": rare(tasks, "t:"),

@@ -23,7 +23,10 @@ function capped(rows, n, label) {
     `Show all ${rows.length} ${label}`);
   return [...rows, h("tr", {}, h("td", { colspan: 9 }, btn))];
 }
-const evLink = (cid, seq) => h("a", { class: "badge", href: `#inv/${cid}/timeline?focus=${seq}` }, "E" + seq);
+const evLink = (cid, seq, fit) => h("a", { class: "badge" + (fit && !fit.fits ? " badge-orange" : ""),
+  href: `#inv/${cid}/timeline?focus=${seq}`, title: fit ? (fit.fits ? "fits: " + fit.why : "this event does not obviously match the statement") : null },
+  "E" + seq, fit && !fit.fits ? " ?" : "");
+const fitOf = (support, seq) => (support || []).find((x) => x.event === seq);
 
 // ---------------- list ----------------
 async function list() {
@@ -83,7 +86,11 @@ async function overview(cid) {
         h("td", { class: "small" }, s.kind), h("td", { class: "num" }, String(s.events)),
         h("td", { class: "num", title: (s.error_samples || []).join("\n") }, String(s.errors)),
         h("td", { class: "small mono", title: s.sha256 }, short(s.sha256)),
-        h("td", { class: "small " + (s.status === "failed" ? "bad" : "") }, s.status, s.note ? h("div", { class: "muted" }, s.note) : null))), 8, "files"))) : null));
+        h("td", { class: "small " + (s.status === "failed" ? "bad" : "") },
+          (o.interrupted || []).includes(s.id) ? [h("span", { class: "warn" }, "interrupted"), " ",
+            h("button", { class: "ghost", "data-need": "op", onclick: busy(async () => { await post(`/api/dfir/cases/${cid}/sources/${s.id}/retry`); route(); }) },
+              icon("replay"), "Import again")] : s.status,
+          s.note ? h("div", { class: "muted" }, s.note) : null))), 8, "files"))) : null));
 
   const an = o.analysis || {};
   const sig = an.sigma;
@@ -107,6 +114,17 @@ async function overview(cid) {
       stack("Processes", st.processes), stack("Parent and child", st.parent_child), stack("Services installed", st.services),
       stack("Scheduled tasks", st.tasks), stack("Logon sources", st.logon_sources)));
   }
+  if (an.accounts && an.accounts.length) {
+    const user = (a) => a.account.split("\\").pop();
+    main.append(section("Accounts", "account-network-outline",
+      h("p", { class: "muted small" }, "Logons per account. A source or host first seen more than a day after the account's first logon is listed: that is often where lateral movement shows."),
+      h("table", {}, h("thead", {}, h("tr", {}, ["Account", "OK", "Failed", "Hosts", "Sources", "New later", "First", "Last"].map((x) => h("th", {}, x)))),
+        h("tbody", {}, capped(an.accounts.map((a) => h("tr", { class: "click", onclick: () => { location.hash = `inv/${cid}/timeline?q=${encodeURIComponent("TargetUserName:" + user(a))}`; } },
+          h("td", { class: "small" }, a.account), h("td", { class: "num" }, String(a.ok)), h("td", { class: "num " + (a.failed > 9 ? "warn" : "") }, String(a.failed)),
+          h("td", { class: "num", title: a.hosts.join(", ") }, String(a.hosts.length)), h("td", { class: "num", title: a.sources.join(", ") }, String(a.sources.length)),
+          h("td", { class: "small " + (a.new_later.length ? "warn" : "") }, a.new_later.map((x) => `${x.kind} ${x.value} (${when(x.first)})`).join("; ") || "-"),
+          h("td", { class: "small" }, when(a.first)), h("td", { class: "small" }, when(a.last)))), 15, "accounts")))));
+  }
   if (an.logons && an.logons.length) {
     main.append(section("Logons", "login", h("table", {}, h("thead", {}, h("tr", {}, ["Account", "Source", "OK", "Failed", "Types", "First", "Last"].map((x) => h("th", {}, x)))),
       h("tbody", {}, capped(an.logons.slice(0, 200).map((x) => h("tr", {}, h("td", { class: "small" }, x.account), h("td", { class: "small" }, x.source || "-"),
@@ -122,6 +140,25 @@ async function overview(cid) {
       await post(`/api/dfir/cases/${cid}/delete`); location.hash = "dfir"; }) }, icon("delete"), "Delete investigation"))));
 }
 
+// Process tree: the chain of parents above the event's process, and its children below.
+function treeBox(cid, e) {
+  const box = h("div");
+  const label = (n) => [h("span", { class: "mono small" }, (n.image || "?").split("\\").pop()),
+    n.level >= 4 ? [" ", h("span", { class: "badge badge-orange" }, "detection")] : null,
+    h("span", { class: "muted small" }, `  ${when(n.ts)}  pid ${n.pid ?? "?"}${n.user ? "  " + n.user : ""}`),
+    n.command ? h("div", { class: "mono small muted" }, n.command.slice(0, 300)) : null,
+    h("a", { class: "small", href: `#inv/${cid}/timeline?focus=${n.seq}` }, " E" + n.seq)];
+  const down = (n) => h("li", {}, label(n), n.children && n.children.length ? h("ul", {}, n.children.map(down)) : null,
+    n.truncated ? h("div", { class: "muted small" }, "more children not shown") : null);
+  return h("div", {}, h("button", { class: "ghost", onclick: busy(async () => {
+    const t = await api(`/api/dfir/cases/${cid}/events/${e.seq}/tree`);
+    if (!t.found) { fill(box, h("p", { class: "muted small" }, t.note)); return; }
+    fill(box, h("h3", {}, `Process tree on ${t.host}`),
+      t.ancestors.length ? h("ol", { class: "small" }, t.ancestors.map((a) => h("li", {}, label(a)))) : h("p", { class: "muted small" }, "No parent found in the evidence."),
+      h("ul", {}, down(t.focus)));
+  }) }, icon("graph-outline"), "Process tree"), box);
+}
+
 // ---------------- timeline ----------------
 function detail(cid, e, onSave) {
   const tags = h("input", { class: "grow", value: (e.tags || []).join(", "), placeholder: "tags, comma separated", "aria-label": "Tags" });
@@ -130,7 +167,7 @@ function detail(cid, e, onSave) {
   return h("div", { class: "card" },
     h("div", { class: "row" }, h("b", {}, "E" + e.seq), h("span", { class: "small" }, when(e.ts)), h("span", { class: "small" }, e.host),
       (e.detections || []).flatMap((d) => [lvBadge(d.level), h("span", { class: "small" }, d.title)])),
-    h("table", {}, h("tbody", {}, rows)),
+    h("table", {}, h("tbody", {}, rows)), treeBox(cid, e),
     h("div", { "data-need": "op" }, h("div", { class: "row" }, tags), comment, h("button", { class: "ghost", onclick: busy(async () => {
       await post(`/api/dfir/cases/${cid}/events/${e.seq}`, { tags: tags.value.split(",").map((t) => t.trim()).filter(Boolean), comment: comment.value });
       toast("Saved"); if (onSave) onSave(); }) }, icon("content-save"), "Save tags and comment")));
@@ -208,14 +245,17 @@ async function story(cid) {
         (b.citations_removed ? ` ${b.citations_removed} citation(s) to events it was not shown were removed.` : "")),
       h("p", {}, b.summary),
       h("ol", {}, (b.phases || []).map((p) => h("li", {}, h("b", {}, p.phase), p.when ? h("span", { class: "small muted" }, "  " + p.when) : null, h("div", {}, p.what),
-        p.uncited ? h("div", { class: "warn small" }, icon("alert-circle-outline"), " Not supported by a cited event.") : h("div", {}, p.events.map((x) => evLink(cid, x)))))),
+        p.uncited ? h("div", { class: "warn small" }, icon("alert-circle-outline"), " Not supported by a cited event.") :
+          h("div", {}, p.events.map((x) => evLink(cid, x, fitOf(p.support, x))),
+            p.weak ? h("div", { class: "warn small" }, icon("alert-circle-outline"), " None of the cited events obviously matches this statement; check them.") : null)))),
       ...((b.open_questions || []).length ? [h("h3", {}, "Open questions"), h("ul", {}, b.open_questions.map((x) => h("li", {}, x)))] : []),
       ...((b.next_steps || []).length ? [h("h3", {}, "Next steps"), h("ul", {}, b.next_steps.map((x) => h("li", {}, x)))] : [])] : null));
 
   const qn = h("input", { class: "grow", placeholder: "e.g. Which account ran mimikatz, and from where?", "aria-label": "Question" });
   const out = h("div");
   const ask = busy(async () => { if (!qn.value.trim()) return; fill(out, h("p", { class: "muted small" }, "Thinking...")); const r = await post(`/api/dfir/cases/${cid}/ask`, { question: qn.value }).catch((e) => { fill(out); throw e; });
-    fill(out, h("p", {}, r.answer), h("div", {}, r.events.map((x) => evLink(cid, x))), r.searches.length ? h("p", { class: "small muted" }, "Searched: " + r.searches.map((x) => `"${x.q}" (${x.found})`).join(", ")) : null); });
+    fill(out, h("p", {}, r.answer), h("div", {}, r.events.map((x) => evLink(cid, x, fitOf(r.support, x)))),
+      r.weak ? h("p", { class: "warn small" }, "None of the cited events obviously matches the answer; check them.") : null, r.searches.length ? h("p", { class: "small muted" }, "Searched: " + r.searches.map((x) => `"${x.q}" (${x.found})`).join(", ")) : null); });
   qn.addEventListener("keydown", (e) => { if (e.key === "Enter") ask(e); });
   main.append(section("Ask about this case", "chat-question-outline", h("div", { class: "row", "data-need": "op" }, qn, h("button", { onclick: ask }, icon("send"), "Ask")), out,
     (s.answers || []).length ? [h("h3", {}, "Earlier questions"), h("ul", {}, s.answers.map((a) => h("li", {}, h("b", {}, a.body.question), h("div", { class: "small" }, a.body.answer), h("div", {}, (a.body.events || []).map((x) => evLink(cid, x))))))] : null));

@@ -75,9 +75,20 @@ def triage(p: dict, ctl, jobs) -> dict:
     return {"case_id": p["case_id"], "verdict": res.get("verdict"), "status": res.get("status")}
 
 
+def dfir_import(p: dict, ctl, jobs) -> dict:
+    from .dfir.service import import_uploads
+    return {"files": import_uploads(_cfg(), p["case_id"], p["files"], actor=p.get("actor", ""))}
+
+
+def dfir_analyze(p: dict, ctl, jobs) -> dict:
+    from .dfir.service import analyze
+    res = analyze(_cfg(), p["case_id"], actor=p.get("actor", ""))
+    return {"rules": res["sigma"]["rules"], "hits": res["sigma"]["hits"]}
+
+
 TASKS: dict[str, Any] = {"triage": triage, "hunt": hunt, "replay": replay, "sweep": sweep, "actor-sweep": actor_sweep,
                          "web-intel": web_intel, "drift": drift, "autopilot": autopilot, "chat": chat, "ask": assistant,
-                         "ticket-reply": ticket_reply}
+                         "ticket-reply": ticket_reply, "dfir-import": dfir_import, "dfir-analyze": dfir_analyze}
 
 
 def run_task(name: str, params: dict, ctl=None, *, jobs=None) -> dict:

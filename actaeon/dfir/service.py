@@ -34,7 +34,56 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
-def import_file(cfg, cid: str, path: Path, name: str, *, actor: str, year: int | None = None) -> dict:
+def uploads_dir(cfg, cid: str) -> Path:
+    """Uploaded files wait here until their import finishes, so an interrupted import can run again."""
+    p = cfg.data_dir / "dfir-uploads" / cid
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def import_uploads(cfg, cid: str, files: list, *, actor: str) -> list[dict]:
+    out = []
+    for path, name in files:
+        p = Path(path)
+        if not p.exists():
+            out.append({"name": name, "status": "failed", "note": "the uploaded file is gone"})
+            continue
+        r = import_file(cfg, cid, p, name, actor=actor, keep=p)
+        out.append(r)
+        if r.get("status") == "done" or r.get("duplicate"):
+            p.unlink(missing_ok=True)
+            if r.get("source_id") and not r.get("duplicate"):
+                store_for(cfg).set_source(r["source_id"], upload_path="")
+    return out
+
+
+def interrupted(cfg, cid: str, jobs=None) -> list[dict]:
+    """Sources left 'importing' by a job that is no longer running."""
+    st = store_for(cfg)
+    c = st.case(cid) or {}
+    job = jobs.get(c["job_id"]) if jobs and c.get("job_id") else None
+    if job and job.get("status") in ("queued", "running"):
+        return []
+    return [s for s in st.sources(cid) if s["status"] == "importing"]
+
+
+def retry_source(cfg, cid: str, sid: str, *, actor: str) -> list:
+    """Drop what an interrupted import stored and return the kept upload to import again."""
+    st = store_for(cfg)
+    src = st.source(sid)
+    if not src or src["case_id"] != cid:
+        raise KeyError(sid)
+    path = src.get("upload_path") or ""
+    if not path or not Path(path).exists():
+        raise ValueError("the uploaded file is no longer kept; upload it again")
+    st.delete_source(cid, sid)
+    st.update_case(cid, events=st.count(cid))
+    st.log(cid, actor, "retry import", src["name"])
+    return [[path, src["name"]]]
+
+
+def import_file(cfg, cid: str, path: Path, name: str, *, actor: str, year: int | None = None,
+                keep: Path | None = None) -> dict:
     """Parse one evidence file into the case. The file's SHA-256 is recorded first; the same file twice is skipped."""
     st = store_for(cfg)
     if not st.case(cid):
@@ -47,6 +96,8 @@ def import_file(cfg, cid: str, path: Path, name: str, *, actor: str, year: int |
         return {"source_id": old["id"], "duplicate": True, "name": name, "sha256": digest, "events": old["events"]}
     with _lock(cid):
         sid = st.add_source(cid, name=name, sha256=digest, size=path.stat().st_size, actor=actor)
+        if keep:
+            st.set_source(sid, upload_path=str(keep), origin="upload")
         seq = st.next_seq(cid)
         room = dc.max_events_per_case - st.count(cid)
         kind, members, errors, samples, hosts = "", [], 0, [], set()
@@ -91,11 +142,12 @@ def import_file(cfg, cid: str, path: Path, name: str, *, actor: str, year: int |
         st.finish_source(sid, kind=kind, events=n, errors=errors, error_samples=samples, hosts=hosts, first_ts=first,
                          last_ts=last, status=status, note=note)
         st.update_case(cid, events=st.count(cid))
+        st.log(cid, actor, "import", f"{name}: {n} events, sha256 {digest}")
     return {"source_id": sid, "name": name, "sha256": digest, "kind": kind, "events": n, "errors": errors,
             "status": status, "note": note, "hosts": sorted(hosts)[:50]}
 
 
-def analyze(cfg, cid: str) -> dict:
+def analyze(cfg, cid: str, *, actor: str = "") -> dict:
     from ..soc.util import iso
     from .analyze import run_all
     st = store_for(cfg)
@@ -104,6 +156,7 @@ def analyze(cfg, cid: str) -> dict:
     with _lock(cid):
         res = run_all(cfg, of(cfg), st, cid)
         st.update_case(cid, analyzed=iso())
+        st.log(cid, actor, "analyze", f"{res['sigma']['rules']} rules, {res['sigma']['hits']} hits")
     return res
 
 

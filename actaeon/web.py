@@ -238,7 +238,7 @@ def create_app(cfg=None, *, start_scheduler: bool = False) -> Flask:
     from .rules.api import register as register_rules
     register_rules(app)
     from .dfir.api import register as register_dfir
-    register_dfir(app)
+    register_dfir(app, jobs)
 
     def _actor():
         from flask import g

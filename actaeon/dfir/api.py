@@ -1,49 +1,20 @@
 """Web API for investigations. Every route except /api/dfir/status answers 404 while dfir.enabled is false.
 
-Evidence import and the analyzers run in a background thread (large files take minutes); the case shows what
-is running in ``work``.
+Evidence import and the analyzers run as jobs (actaeon/tasks.py: dfir-import, dfir-analyze), so in
+``jobs.mode: queue`` a worker runs them and they survive a server restart. Uploaded files are kept until their
+import finishes; an import cut off by a restart shows as interrupted and can run again.
 """
 
 from __future__ import annotations
 
-import shutil
-import tempfile
-import threading
+import secrets
 import time
 from pathlib import Path
 
 from flask import Response, g, jsonify, request
 
-_work: dict[str, dict] = {}
-_wlock = threading.Lock()
 
-
-def _start(cid: str, what: str, fn) -> bool:
-    with _wlock:
-        cur = _work.get(cid)
-        if cur and cur.get("running"):
-            return False
-        _work[cid] = {"what": what, "running": True, "started": time.time(), "error": "", "result": None}
-
-    def run():
-        try:
-            res = fn()
-            with _wlock:
-                _work[cid].update(running=False, result=res)
-        except Exception as exc:                 # shown to the analyst on the case page
-            with _wlock:
-                _work[cid].update(running=False, error=f"{type(exc).__name__}: {exc}"[:500])
-    threading.Thread(target=run, daemon=True, name=f"dfir-{cid}").start()
-    return True
-
-
-def work_of(cid: str) -> dict | None:
-    with _wlock:
-        w = _work.get(cid)
-        return dict(w) if w else None
-
-
-def register(app) -> None:
+def register(app, jobs) -> None:
     from ..config import get_config
     from . import service as S
     from .config import of
@@ -60,6 +31,24 @@ def register(app) -> None:
 
     def case_or_404(cid: str):
         return S.store_for(get_config()).case(cid)
+
+    def job_state(cid: str) -> dict | None:
+        c = S.store_for(get_config()).case(cid) or {}
+        if not c.get("job_id"):
+            return None
+        j = jobs.get(c["job_id"]) or {}
+        st = j.get("status") or "gone"
+        return {"what": c.get("job_what") or "", "status": st, "running": st in ("queued", "running"),
+                "error": j.get("error") or "", "result": j.get("result")}
+
+    def start(cid: str, what: str, task: str, params: dict) -> bool:
+        w = job_state(cid)
+        if w and w["running"]:
+            return False
+        jid = jobs.submit("dfir", {"case": cid, "what": what, "t": time.time()}, None, deduplicate=False, task=task,
+                          params=params)
+        S.store_for(get_config()).update_case(cid, job_id=jid, job_what=what)
+        return True
 
     def llm():
         from ..hunt.service import privacy_llm
@@ -104,18 +93,20 @@ def register(app) -> None:
                 return bad("not found", 404)
             S.store_for(c).update_case(cid, **{k: str(v) for k, v in body().items()
                                                if k in ("title", "description", "status")})
-        work = work_of(cid)            # read before the overview: a job that ends in between must not leave old numbers
+        work = job_state(cid)          # read before the overview: a job that ends in between must not leave old numbers
         o = S.overview(c, cid)
         if not o:
             return bad("not found", 404)
         o["work"] = work
+        o["interrupted"] = [x["id"] for x in S.interrupted(c, cid, jobs)]
+        o["activity"] = S.store_for(c).activity(cid, 50)
         return jsonify(o)
 
     @app.route("/api/dfir/cases/<cid>/delete", methods=["POST"])
     def dfir_delete(cid):
         if not case_or_404(cid):
             return bad("not found", 404)
-        if (work_of(cid) or {}).get("running"):
+        if (job_state(cid) or {}).get("running"):
             return bad("wait for the running import or analysis to finish", 409)
         S.store_for(get_config()).delete_case(cid)
         return jsonify({"deleted": cid})
@@ -131,31 +122,42 @@ def register(app) -> None:
         files = request.files.getlist("files")
         if not files:
             return bad("send one or more files in the form field 'files'")
-        tmp = Path(tempfile.mkdtemp(prefix="dfir-", dir=c.data_dir))
+        if (job_state(cid) or {}).get("running"):
+            return bad("an import or analysis is already running for this investigation", 409)
+        folder = S.uploads_dir(c, cid)
         saved = []
         for i, f in enumerate(files[:50]):
             name = Path(str(f.filename or f"upload-{i}")).name[:200] or f"upload-{i}"
-            p = tmp / f"{i}-{name}"
+            p = folder / f"{secrets.token_hex(4)}-{name}"
             f.save(p)
-            saved.append((p, name))
-        who = actor()
-
-        def run():
-            try:
-                return [S.import_file(c, cid, p, name, actor=who) for p, name in saved]
-            finally:
-                shutil.rmtree(tmp, ignore_errors=True)
-        if not _start(cid, f"importing {len(saved)} file(s)", run):
-            shutil.rmtree(tmp, ignore_errors=True)
+            saved.append([str(p), name])
+        if not start(cid, f"importing {len(saved)} file(s)", "dfir-import",
+                     {"case_id": cid, "files": saved, "actor": actor()}):
+            for p, _ in saved:
+                Path(p).unlink(missing_ok=True)
             return bad("an import or analysis is already running for this investigation", 409)
         return jsonify({"started": True, "files": [n for _, n in saved]}), 202
 
     @app.route("/api/dfir/cases/<cid>/analyze", methods=["POST"])
     def dfir_analyze(cid):
-        c = get_config()
         if not case_or_404(cid):
             return bad("not found", 404)
-        if not _start(cid, "running the analyzers", lambda: S.analyze(c, cid)):
+        if not start(cid, "running the analyzers", "dfir-analyze", {"case_id": cid, "actor": actor()}):
+            return bad("an import or analysis is already running for this investigation", 409)
+        return jsonify({"started": True}), 202
+
+    @app.route("/api/dfir/cases/<cid>/sources/<sid>/retry", methods=["POST"])
+    def dfir_retry(cid, sid):
+        c = get_config()
+        if sid not in [x["id"] for x in S.interrupted(c, cid, jobs)]:
+            return bad("only an interrupted import can run again", 409)
+        try:
+            files = S.retry_source(c, cid, sid, actor=actor())
+        except KeyError:
+            return bad("not found", 404)
+        except ValueError as exc:
+            return bad(exc, 409)
+        if not start(cid, "importing 1 file(s) again", "dfir-import", {"case_id": cid, "files": files, "actor": actor()}):
             return bad("an import or analysis is already running for this investigation", 409)
         return jsonify({"started": True}), 202
 
@@ -183,6 +185,14 @@ def register(app) -> None:
         else:
             e = st.event(cid, seq)
         return jsonify(e) if e else bad("not found", 404)
+
+    @app.route("/api/dfir/cases/<cid>/events/<int:seq>/tree")
+    def dfir_tree(cid, seq):
+        from .views import process_tree
+        try:
+            return jsonify(process_tree(S.store_for(get_config()), cid, seq))
+        except KeyError:
+            return bad("not found", 404)
 
     @app.route("/api/dfir/cases/<cid>/notes", methods=["POST"])
     def dfir_note(cid):

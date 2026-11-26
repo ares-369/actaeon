@@ -6,6 +6,7 @@ and analyzers, analyst marks (star, tags, comment), notes (hypotheses, questions
 
 from __future__ import annotations
 
+import re
 import threading
 from collections.abc import Iterable
 from pathlib import Path
@@ -42,7 +43,31 @@ CREATE TABLE IF NOT EXISTS dfir_notes (
 CREATE TABLE IF NOT EXISTS dfir_stories (
   id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT, kind TEXT, ts TEXT, author TEXT, model TEXT, body TEXT);
 CREATE TABLE IF NOT EXISTS dfir_analysis (case_id TEXT, name TEXT, ts TEXT, body TEXT, PRIMARY KEY (case_id, name));
+CREATE TABLE IF NOT EXISTS dfir_activity (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, case_id TEXT, ts TEXT, actor TEXT, action TEXT, detail TEXT);
+CREATE INDEX IF NOT EXISTS dfir_activity_case ON dfir_activity(case_id);
 """
+# Full-text index over each event's summary and field values. SQLite: an FTS5 table (case_id and seq unindexed);
+# PostgreSQL: a GIN index on the same text (the 'simple' configuration, like FTS5's default: no stemming).
+_FTS_SQLITE = "CREATE VIRTUAL TABLE IF NOT EXISTS dfir_fts USING fts5(case_id UNINDEXED, seq UNINDEXED, text)"
+_FTS_PG = ("CREATE INDEX IF NOT EXISTS dfir_events_fts ON dfir_events USING GIN "
+           "(to_tsvector('simple', coalesce(summary,'') || ' ' || coalesce(data,'')))")
+_WORD = re.compile(r"[\w-]+")
+
+
+def fts_text(e: dict) -> str:
+    vals = [str(v) for v in (e.get("data") or {}).values() if not isinstance(v, (dict, list)) and v not in (None, "")]
+    return (e.get("summary") or "") + " " + " ".join(vals)[:20_000]
+
+
+def fts_query(words: str) -> str:
+    """Words as an FTS5 query: every word must appear, the last one as a prefix (``mimi`` finds ``mimikatz``)."""
+    toks = [t for t in _WORD.findall(words) if t][:8]
+    if not toks:
+        return ""
+    parts = ['"' + t.replace('"', "") + '"' for t in toks]
+    parts[-1] += "*"
+    return " AND ".join(parts)
 
 ORDER_COLS = {"ts": "ts", "-ts": "ts DESC", "level": "level DESC, ts", "host": "host, ts"}
 
@@ -54,6 +79,38 @@ class DfirStore:
         self._lock = threading.RLock()
         with self._conn() as c:
             c.executescript(_SCHEMA)
+            for col in ("job_id", "job_what", "assignee", "soc_case"):
+                db.add_column(c, "dfir_cases", col, "TEXT")
+            for col in ("upload_path", "origin"):
+                db.add_column(c, "dfir_sources", col, "TEXT")
+            if db.is_pg():
+                c.execute(_FTS_PG)
+            else:
+                c.execute(_FTS_SQLITE)
+        if not db.is_pg():
+            self._backfill_fts()
+
+    def _backfill_fts(self) -> None:
+        """Cases imported before the full-text index existed get indexed once."""
+        with self._lock, self._conn() as c:
+            todo = [r["case_id"] for r in c.execute(
+                "SELECT DISTINCT e.case_id FROM dfir_events e WHERE NOT EXISTS "
+                "(SELECT 1 FROM dfir_fts f WHERE f.case_id=e.case_id) LIMIT 50")]
+        for cid in todo:
+            for batch in self._batches(cid):
+                with self._lock, self._conn() as c:
+                    c.executemany("INSERT INTO dfir_fts (case_id, seq, text) VALUES (?,?,?)",
+                                  [(cid, e["seq"], fts_text(e)) for e in batch])
+
+    def _batches(self, cid: str, n: int = 5000):
+        batch = []
+        for e in self.iter_events(cid):
+            batch.append(e)
+            if len(batch) >= n:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
 
     def _conn(self):
         return db.connect(self.path)
@@ -78,7 +135,8 @@ class DfirStore:
             return [dict(r) for r in c.execute("SELECT * FROM dfir_cases ORDER BY updated DESC LIMIT 500")]
 
     def update_case(self, cid: str, **fields: Any) -> None:
-        allowed = {k: v for k, v in fields.items() if k in ("title", "description", "status", "analyzed", "events")}
+        allowed = {k: v for k, v in fields.items() if k in ("title", "description", "status", "analyzed", "events",
+                                                             "job_id", "job_what", "assignee", "soc_case")}
         if not allowed:
             return
         sets = ", ".join(f"{k}=?" for k in allowed) + ", updated=?"
@@ -87,7 +145,10 @@ class DfirStore:
 
     def delete_case(self, cid: str) -> None:
         with self._lock, self._conn() as c:
-            for t in ("dfir_events", "dfir_detections", "dfir_sources", "dfir_notes", "dfir_stories", "dfir_analysis"):
+            if not db.is_pg():
+                c.execute("DELETE FROM dfir_fts WHERE case_id=?", (cid,))
+            for t in ("dfir_events", "dfir_detections", "dfir_sources", "dfir_notes", "dfir_stories", "dfir_analysis",
+                      "dfir_activity"):
                 c.execute(f"DELETE FROM {t} WHERE case_id=?", (cid,))  # nosec B608 - fixed table names
             c.execute("DELETE FROM dfir_cases WHERE id=?", (cid,))
 
@@ -109,6 +170,39 @@ class DfirStore:
                        dumps(sorted(f.get("hosts", []))[:200]), f.get("first_ts", ""), f.get("last_ts", ""),
                        f.get("status", "done"), f.get("note", "")[:500], sid))
 
+    def delete_source(self, cid: str, sid: str) -> None:
+        with self._lock, self._conn() as c:
+            if not db.is_pg():
+                c.execute("DELETE FROM dfir_fts WHERE case_id=? AND seq IN (SELECT seq FROM dfir_events WHERE case_id=? "
+                          "AND source_id=?)", (cid, cid, sid))
+            c.execute("DELETE FROM dfir_detections WHERE case_id=? AND seq IN (SELECT seq FROM dfir_events WHERE "
+                      "case_id=? AND source_id=?)", (cid, cid, sid))
+            c.execute("DELETE FROM dfir_events WHERE case_id=? AND source_id=?", (cid, sid))
+            c.execute("DELETE FROM dfir_sources WHERE case_id=? AND id=?", (cid, sid))
+
+    def set_source(self, sid: str, **f: Any) -> None:
+        allowed = {k: v for k, v in f.items() if k in ("status", "note", "upload_path", "origin")}
+        if allowed:
+            with self._conn() as c:
+                c.execute(f"UPDATE dfir_sources SET {', '.join(k + '=?' for k in allowed)} WHERE id=?",  # nosec B608
+                          (*allowed.values(), sid))
+
+    def source(self, sid: str) -> dict | None:
+        with self._conn() as c:
+            r = c.execute("SELECT * FROM dfir_sources WHERE id=?", (sid,)).fetchone()
+        return dict(r) if r else None
+
+    # ---- activity ----
+    def log(self, cid: str, actor: str, action: str, detail: str = "") -> None:
+        with self._conn() as c:
+            c.execute("INSERT INTO dfir_activity (case_id, ts, actor, action, detail) VALUES (?,?,?,?,?)",
+                      (cid, iso(), actor, action[:60], detail[:500]))
+
+    def activity(self, cid: str, limit: int = 200) -> list[dict]:
+        with self._conn() as c:
+            return [dict(r) for r in c.execute("SELECT * FROM dfir_activity WHERE case_id=? ORDER BY id DESC LIMIT ?",
+                                               (cid, limit))]
+
     def sources(self, cid: str) -> list[dict]:
         with self._conn() as c:
             rows = [dict(r) for r in c.execute("SELECT * FROM dfir_sources WHERE case_id=? ORDER BY imported", (cid,))]
@@ -129,8 +223,9 @@ class DfirStore:
         return int((r["m"] if r else None) or 0) + 1
 
     def add_events(self, cid: str, sid: str, rows: Iterable[tuple[int, dict]]) -> int:
+        rows_list = list(rows)
         vals = [(cid, seq, sid, e["ts"], e["host"], e["channel"], e["event_id"], e["user"], e["process"],
-                 e["summary"], dumps(e["data"])) for seq, e in rows]
+                 e["summary"], dumps(e["data"])) for seq, e in rows_list]
         if not vals:
             return 0
         sql = ("INSERT INTO dfir_events (case_id, seq, source_id, ts, host, channel, event_id, usr, process, summary, "
@@ -141,6 +236,9 @@ class DfirStore:
             else:
                 for v in vals:
                     c.execute(sql, v)
+            if not db.is_pg():
+                c.executemany("INSERT INTO dfir_fts (case_id, seq, text) VALUES (?,?,?)",
+                              [(cid, seq, fts_text(e)) for seq, e in rows_list])
         return len(vals)
 
     def count(self, cid: str) -> int:
@@ -190,6 +288,7 @@ class DfirStore:
                starred: bool = False, detected: bool = False, tag: str = "", event_id: str = "",
                order: str = "ts", limit: int = 200, offset: int = 0) -> tuple[list[dict], int]:
         where, args = ["e.case_id=?"], [cid]
+        words: list[str] = []
         if q:
             for term in q.split()[:8]:
                 if ":" in term and not term.startswith(("http", "\\")) and term.split(":", 1)[0].isidentifier():
@@ -197,8 +296,18 @@ class DfirStore:
                     where.append("e.data LIKE ?")
                     args.append(f'%"{k}": %{v}%')
                 else:
-                    where.append("(e.summary LIKE ? OR e.data LIKE ?)")
-                    args += [f"%{term}%", f"%{term}%"]
+                    words.append(term)
+        if words:
+            fq = fts_query(" ".join(words))
+            if fq and db.is_pg():
+                toks = re.findall(r"\w+", " ".join(words))[:8]
+                tsq = " & ".join([*toks[:-1], toks[-1] + ":*"]) if toks else ""
+                where.append("to_tsvector('simple', coalesce(e.summary,'') || ' ' || coalesce(e.data,'')) "
+                             "@@ to_tsquery('simple', ?)")
+                args.append(tsq)
+            elif fq:
+                where.append("e.seq IN (SELECT seq FROM dfir_fts WHERE dfir_fts MATCH ? AND case_id=?)")
+                args += [fq, cid]
         for col, val in (("host", host), ("event_id", event_id)):
             if val:
                 where.append(f"e.{col}=?")
@@ -248,6 +357,13 @@ class DfirStore:
                 c.execute(f"UPDATE dfir_events SET {', '.join(sets)} WHERE case_id=? AND seq=?",  # nosec B608
                           (*args, cid, int(seq)))
         return self.event(cid, seq)
+
+    def host_events(self, cid: str, host: str, event_ids: tuple[str, ...], limit: int = 300_000) -> list[dict]:
+        q = ",".join("?" * len(event_ids))
+        with self._conn() as c:
+            return [self._ev(r) for r in c.execute(
+                f"SELECT * FROM dfir_events WHERE case_id=? AND host=? AND event_id IN ({q}) ORDER BY ts LIMIT ?",  # nosec B608
+                (cid, host, *event_ids, limit))]
 
     def hosts(self, cid: str) -> list[dict]:
         with self._conn() as c:
@@ -299,9 +415,10 @@ class DfirStore:
                 continue
             q = ",".join("?" * len(part))
             with self._conn() as c:
-                for r in c.execute(f"SELECT seq, rule_key, title, level, origin FROM dfir_detections WHERE case_id=? "  # nosec B608
-                                   f"AND seq IN ({q})", (cid, *part)):
-                    out.setdefault(r["seq"], []).append({k: r[k] for k in ("rule_key", "title", "level", "origin")})
+                for r in c.execute(f"SELECT seq, rule_key, title, level, origin, attack FROM dfir_detections "  # nosec B608
+                                   f"WHERE case_id=? AND seq IN ({q})", (cid, *part)):
+                    out.setdefault(r["seq"], []).append({**{k: r[k] for k in ("rule_key", "title", "level", "origin")},
+                                                         "attack": loads(r["attack"], [])})
         return out
 
     def detection_summary(self, cid: str) -> list[dict]:
