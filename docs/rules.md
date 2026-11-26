@@ -50,9 +50,10 @@ Actaeon's own Sigma matcher, so no log platform is needed and nothing is queried
 
 The matcher covers single-event rules: field maps, lists, keywords, wildcards, the modifiers `contains`,
 `startswith`, `endswith`, `all`, `re` (with `i`, `m`, `s`), `cidr`, `exists`, `base64`, `base64offset`,
-`wide`/`utf16*`, `windash`, `lt`/`lte`/`gt`/`gte`, `cased`, and conditions with `and`, `or`, `not`, brackets,
-`1 of`, `all of` and `them`. Correlation rules, aggregations (`| count()`), `fieldref` and `expand` are reported
-as "cannot test locally"; such a rule cannot be marked ready.
+`wide`/`utf16*`, `windash`, `lt`/`lte`/`gt`/`gte`, `cased`, `fieldref`, items with no field name, and
+conditions with `and`, `or`, `not`, brackets, `1 of`, `all of` and `them`. Correlation rules, aggregations
+(`| count()`) and `expand` are reported as "cannot test locally"; such a rule cannot be marked ready. All 2,432
+SigmaHQ Windows rules load in it (checked 2026-11-26).
 
 Field names: a rule field is looked up as written, then through `rules.field_map`, then case-insensitively,
 then by the last part of a dotted name, so `CommandLine` finds `data.win.eventdata.commandLine`. Each result

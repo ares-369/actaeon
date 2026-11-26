@@ -1,0 +1,24 @@
+title: Certutil used to download or decode
+id: 930a6edd-ca58-4f85-8796-a28ea9e5903c
+status: experimental
+description: certutil fetching a URL or decoding a file.
+author: Actaeon
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  img:
+    Image|endswith: \certutil.exe
+  args:
+    CommandLine|contains:
+    - urlcache
+    - -decode
+    - /decode
+    - verifyctl
+  condition: img and args
+level: high
+tags:
+- attack.t1105
+- attack.t1140
+falsepositives:
+- Certificate administration

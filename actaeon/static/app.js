@@ -66,12 +66,13 @@ function route() {
   const [tab, arg] = path.split("/");
   window.ROUTE_QUERY = new URLSearchParams(query || "");  // e.g. #hunts?hypothesis=...&context=... from another tool
   const navTab = { hunt: "hunts", lead: "leads", case: "cases", approvals: "cases", socalerts: "cases", socdash: "cases",
-    tuning: "cases", rule: "rules", rulecov: "rules" }[tab] || tab;
+    tuning: "cases", rule: "rules", rulecov: "rules", inv: "dfir" }[tab] || tab;
   document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.tab === navTab));
   const pages = { leads, lead: () => leadDetail(arg), hunts, hunt: () => huntDetail(arg), ask, library, intel,
     entities: () => entities(arg), coverage, reports, connectors, settings };
   Object.assign(pages, window.SOC_PAGES || {});   // alert triage pages (soc.js)
   Object.assign(pages, window.RULES_PAGES || {}); // detection rule library (rules.js)
+  Object.assign(pages, window.DFIR_PAGES || {});  // offline investigations (dfir.js)
   const token = ++navToken;
   const view = h("div");
   main = view;

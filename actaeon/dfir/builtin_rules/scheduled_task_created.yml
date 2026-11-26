@@ -1,0 +1,17 @@
+title: Scheduled task created
+id: cb1a8270-8dae-4f37-8518-6e4fe9f521a3
+status: experimental
+description: A scheduled task was registered.
+author: Actaeon
+logsource:
+  product: windows
+  service: security
+detection:
+  sel:
+    EventID: 4698
+  condition: sel
+level: medium
+tags:
+- attack.t1053.005
+falsepositives:
+- Software updaters

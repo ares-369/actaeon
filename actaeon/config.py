@@ -98,6 +98,7 @@ class Config:
     allow_unauthenticated_network: bool = False
     soc: Any = None            # alert triage settings (actaeon/soc/config.py)
     rules: Any = None          # detection rule library (actaeon/rules/config.py)
+    dfir: Any = None           # offline investigations (actaeon/dfir/config.py)
 
     def secret(self, name: str) -> str:
         return os.getenv(name, "") or ""
@@ -177,6 +178,8 @@ def load_config() -> Config:
     soc = parse_soc(data.get("soc"), {s.name for s in specs})
     from .rules.config import parse as parse_rules
     rules = parse_rules(data.get("rules"))
+    from .dfir.config import parse as parse_dfir
+    dfir = parse_dfir(data.get("dfir"))
     intel = data.get("intel", {}) or {}
     intel.setdefault("local", True)
     from .intel.feeds import validate_feed
@@ -218,7 +221,7 @@ def load_config() -> Config:
         allow_unauthenticated_network=(
             _truthy(os.getenv("ACTAEON_ALLOW_UNAUTHENTICATED_NETWORK", ""))
             or bool(srv.get("allow_unauthenticated_network", False))),
-        soc=soc, rules=rules,
+        soc=soc, rules=rules, dfir=dfir,
     )
 
 

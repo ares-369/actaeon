@@ -130,6 +130,18 @@ rules:
   priorities: []                 # ATT&CK techniques you want rules for, e.g. [T1059.001, T1003.001]
   draft_samples: true            # model drafts come with example events (marked synthetic, never count as real)
 
+# Offline investigations (docs/dfir.md): load evidence files (.evtx, JSON lines, CSV, syslog, .zip) into a case,
+# build one timeline, run Sigma rules and analyzers over it, and have a model write a cited story. Read-only.
+dfir:
+  enabled: false
+  max_upload_mb: 1024
+  max_events_per_case: 2000000
+  library_rules: [ready, testing]  # rule library statuses run over the evidence (needs rules.enabled)
+  builtin_rules: true              # Actaeon's small set of high-value Windows and Linux checks
+  rule_dirs: []                    # extra Sigma folders, e.g. ["/opt/sigma/rules/windows"] (large sets are slow)
+  story_events: 250                # events the model sees for the story (starred and detected first)
+  evtx_dump: ""                    # optional path to the evtx_dump tool: much faster .evtx reading
+
 # Describe your environment so hunts fit it (all optional).
 environment: {}
 #  summary: "Mostly Windows endpoints, a few Linux web servers, one cloud tenant."

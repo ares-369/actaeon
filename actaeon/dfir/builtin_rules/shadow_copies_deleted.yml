@@ -1,0 +1,29 @@
+title: Shadow copies deleted
+id: 13acd21e-4300-4961-87f7-8c9c6f2a904c
+status: experimental
+description: Volume shadow copies deleted or resized, common before ransomware encryption.
+author: Actaeon
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  vss:
+    Image|endswith: \vssadmin.exe
+    CommandLine|contains|all:
+    - delete
+    - shadows
+  wmic:
+    Image|endswith: \wmic.exe
+    CommandLine|contains|all:
+    - shadowcopy
+    - delete
+  resize:
+    CommandLine|contains|all:
+    - resize
+    - shadowstorage
+  condition: 1 of them
+level: critical
+tags:
+- attack.t1490
+falsepositives:
+- Rare backup administration

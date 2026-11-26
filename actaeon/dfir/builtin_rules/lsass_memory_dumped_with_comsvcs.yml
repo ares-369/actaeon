@@ -1,0 +1,19 @@
+title: LSASS memory dumped with comsvcs
+id: 4edcdf5d-4dcf-4dba-9cd9-f4c5d2d4ee22
+status: experimental
+description: rundll32 calling comsvcs.dll MiniDump, a common way to dump credentials.
+author: Actaeon
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  sel:
+    CommandLine|contains|all:
+    - comsvcs
+    - minidump
+  condition: sel
+level: critical
+tags:
+- attack.t1003.001
+falsepositives:
+- Very rare

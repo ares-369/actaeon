@@ -56,7 +56,15 @@ def test_unknown_identifier_and_aggregation_are_unsupported():
     with pytest.raises(Unsupported):
         compile_rule("title: c\ncorrelation: {type: event_count}\n")
     with pytest.raises(Unsupported):
-        m("  sel:\n    a|fieldref: b\n  condition: sel\n")
+        m("  sel:\n    a|expand: b\n  condition: sel\n")
+
+
+def test_fieldref_and_fieldless_items():
+    ev = {"SubjectUserName": "bob", "TargetUserName": "BOB", "Other": "x"}
+    assert m("  sel:\n    SubjectUserName|fieldref: TargetUserName\n  condition: sel\n", ev=ev)[0]
+    assert not m("  sel:\n    SubjectUserName|fieldref: Other\n  condition: sel\n", ev=ev)[0]
+    assert m("  sel:\n    '|contains': 'bo'\n  condition: sel\n", ev=ev)[0]
+    assert not m("  sel:\n    '|contains': 'zzz'\n  condition: sel\n", ev=ev)[0]
 
 
 def test_null_exists_numbers_cidr_re():

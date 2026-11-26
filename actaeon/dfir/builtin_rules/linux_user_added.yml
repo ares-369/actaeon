@@ -1,0 +1,16 @@
+title: Linux user added
+id: 77be9984-368e-4779-aafe-dfb95e58fff3
+status: experimental
+description: A new local user was created on a Linux host.
+author: Actaeon
+logsource:
+  product: linux
+detection:
+  sel:
+    action: user_added
+  condition: sel
+level: medium
+tags:
+- attack.t1136.001
+falsepositives:
+- Package installs create service users

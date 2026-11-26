@@ -1,0 +1,26 @@
+title: Process opened LSASS memory
+id: e2b7f5be-083e-4fd5-a216-12f190569472
+status: experimental
+description: A process opened lsass.exe with rights that allow reading its memory
+  (Sysmon pads the mask with zeros).
+author: Actaeon
+logsource:
+  product: windows
+  category: process_access
+detection:
+  sel:
+    TargetImage|endswith: \lsass.exe
+    GrantedAccess|re|i: ^0x0*(1010|1410|1438|143a|1f1fff|1f3fff|1fffff)$
+  known:
+    SourceImage|endswith:
+    - \MsMpEng.exe
+    - \wmiprvse.exe
+    - \svchost.exe
+    - \csrss.exe
+    - \wininit.exe
+  condition: sel and not known
+level: high
+tags:
+- attack.t1003.001
+falsepositives:
+- Security products and backup agents

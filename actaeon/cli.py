@@ -670,6 +670,8 @@ def cli_main(argv: list[str] | None = None) -> None:
     soc_cli.add_parsers(sub)
     from .rules import cli as rules_cli
     rules_cli.add_parsers(sub)
+    from .dfir import cli as dfir_cli
+    dfir_cli.add_parsers(sub)
     p_demo = sub.add_parser("demo", help="set up a demo with labelled sample data (and optionally run a hunt)")
     p_demo.add_argument("--dir", default="", help="demo home (default ~/.actaeon-demo)")
     p_demo.add_argument("--offline", action="store_true", help="use a scripted run instead of a model (not AI)")
@@ -751,6 +753,9 @@ def cli_main(argv: list[str] | None = None) -> None:
     rules_rc = rules_cli.run(a)
     if rules_rc is not None:
         sys.exit(rules_rc)
+    dfir_rc = dfir_cli.run(a)
+    if dfir_rc is not None:
+        sys.exit(dfir_rc)
     if a.cmd == "hunt":
         sys.exit(cmd_hunt(a))
     if a.cmd == "intel":

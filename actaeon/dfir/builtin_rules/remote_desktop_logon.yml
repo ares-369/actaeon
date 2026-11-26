@@ -1,0 +1,18 @@
+title: Remote desktop logon
+id: 88308d6a-a990-47c6-97c1-906b2efbfd7e
+status: experimental
+description: A successful logon of type 10 (remote interactive).
+author: Actaeon
+logsource:
+  product: windows
+  service: security
+detection:
+  sel:
+    EventID: 4624
+    LogonType: 10
+  condition: sel
+level: low
+tags:
+- attack.t1021.001
+falsepositives:
+- Administrators using RDP

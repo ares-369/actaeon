@@ -153,6 +153,8 @@ def build(cfg, jobs, *, role_of=lambda: "admin", llm=None, hub=None) -> McpServe
     add_case_tools(add, cfg, jobs, work=WORK)
     from .rules.mcp import add_tools as add_rule_tools
     add_rule_tools(add, cfg)
+    from .dfir.mcp import add_tools as add_dfir_tools
+    add_dfir_tools(add, cfg)
 
     expose = mcp_cfg.get("expose")
     if expose:

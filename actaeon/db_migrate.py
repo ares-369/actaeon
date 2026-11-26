@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import db
 
-FILES = ("hunts.sqlite", "intel.sqlite", "audit.sqlite", "actaeon.sqlite")
+FILES = ("hunts.sqlite", "intel.sqlite", "audit.sqlite", "actaeon.sqlite", "dfir.sqlite")
 _FTS_SHADOW = ("_data", "_idx", "_content", "_docsize", "_config")
 
 
@@ -38,6 +38,8 @@ def _create_tables(data_dir: Path) -> None:
         cls(hp)
     IntelStore(data_dir / "intel.sqlite")
     AuditLog(data_dir / "audit.sqlite")
+    from .dfir.store import DfirStore
+    DfirStore(data_dir / "dfir.sqlite")
     JobManager(data_dir / "actaeon.sqlite", mode="queue").pool.shutdown(wait=False)
 
 

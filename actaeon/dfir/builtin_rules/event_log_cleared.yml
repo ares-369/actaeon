@@ -1,0 +1,20 @@
+title: Event log cleared
+id: 5affbb4a-088a-4280-b57f-d00744a3a898
+status: experimental
+description: Someone cleared a Windows event log, which often hides earlier activity.
+author: Actaeon
+logsource:
+  product: windows
+detection:
+  security:
+    Channel: Security
+    EventID: 1102
+  system:
+    Channel: System
+    EventID: 104
+  condition: security or system
+level: high
+tags:
+- attack.t1070.001
+falsepositives:
+- Log maintenance by administrators

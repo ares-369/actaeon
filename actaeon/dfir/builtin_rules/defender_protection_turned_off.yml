@@ -1,0 +1,21 @@
+title: Defender protection turned off
+id: ca747a01-e077-4e8b-b632-c0a26a56c2e3
+status: experimental
+description: Microsoft Defender reported a protection feature switched off.
+author: Actaeon
+logsource:
+  product: windows
+  service: windefend
+detection:
+  sel:
+    EventID:
+    - 5001
+    - 5010
+    - 5012
+    - 5101
+  condition: sel
+level: high
+tags:
+- attack.t1562.001
+falsepositives:
+- Administrators testing

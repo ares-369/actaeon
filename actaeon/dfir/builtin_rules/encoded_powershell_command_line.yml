@@ -1,0 +1,28 @@
+title: Encoded PowerShell command line
+id: 3b697a93-7173-4fe6-9986-cbe9a504fce6
+status: experimental
+description: PowerShell started with an encoded command.
+author: Actaeon
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  img:
+    Image|endswith:
+    - \powershell.exe
+    - \pwsh.exe
+  enc:
+    CommandLine|contains:
+    - ' -enc'
+    - ' -ec '
+    - ' -encodedcommand'
+    - ' -e JAB'
+    - ' -e SQB'
+    - ' -e aQB'
+  condition: img and enc
+level: high
+tags:
+- attack.t1059.001
+- attack.t1027
+falsepositives:
+- Management tools that pass encoded scripts

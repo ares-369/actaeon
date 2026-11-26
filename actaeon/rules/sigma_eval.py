@@ -158,16 +158,15 @@ class FieldTest:
         mods = [m.lower() for m in parts[1:]]
         self.mods = mods
         known = {"contains", "startswith", "endswith", "all", "re", "i", "m", "s", "cidr", "exists", "base64",
-                 "base64offset", "wide", "utf16le", "utf16be", "utf16", "windash", "lt", "lte", "gt", "gte", "cased"}
+                 "base64offset", "wide", "utf16le", "utf16be", "utf16", "windash", "lt", "lte", "gt", "gte", "cased",
+                 "fieldref"}
         bad = [m for m in mods if m not in known]
         if bad:
             raise Unsupported(f"modifier(s) {bad} on {self.field!r} are not evaluated locally")
-        if not self.field:
-            raise Unsupported("a field map item with no field name")
         self.all = "all" in mods
         self.cased = "cased" in mods
         vals = value if isinstance(value, list) else [value]
-        self.kind = next((m for m in ("re", "cidr", "exists", "lt", "lte", "gt", "gte") if m in mods), "str")
+        self.kind = next((m for m in ("re", "cidr", "exists", "fieldref", "lt", "lte", "gt", "gte") if m in mods), "str")
         enc = next((m for m in ("wide", "utf16le", "utf16be", "utf16") if m in mods), None)
         if enc and "base64" not in mods and "base64offset" not in mods:
             raise Unsupported(f"{enc} without base64 on {self.field!r}")
@@ -176,6 +175,9 @@ class FieldTest:
         if self.kind == "exists":
             want = bool(vals[0]) if vals else True
             self.exists = want
+            return
+        if self.kind == "fieldref":                  # the value names another field whose value must be equal
+            self.refs = [str(v) for v in vals]
             return
         for v in vals:
             if self.kind == "re":
@@ -214,7 +216,15 @@ class FieldTest:
                 self.tests.append(lambda x, pats=pats: (t := _text(x)) is not None and any(p.match(t) for p in pats))
 
     def match(self, ev: Event) -> tuple[bool, list[str]]:
-        keys = ev.lookup(self.field)
+        keys = ev.lookup(self.field) if self.field else list(ev.flat)     # no field name: any field (keyword)
+        if self.kind == "fieldref":
+            mine = {_text(ev.flat[k]).lower() for k in keys if _text(ev.flat[k]) is not None}
+            hits = []
+            for ref in self.refs:
+                other = {_text(ev.flat[k]).lower() for k in ev.lookup(ref) if _text(ev.flat[k]) is not None}
+                hits.append(bool(mine & other))
+            ok = all(hits) if self.all else any(hits)
+            return ok, keys[:1] if ok else []
         if self.kind == "exists":
             present = any(not _empty(ev.flat[k]) for k in keys)
             return present == self.exists, keys[:1] if present else []

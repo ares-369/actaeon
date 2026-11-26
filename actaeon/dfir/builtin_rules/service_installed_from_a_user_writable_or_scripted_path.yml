@@ -1,0 +1,32 @@
+title: Service installed from a user-writable or scripted path
+id: a45bcdb6-3ac7-4341-8641-3aa18196750d
+status: experimental
+description: A new service runs from a temporary or user folder, a share, or through
+  a script interpreter.
+author: Actaeon
+logsource:
+  product: windows
+  service: system
+detection:
+  sel:
+    EventID: 7045
+  path:
+    ImagePath|contains:
+    - \Temp\
+    - \AppData\
+    - \Users\Public\
+    - \ProgramData\
+    - powershell
+    - cmd.exe /c
+    - cmd /c
+    - mshta
+    - rundll32
+    - regsvr32
+    - \\\\
+    - '%COMSPEC%'
+  condition: sel and path
+level: high
+tags:
+- attack.t1543.003
+falsepositives:
+- Some installers run services from ProgramData

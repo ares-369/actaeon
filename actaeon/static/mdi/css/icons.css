@@ -16,6 +16,7 @@
 .mdi-brain::before{content:"\F09D1"}
 .mdi-briefcase-outline::before{content:"\F0814"}
 .mdi-cancel::before{content:"\F073A"}
+.mdi-card::before{content:"\F0B6F"}
 .mdi-chart-timeline-variant::before{content:"\F0E93"}
 .mdi-chat-outline::before{content:"\F0EDE"}
 .mdi-chat-question-outline::before{content:"\F1739"}
@@ -35,6 +36,7 @@
 .mdi-content-save::before{content:"\F0193"}
 .mdi-database-search::before{content:"\F0866"}
 .mdi-delete::before{content:"\F01B4"}
+.mdi-delete-outline::before{content:"\F09E7"}
 .mdi-details::before{content:"\F01C6"}
 .mdi-domain::before{content:"\F01D7"}
 .mdi-email::before{content:"\F01EE"}
@@ -50,6 +52,7 @@
 .mdi-file-pdf-box::before{content:"\F0226"}
 .mdi-file-word-box::before{content:"\F022D"}
 .mdi-flask-outline::before{content:"\F0096"}
+.mdi-folder-search-outline::before{content:"\F0969"}
 .mdi-format-list-bulleted::before{content:"\F0279"}
 .mdi-format-list-numbered::before{content:"\F027B"}
 .mdi-gavel::before{content:"\F029B"}
@@ -76,6 +79,7 @@
 .mdi-menu::before{content:"\F035C"}
 .mdi-mine::before{content:"\F0DDA"}
 .mdi-network::before{content:"\F06F3"}
+.mdi-note::before{content:"\F039A"}
 .mdi-note-text-outline::before{content:"\F11D7"}
 .mdi-pause::before{content:"\F03E4"}
 .mdi-play::before{content:"\F040A"}
@@ -93,10 +97,13 @@
 .mdi-shield-check-outline::before{content:"\F0CC8"}
 .mdi-shield-plus::before{content:"\F0ADA"}
 .mdi-shield-search::before{content:"\F0D9A"}
+.mdi-star::before{content:"\F04CE"}
+.mdi-star-outline::before{content:"\F04D2"}
 .mdi-stethoscope::before{content:"\F04D9"}
 .mdi-stop::before{content:"\F04DB"}
 .mdi-svg::before{content:"\F0721"}
 .mdi-table::before{content:"\F04EB"}
+.mdi-tag::before{content:"\F04F9"}
 .mdi-target::before{content:"\F04FE"}
 .mdi-text::before{content:"\F09A8"}
 .mdi-text-box-outline::before{content:"\F09ED"}

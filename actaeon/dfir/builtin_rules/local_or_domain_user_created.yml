@@ -1,0 +1,17 @@
+title: Local or domain user created
+id: bc4407a9-5817-4ec0-af84-f0c37c7531f6
+status: experimental
+description: A new user account was created.
+author: Actaeon
+logsource:
+  product: windows
+  service: security
+detection:
+  sel:
+    EventID: 4720
+  condition: sel
+level: medium
+tags:
+- attack.t1136
+falsepositives:
+- New staff accounts

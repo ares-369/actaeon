@@ -18,6 +18,16 @@ behaviour may still change between releases.
   `rules.priorities`. A model can draft a rule for a gap; its example events are marked synthetic and never count
   as real tests.
 - A hunt's detection draft can be added to the library; the events behind the hunt's findings become real tests.
+- Investigations (`dfir:`, off by default; docs/dfir.md): load evidence files (Windows event logs, JSON lines,
+  CSV from Plaso or Hayabusa, syslog and auth.log, .gz and .zip collections) into a case, with each file's
+  SHA-256 recorded first. One timeline across hosts with search, `field:value`, filters, stars, tags and comments.
+  Analyzers run the rule library, 14 built-in checks and any Sigma folder over the evidence (logsource-aware),
+  keep detections already in Hayabusa output, summarise logons (a success after a burst of failures is flagged)
+  and stack the least frequent processes, parent-child pairs, services, tasks and logon sources. A model writes
+  the story of what happened and answers questions, citing events; citations are checked and uncited parts are
+  marked. Markdown report and CSV export, `actaeon dfir`, read-only MCP tools. Extra `actaeon[dfir]`
+  (python-evtx); optional `dfir.evtx_dump` for faster event log reading.
+- The local Sigma matcher also evaluates `fieldref` and items with no field name.
 - `actaeon rules` (list, show, test, lint, coverage, draft, import, export), a zip export, and read-only MCP tools
   `list_rules`, `get_rule`, `rule_coverage`. Rules are never deployed into a log platform.
 

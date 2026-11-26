@@ -1,0 +1,17 @@
+title: Service installed
+id: d12d953a-21c4-42a0-9857-fdf861cb599d
+status: experimental
+description: A new service was installed.
+author: Actaeon
+logsource:
+  product: windows
+  service: system
+detection:
+  sel:
+    EventID: 7045
+  condition: sel
+level: low
+tags:
+- attack.t1543.003
+falsepositives:
+- Software installation and updates

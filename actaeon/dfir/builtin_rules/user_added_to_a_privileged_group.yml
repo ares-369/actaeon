@@ -1,0 +1,29 @@
+title: User added to a privileged group
+id: cf736cb1-4c6d-463d-b9ec-7b717b0bfc41
+status: experimental
+description: An account was added to an administrators or other privileged group.
+author: Actaeon
+logsource:
+  product: windows
+  service: security
+detection:
+  sel:
+    EventID:
+    - 4728
+    - 4732
+    - 4756
+  priv:
+    TargetUserName|contains:
+    - admin
+    - Domain Admins
+    - Enterprise Admins
+    - Schema Admins
+    - Backup Operators
+    - Remote Desktop Users
+    - Account Operators
+  condition: sel and priv
+level: high
+tags:
+- attack.t1098
+falsepositives:
+- Planned administration changes
