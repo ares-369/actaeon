@@ -7,6 +7,25 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+### Added
+
+- Alert triage uses your rules: Sigma rules marked ready in the rule library run over the log rows the fixed checks
+  collect (`soc.rule_signals`, default `[ready]`). A high or critical match on the alert's own activity is a strong
+  signal; on other activity on the host it is a hint; on the alert alone it is only a note.
+- Example rule pack for Wazuh on Linux (`examples/rules/wazuh-linux`): cron running a hidden-path program,
+  `authorized_keys` changes, executables added in hidden directories, socket one-liners, downloads into binary
+  folders, sudoers drop-ins, hidden files in web roots.
+- Held-out triage test (docs/benchmarks.md): 3 of 6 new attacks found, 3 false alarms on 5 admin look-alikes,
+  nothing wrongly closed, with rules only and with qwen3:4b alike; the 2026-11-17 test had found 0 of 6.
+
+### Fixed
+
+- Triage: a log row no longer counts as being about the alert because it names a generic account or program
+  (`root`, `SYSTEM`, `bash`, ...); before, nearly every Linux row did.
+- Triage: the context search is centred on the alert (15 minutes before to 5 after) instead of returning the newest
+  rows of a window reaching 30 minutes past it; a second search finds rows naming the alert's own program and
+  files. Its terms are fielded: an unfielded term was searched in every field and exceeded the index's clause limit.
+
 ## [0.6.0-beta] — 2026-11-26
 
 ### Added

@@ -1,0 +1,23 @@
+title: Interpreter one-liner opens a network socket
+id: a3bb5235-322d-4b5d-85e9-c21b06b04e1a
+status: experimental
+description: A command line runs a program with inline code (-c or -e followed by
+  quoted code) that creates a socket and connects it, the usual shape of a reverse
+  shell, even when the interpreter is renamed.
+author: Actaeon
+logsource:
+  product: linux
+  service: wazuh
+detection:
+  inline:
+    full_log|re: \s-(c|e|r)\s+['"]
+  sock:
+    full_log|re: (?i)socket
+  conn:
+    full_log|re: (?i)connect|dup2|fsockopen|TCPSocket
+  condition: inline and sock and conn
+level: high
+tags:
+- attack.t1059.006
+falsepositives:
+- Developers testing network code by hand

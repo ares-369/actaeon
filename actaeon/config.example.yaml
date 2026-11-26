@@ -104,6 +104,7 @@ soc:
     #    tool: search
     #    arguments: {index: "alerts-*", query: "rule.level:>=7", size: 200}
     #    lookback: now-15m
+  rule_signals: [ready]          # rule library statuses used as triage signals (docs/alert-triage.md)
   response:                      # docs/response.md. Off: actions are only recommended.
     enabled: false
     dry_run: true                # with enabled: approvals are recorded, not sent

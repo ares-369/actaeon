@@ -136,6 +136,29 @@ endpoint or key), only for cases at or above `min_severity`, at most `max_per_da
 could not decide, the second look could not confirm it, or the fixed checks and the model disagree. The first
 pass's verdict is kept in the report.
 
+## Your own rules as signals (`soc.rule_signals`)
+
+With the rule library on (`rules.enabled`), every rule marked **ready** runs over the log rows the fixed checks
+collect (`soc.rule_signals: [ready]` by default; add `testing` to try rules out, or `[]` to switch it off). Rules
+are matched with Actaeon's own Sigma matcher on the rows as the source returns them, so write them for your field
+names (Wazuh's `syscheck.path`, `full_log`, ...) or map fields with `rules.field_map`.
+
+- A **high** or **critical** rule that matches a row about this alert's own activity is a high signal, which with
+  evidence makes the verdict true positive (and the model cannot overrule it, like the built-in checks).
+- A match on other activity on the same host is a medium hint ("the host also shows ...").
+- A rule that matches the alert itself is only a note for the model: an alert is a claim, not evidence, so only
+  log rows found by a search can make a rule decide.
+
+A row counts as being about the alert when it names the alert's process, file, command, hash, address or
+non-generic account. Names found on almost every row (`root`, `SYSTEM`, `bash`, `cmd.exe`, ...) do not count.
+The context search covers 15 minutes before to 5 minutes after the alert, and a second search looks for the
+alert's own program, files and hashes on the host over the six hours before it.
+
+Rules are blunt: a ready rule that fires on an ordinary admin action makes that alert a true positive in
+`analysis: rules` mode. The held-out test in docs/benchmarks.md measures this; keep rules that cannot tell intent
+(any change to `authorized_keys`, any download into a binary folder) at **medium** if false alarms cost you more
+than misses.
+
 ## Second look
 
 After the verdict, a second pass on the analyst model tries to prove it wrong (`soc.verify`, on by default):

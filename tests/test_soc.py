@@ -919,3 +919,76 @@ def test_poll_overlap_takes_in_alerts_indexed_late(home):
     assert (parse_iso(mark) - parse_iso(hub.args["time_from"])).total_seconds() == cfg.soc.intake.overlap_min * 60
     assert out["new"] == 1 and out["known"] == 1 and out["duplicates"] == 0
     assert all(a["dup_count"] == 0 for a in store.alerts())
+
+
+SSH_KEY_RULE = """title: Key added to root authorized_keys
+logsource: {product: linux}
+detection:
+  sel: {syscheck.path|endswith: '/root/.ssh/authorized_keys'}
+  condition: sel
+level: high
+tags: [attack.t1098.004]
+"""
+
+
+def _rule(cfg, text, status):
+    from actaeon.rules import service as R
+    r = R.create(cfg, text, actor="a")
+    if status in ("testing", "ready"):
+        R.store_for(cfg).set_status(r["id"], status, actor="b")
+    return r
+
+
+def test_ready_library_rules_are_triage_signals(home):
+    alert = {**HOSTA, "id": "k1", "rule.description": "authorized_keys modified", "data.process.name": "",
+             "data.process.command_line": "", "syscheck.path": "/root/.ssh/authorized_keys"}
+    hub = SourcesHub(events=[{"agent.name": "srv1", "syscheck.path": "/root/.ssh/authorized_keys", "syscheck.event": "modified",
+                              "full_log": "File '/root/.ssh/authorized_keys' modified"}])
+    from actaeon import config
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import triage_case
+
+    def m(d):
+        d["soc"].update(analysis="rules")
+        d["soc"]["intake"].update(severity_scale="15")
+        d["rules"] = {"enabled": True}
+    cfg, store = cfg_store(home, m)
+    r = _rule(cfg, SSH_KEY_RULE, "testing")                 # not ready: not used for triage
+    cid = ingest(cfg, store, [alert])["cases_opened"][0]
+    c = triage_case(cfg, cid, llm=FakeLLM([]), hub=hub, store=store)
+    assert c["verdict"] != "true_positive"
+    from actaeon.rules import service as R
+    R.store_for(cfg).set_status(r["id"], "ready", actor="b")
+    config._CONFIG = None
+    c = triage_case(cfg, cid, llm=FakeLLM([]), hub=hub, store=store)
+    sig = {s["name"]: s for s in c["report"]["signals"]}
+    assert c["verdict"] == "true_positive" and sig["rule_match"]["level"] == "high"
+    assert "alert_rule_match" in sig and sig["alert_rule_match"]["evidence"] == []    # the alert alone is a hint
+
+
+def test_rule_match_on_unrelated_activity_is_only_a_hint(home):
+    alert = {**HOSTA, "id": "k2", "rule.description": "Disk check failed", "data.process.name": "fsck",
+             "data.process.command_line": "fsck -n /dev/sda1"}
+    hub = SourcesHub(events=[{"agent.name": "srv1", "syscheck.path": "/root/.ssh/authorized_keys",
+                              "full_log": "File '/root/.ssh/authorized_keys' modified"}])
+
+    def m(d):
+        d["soc"].update(analysis="rules")
+        d["soc"]["intake"].update(severity_scale="15")
+        d["rules"] = {"enabled": True}
+    cfg, store = cfg_store(home, m)
+    _rule(cfg, SSH_KEY_RULE, "ready")
+    from actaeon.soc.intake import ingest
+    from actaeon.soc.service import triage_case
+    cid = ingest(cfg, store, [alert])["cases_opened"][0]
+    c = triage_case(cfg, cid, llm=FakeLLM([]), hub=hub, store=store)
+    sig = {s["name"]: s for s in c["report"]["signals"]}
+    assert c["verdict"] == "needs_analyst" and sig["host_rule_match"]["level"] == "medium"
+
+
+def test_rule_signals_can_be_turned_off(home):
+    from actaeon.soc.config import parse
+    assert parse({"rule_signals": []}, set()).rule_signals == []
+    import pytest
+    with pytest.raises(ValueError):
+        parse({"rule_signals": ["nope"]}, set())

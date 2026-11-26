@@ -1,0 +1,21 @@
+title: Hidden file written in a web root
+id: 14e0a67b-6a81-463a-8202-5228ed4000c1
+status: experimental
+description: A hidden file appeared under a web server folder, where stolen data is
+  often staged for download or a web shell is hidden.
+author: Actaeon
+logsource:
+  product: linux
+  service: wazuh
+detection:
+  sel:
+    syscheck.event:
+    - added
+    - modified
+    syscheck.path|re: ^/(var/www|srv/www|usr/share/nginx)/(.*/)?\.[^/]+$
+  condition: sel
+level: medium
+tags:
+- attack.t1074.001
+falsepositives:
+- .htaccess and .well-known files

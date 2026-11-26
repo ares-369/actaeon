@@ -265,8 +265,15 @@ class CaseEngine:
             from .collect import summary as signal_summary
             wanted = tuple(dict.fromkeys(st for b in books for st in (b.get("collect") or []))) or DEFAULT_STEPS
             wanted = tuple(dict.fromkeys(("decode", "intel", *wanted)))   # cheap and local: always run
+            lib = []
+            if self._cfg is not None:
+                try:
+                    from ..rules.service import compiled_rules
+                    lib = compiled_rules(self._cfg, getattr(self._cfg.soc, "rule_signals", ["ready"]))
+                except Exception:          # rules are extra: a broken library must not stop triage
+                    lib = []
             col = Collector(self.hub, tools, store, case_id, start_n=n, max_calls=self.limits.collect_max_calls,
-                            environment=self.environment)
+                            environment=self.environment, rules=lib)
             try:
                 signals = col.run(alerts, wanted)
             except Exception as exc:          # the checks are extra: their failure must not lose the case

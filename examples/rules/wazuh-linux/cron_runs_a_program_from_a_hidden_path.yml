@@ -1,0 +1,22 @@
+title: Cron runs a program from a hidden path
+id: 4d2534c1-4b01-454c-bee8-66828f8d4704
+status: experimental
+description: A cron job ran a program whose path has a hidden directory or file name
+  (a dot after a slash). Software rarely installs like this; persistence often does.
+author: Actaeon
+logsource:
+  product: linux
+  service: wazuh
+detection:
+  cron:
+    full_log|contains|all:
+    - CRON[
+    - CMD (
+  hidden:
+    full_log|re: CMD \([^)]*/\.[^/\s)]+
+  condition: cron and hidden
+level: high
+tags:
+- attack.t1053.003
+falsepositives:
+- Dotfiles used deliberately by an admin's own cron job

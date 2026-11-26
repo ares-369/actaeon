@@ -70,6 +70,18 @@ class Rule:
             self.channels = SERVICES[svc]
         self.compiled = compile_rule(doc)
 
+    def applies_row(self, row: dict) -> bool:
+        """``applies`` for a flat log row from any source: the log name and event id are found by field name
+        (``Channel``, ``data.win.system.channel``, ``EventID``, ``data.win.system.eventID`` ...)."""
+        ch = eid = ""
+        for k, v in row.items():
+            low = k.lower()
+            if not ch and (low == "channel" or low.endswith(".channel")) and isinstance(v, str):
+                ch = v
+            if not eid and (low in ("eventid", "event_id") or low.endswith((".eventid", ".event_id"))):
+                eid = str(v)
+        return self.applies({"data": {"Channel": ch} if ch else {}, "event_id": eid})
+
     def applies(self, ev: dict) -> bool:
         ch = str(ev["data"].get("Channel", "")).lower()
         if ch:                                    # a Windows event

@@ -158,8 +158,9 @@ flowchart TD
 - When a source cannot be reached, the checks that needed it fail, the case says so, and it goes to a person
   (`logs_missing` when nothing could be read). Missing data never counts as clean.
 - You choose which checks run per kind of alert with playbooks (`collect:`), and name your field names per
-  connector (`fields:`). The signal rules themselves are code for now; your own rules in configuration are not
-  supported yet.
+  connector (`fields:`). Besides the built-in signal checks, Sigma rules you mark **ready** in the rule library
+  are signals too (`soc.rule_signals`; docs/rules.md); an example pack for Wazuh on Linux is in
+  `examples/rules/wazuh-linux`.
 
 Details: [docs/alert-triage.md](docs/alert-triage.md).
 

@@ -47,6 +47,8 @@ CANDIDATES: dict[str, list[str]] = {
     "uid": ["user.id", "data.uid"],
     "listen_port": ["source.port", "data.port"],
     "state": ["interface.state"],
+    "log_text": ["full_log", "message", "event.original", "log.original"],
+    "file_path": ["syscheck.path", "file.path", "data.win.eventdata.targetFilename", "file.name"],
 }
 SIGNAL_LEVELS = ("high", "medium", "info")
 _TEMP = re.compile(r"(?i)(^|[\s\"'=/\\])(/dev/shm/|/tmp/|/var/tmp/|/run/user/|\\appdata\\local\\temp\\|"
@@ -59,6 +61,10 @@ _OFFICE = ("winword", "excel", "powerpnt", "outlook", "onenote", "msaccess", "ms
 _SHELLS = ("powershell", "pwsh", "cmd.exe", "wscript", "cscript", "mshta", "rundll32", "regsvr32", "bash", "sh")
 _AUTH = re.compile(r"(?i)sign-?in|log[- ]?on|login|authentication|password|brute|spray")
 DEFAULT_STEPS = ("decode", "intel", "context", "inventory", "auth", "spread")
+# Names in nearly every log line of a host: they cannot tell that a row is about this alert's activity.
+_COMMON_IDS = {"root", "system", "nt authority\\system", "administrator", "admin", "local service", "network service",
+               "www-data", "nobody", "daemon", "bash", "sh", "dash", "zsh", "sudo", "su", "cron", "sshd", "systemd",
+               "cmd.exe", "powershell.exe", "svchost.exe", "conhost.exe", "explorer.exe", "python", "python3"}
 COLLECT_BYTES = 2_000_000
 
 
@@ -88,8 +94,9 @@ def _base(name: str) -> str:
 
 class Collector:
     def __init__(self, hub, tools: list[dict], store, case_id: str, *, start_n: int = 0, max_calls: int = 12,
-                 environment: dict | None = None, window_min: int = 30):
+                 environment: dict | None = None, window_min: int = 30, rules: list | None = None):
         self.hub, self.store, self.case_id = hub, store, case_id
+        self.rules = rules or []             # rule library rules (actaeon.dfir.analyze.Rule) used as signals
         self.n = start_n
         self.max_calls = max_calls
         self.calls = 0
@@ -221,10 +228,11 @@ class Collector:
         cmds = [a.get("command_line") for a in alerts if a.get("command_line")]
         cmds += [str(v) for a in alerts for k, v in _flat(a.get("raw") or {}).items()
                  if k.endswith(("command_line", "commandLine", "full_log", "cmdline")) and isinstance(v, str)]
-        self._alert_ids = sorted({v.lower() for k in ("process", "user", "command_line", "file", "hash", "dst_ip",
-                                                     "domain", "url") for v in values.get(k, set())
-                                  if (len(v) > 3 and not _internal(v)) or k in ("process", "user", "command_line")}
-                                 | {_base(v) for v in values.get("process", set()) if len(_base(v)) > 3})
+        ids = ({v.lower() for k in ("process", "user", "command_line", "file", "hash", "dst_ip", "domain", "url")
+                for v in values.get(k, set())
+                if (len(v) > 3 and not _internal(v)) or k in ("process", "user", "command_line")}
+               | {_base(v) for v in values.get("process", set()) if len(_base(v)) > 3})
+        self._alert_ids = sorted(v for v in ids if v not in _COMMON_IDS and len(v) > 2)
         self._alert_text = (text + " " + " ".join(cmds) + " " + " ".join(
             v for k in ("process", "user", "command_line", "file", "hash") for v in values.get(k, set()))).lower()
         for c in cmds:
@@ -257,16 +265,34 @@ class Collector:
             for conn in snaps:
                 self._inventory(conn, hosts[0])
         if "context" in steps and hosts and t0:
+            # Centred on the alert: the search returns the newest rows first, so a window reaching far past the
+            # alert would fill up with later activity on a busy host.
+            c0, c1 = times[0] - timedelta(minutes=15), times[-1] + timedelta(minutes=5)
             for conn in logs[:1]:
                 idx = ",".join(p for p in self.indices(conn) if not _is_state(p))[:300] or None
                 hf = self.field(conn, idx.split(",")[0] if idx else None, "host")
                 if hf and idx:
                     ok, eid = self._call(conn, "search", {"index": idx, "query": f"{hf}:{_q(hosts[0])}",
-                                                          "time_from": iso(t0), "time_to": iso(t1), "size": 30},
+                                                          "time_from": iso(c0), "time_to": iso(c1), "size": 50},
                                          f"what else happened on {hosts[0]} around the alert")
                     if ok and eid:
                         for r in self.steps[-1]["rows"]:
                             self._row_signals(r, eid)
+                    terms = self._own_terms(values, cmds)
+                    first = idx.split(",")[0]
+                    tf, ff = self.field(conn, first, "log_text"), self.field(conn, first, "file_path")
+                    # fielded on purpose: an unfielded term is searched in every field and can exceed the index's
+                    # clause limit (the search then fails and looks empty)
+                    parts = [f"{tf}:{_q(t)}" for t in terms if tf] + [f"{ff}:{_q(t)}" for t in terms if ff and "/" in t]
+                    if parts:
+                        q = f"{hf}:{_q(hosts[0])} AND (" + " OR ".join(parts) + ")"
+                        ok, eid = self._call(conn, "search", {"index": idx, "query": q,
+                                                              "time_from": iso(times[0] - timedelta(hours=6)),
+                                                              "time_to": iso(c1), "size": 30},
+                                             f"what on {hosts[0]} names {', '.join(terms)[:120]}")
+                        if ok and eid:
+                            for r in self.steps[-1]["rows"]:
+                                self._row_signals(r, eid)
         if "auth" in steps and values.get("src_ip") and t0 and _AUTH.search(text):
             src = sorted(values["src_ip"])[0]
             for conn in logs[:1]:
@@ -305,6 +331,8 @@ class Collector:
                                                               "time_to": iso(t1)}, f"which hosts talked to {vs[0]}")
                     if ok and eid and len(self.steps[-1]["rows"]) > 1:
                         self._signal("spread", "medium", f"{len(self.steps[-1]['rows'])} hosts contacted {vs[0]}", eid)
+        if self.rules:
+            self._alert_rules(alerts)
         good = [str(k) for k in self.environment.get("known_good") or []]
         blob = (text + " " + " ".join(cmds) + " " + " ".join(v for s in values.values() for v in s)).lower()
         for k in good:
@@ -316,6 +344,29 @@ class Collector:
                                      "evidence": []})
         _ = a0
         return self.signals
+
+    @staticmethod
+    def _own_terms(values: dict, cmds: list[str]) -> list[str]:
+        """What identifies this alert's own activity in other log rows: its program (as a path and a name), the
+        files it names and hashes. Common names (root, bash, ...) and very short ones are left out."""
+        out: list[str] = []
+
+        def add(v: str) -> None:
+            v = str(v or "").strip().strip("'\"")
+            if len(v) > 3 and v.lower() not in _COMMON_IDS and v not in out and not _internal(v):
+                out.append(v[:200])
+        for k in ("file", "hash"):
+            for v in sorted(values.get(k, set())):
+                add(v)
+        for v in sorted(values.get("process", set())):
+            add(v)
+            add(_base(v))
+        for c in cmds:
+            first = str(c).split()[0] if str(c).split() else ""
+            if "/" in first or "\\" in first:
+                add(first)
+                add(_base(first))
+        return out[:4]
 
     def _related(self, *values) -> bool:
         """Does an inventory finding concern what the alert is about (its process, account, command or file)?"""
@@ -379,10 +430,44 @@ class Collector:
             for sig in self.signals[before:]:
                 if sig["level"] == "high" and eid in sig["evidence"] and not sig["name"].startswith("host_"):
                     sig.update(name="host_" + sig["name"], level="medium", text="the host also shows: " + sig["text"])
+        self._rule_row(r, eid, self._mentions(whole))
         parent = _base(r.get("process.parent.name") or r.get("data.win.eventdata.parentImage") or "")
         child = _base(r.get("process.name") or r.get("data.win.eventdata.image") or "")
         if any(o in parent for o in _OFFICE) and any(child.startswith(s) for s in _SHELLS):
             self._signal("office_spawns_shell", "medium", f"{parent} started {child}", eid)
+
+    def _rule_row(self, r: dict, eid: str, related: bool) -> None:
+        """Rule library rules on one log row. A high or critical rule on a row about this alert's own activity is a
+        high signal; on other activity on the host it is a medium hint, like the built-in checks."""
+        for rule in self.rules:
+            if not rule.applies_row(r):
+                continue
+            try:
+                hit = rule.compiled.match(r)[0]
+            except Exception:
+                continue
+            if not hit:
+                continue
+            level = {"critical": "high", "high": "high", "medium": "medium"}.get(rule.level, "info")
+            if related:
+                self._signal("rule_match", level, f"rule '{rule.title}' ({rule.level}) matched", eid)
+            else:
+                self._signal("host_rule_match", "medium" if level == "high" else level,
+                             f"the host also shows: rule '{rule.title}' ({rule.level}) matched", eid)
+
+    def _alert_rules(self, alerts: list[dict]) -> None:
+        """Rules on the alerts themselves: a hint for the model only. An alert is a claim, not evidence, so only
+        log rows found by a search can make a rule match decide the verdict."""
+        for a in alerts:
+            row = _flat(a.get("raw") or {})
+            for rule in self.rules:
+                try:
+                    if rule.applies_row(row) and rule.compiled.match(row)[0]:
+                        self.signals.append({"name": "alert_rule_match", "level": "info",
+                                             "text": f"the alert itself matches rule '{rule.title}' ({rule.level})",
+                                             "evidence": []})
+                except Exception:
+                    continue
 
     def _text_signals(self, text: str, eid: str, *, decoded: bool = False) -> None:
         if not text:

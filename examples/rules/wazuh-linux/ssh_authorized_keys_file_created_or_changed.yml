@@ -1,0 +1,21 @@
+title: SSH authorized_keys file created or changed
+id: 14e9027a-5d50-4b36-9bc5-6446922e9ee1
+status: experimental
+description: 'Integrity monitoring saw an authorized_keys file added or modified:
+  someone can now log in with a new key.'
+author: Actaeon
+logsource:
+  product: linux
+  service: wazuh
+detection:
+  sel:
+    syscheck.path|endswith: /.ssh/authorized_keys
+    syscheck.event:
+    - added
+    - modified
+  condition: sel
+level: high
+tags:
+- attack.t1098.004
+falsepositives:
+- Planned key rotation by administrators

@@ -51,6 +51,7 @@ class SocConfig:
     collect: bool = True             # run the fixed evidence checks before the model
     collect_max_calls: int = 12
     escalate: dict = field(default_factory=dict)   # optional stronger model for hard cases (see docs)
+    rule_signals: list[str] = field(default_factory=lambda: ["ready"])   # rule library statuses used as signals
     intake: IntakeConfig = field(default_factory=IntakeConfig)
     response: ResponseConfig = field(default_factory=ResponseConfig)
 
@@ -60,6 +61,14 @@ def _int(d: dict, key: str, default: int, lo: int = 0, hi: int = 10**9) -> int:
         return max(lo, min(hi, int(d.get(key, default) or 0)))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"soc.{key} must be a number") from exc
+
+
+def _rule_signals(v: Any) -> list[str]:
+    vals = [str(x) for x in (v or [])]
+    bad = [x for x in vals if x not in ("draft", "testing", "ready")]
+    if bad:
+        raise ValueError(f"soc.rule_signals: {bad} are not rule statuses (draft, testing, ready)")
+    return vals
 
 
 def parse(raw: Any, connector_names: set[str]) -> SocConfig:
@@ -88,6 +97,7 @@ def parse(raw: Any, connector_names: set[str]) -> SocConfig:
         playbook_dirs=dirs,
         analysis=_analysis(raw.get("analysis", "ai")), collect=bool(raw.get("collect", True)),
         collect_max_calls=_int(raw, "collect_max_calls", 12, 0, 50), escalate=_escalate(raw.get("escalate") or {}),
+        rule_signals=_rule_signals(raw.get("rule_signals", ["ready"])),
         intake=_intake(raw.get("intake") or {}, connector_names),
         response=_response(raw.get("response") or {}, connector_names),
     )

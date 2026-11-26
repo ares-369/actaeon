@@ -1,0 +1,21 @@
+title: Sudoers drop-in file added or changed
+id: 02f7df56-de1e-4341-b216-02fd9de962b7
+status: experimental
+description: 'A file in /etc/sudoers.d was added or modified: an account got new sudo
+  rights.'
+author: Actaeon
+logsource:
+  product: linux
+  service: wazuh
+detection:
+  sel:
+    syscheck.path|startswith: /etc/sudoers.d/
+    syscheck.event:
+    - added
+    - modified
+  condition: sel
+level: medium
+tags:
+- attack.t1548.003
+falsepositives:
+- Configuration management and planned admin changes

@@ -260,6 +260,68 @@ What this shows:
   measured on. The environment note the model leaned on also shows that broad notes can become an excuse; notes
   should name exact accounts and hosts.
 
+### Alert triage on a held-out set after adding rules (2026-11-27)
+
+After the test above, rules for those kinds of trace were written as Sigma rules for Wazuh's fields
+(`examples/rules/wazuh-linux`) and the rule library was connected to triage (rules marked ready are signals). While
+checking them, two faults in the fixed checks showed up and were fixed: a log row counted as "about the alert"
+whenever it named the alert's account, and `root` is on nearly every Linux row; and the context search returned
+the newest rows of a window reaching 30 minutes past the alert, so on a busy host the alert's own rows could be
+missing (it is now centred on the alert, with a second search for the alert's own program and files).
+
+Measured three ways, rules only (no model), so each number has a plain cause:
+
+| Set | What it is | Correct | Attacks found | False alarms | Wrong closures |
+|---|---|---|---|---|---|
+| 2026-11-16 lab set (9 cases) | regression check | 9/9 | 4/4 | 0 | 0 |
+| 2026-11-17 unseen set (10 cases) | **in-sample**: the rules were written from it | 7/10 | 3/6 | 0 | 0 |
+| **held-out set (11 cases, below)** | **new attacks and look-alikes, labels and predictions written before planting** | 5/11 | 3/6 | 3 | 0 |
+
+The held-out set was planted on a fresh throwaway container the same way as before (inert stand-ins, hand-written
+alerts, data frozen with Wazuh's own index mappings), with new variants of the covered kinds, two kinds no rule
+covers, and realistic admin actions that look like attacks:
+
+| Case | Expected | Rules only |
+|---|---|---|
+| A crontab line running a binary in `/var/lib/.syslogd/` | true positive | missed (to an analyst) |
+| An SSH key added to a normal user's `authorized_keys` | true positive | found |
+| A renamed perl in `/srv/.cache/` opening a socket from inline code | true positive | found |
+| `curl -o /usr/bin/...` then run | true positive | found |
+| A systemd unit running a hidden binary (no rule covers it) | true positive | missed (to an analyst) |
+| `/etc/ld.so.preload` created (no rule covers it) | true positive | missed (to an analyst) |
+| A tool installed with `curl -o /usr/local/bin/helm` | not a threat | **false alarm** |
+| Root adding its own key | not a threat | **false alarm** |
+| A certbot cron job | not a threat | to an analyst |
+| A node_exporter systemd unit | not a threat | to an analyst |
+| An application cache file in `/opt/grafana/.cache/` | not a threat | **false alarm** |
+
+The result matched the predictions written before planting, case for case.
+
+What this shows:
+
+- **The rules carry over to new variants of the kinds they were written for** (a different user's key, a renamed
+  perl instead of python, curl instead of wget, other folders): 3 of 3 found. They do nothing for kinds they do not
+  describe (the systemd unit, `ld.so.preload`), and a crontab change is still not linked to the hidden binary it
+  runs, because nothing in the logs connects the two.
+- **Rules cannot tell intent.** A key added by its owner, a tool installed by hand and an application's cache look
+  the same in the logs as the attacks; with rules that confirm on their own they became 3 false alarms out of 5.
+  That is the cost of letting a single rule decide: keep such rules at medium (they then raise a hint, and the
+  case goes to an analyst), or run with a model and use `soc.never_dismiss` / known-good notes for your own
+  admin habits.
+- **Nothing was wrongly closed** in any of the three sets.
+
+The same held-out set with qwen3:4b reading the evidence after the fixed checks (local model, 4 GB GPU):
+
+| Run | Correct | Attacks found | False alarms | Handed to an analyst | Wrong closures | Tokens (11 cases) | Median per case |
+|---|---|---|---|---|---|---|---|
+| fixed checks and rules, no model | 5/11 | 3/6 | 3 | 5 | 0 | 0 | 10 s |
+| qwen3:4b with the fixed checks and rules | 5/11 | 3/6 | 3 | 4 | 0 | 235,829 | 393 s |
+
+The model added nothing here: the three attacks it confirmed and the three false alarms were already decided by
+rule signals it cannot overrule. On the two attacks no rule covers it was wrong (the systemd unit "benign",
+`ld.so.preload` "false positive"), and both still went to an analyst because a high-severity alert is not
+dismissed without a second confirmation. It correctly called the certbot job benign.
+
 ## Token usage
 
 Every hunt records model calls and tokens per model: input, the part of the input the provider served from

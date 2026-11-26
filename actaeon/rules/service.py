@@ -397,3 +397,28 @@ def export_zip(cfg, statuses: tuple[str, ...] = ("ready",), *, convert: bool = T
                          f"  [{', '.join(r['attack'])}]  approved by {r.get('approved_by') or '-'}")
         z.writestr("INDEX.txt", "Exported rules (review before deploying):\n" + "\n".join(index) + "\n")
     return buf.getvalue()
+
+
+_compiled: dict[tuple, list] = {}
+
+
+def compiled_rules(cfg, statuses: list[str]) -> list:
+    """Library rules with these statuses, compiled for matching events (actaeon.dfir.analyze.Rule). Rules the
+    local matcher cannot evaluate are left out. Cached until a rule changes."""
+    if not statuses or not of(cfg).enabled:
+        return []
+    from ..dfir.analyze import Rule
+    from .sigma_eval import Unsupported
+    rows = [r for r in store_for(cfg).all_full() if r["status"] in statuses]
+    key = (tuple(statuses), tuple(sorted((r["id"], r["version"]) for r in rows)))
+    if key in _compiled:
+        return _compiled[key]
+    out = []
+    for r in rows:
+        try:
+            out.append(Rule(f"library:{r['id']}", yaml.safe_load(r["sigma"]), "library"))
+        except (Unsupported, yaml.YAMLError, TypeError):
+            continue
+    _compiled.clear()
+    _compiled[key] = out
+    return out
