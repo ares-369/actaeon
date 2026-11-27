@@ -7,6 +7,8 @@ behaviour may still change between releases.
 
 ## [Unreleased]
 
+## [0.6.1-beta] — 2026-11-27
+
 ### Added
 
 - Alert triage uses your rules: Sigma rules marked ready in the rule library run over the log rows the fixed checks
@@ -16,7 +18,9 @@ behaviour may still change between releases.
   `authorized_keys` changes, executables added in hidden directories, socket one-liners, downloads into binary
   folders, sudoers drop-ins, hidden files in web roots.
 - Held-out triage test (docs/benchmarks.md): 3 of 6 new attacks found, 3 false alarms on 5 admin look-alikes,
-  nothing wrongly closed, with rules only and with qwen3:4b alike; the 2026-11-17 test had found 0 of 6.
+  nothing wrongly closed, with rules only and with qwen3:4b alike; the 2026-11-17 test had found 0 of 6. The
+  three rules that cannot tell intent are medium in the pack: no false alarms, and those attacks reach an analyst
+  with the matched rule instead of being confirmed automatically.
 
 ### Fixed
 

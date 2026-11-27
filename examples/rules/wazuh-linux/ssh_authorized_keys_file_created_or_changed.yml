@@ -2,7 +2,8 @@ title: SSH authorized_keys file created or changed
 id: 14e9027a-5d50-4b36-9bc5-6446922e9ee1
 status: experimental
 description: 'Integrity monitoring saw an authorized_keys file added or modified:
-  someone can now log in with a new key.'
+  someone can now log in with a new key. Medium on purpose: on its own it cannot tell
+  an attack from an administrator doing the same thing (held-out test, docs/benchmarks.md).'
 author: Actaeon
 logsource:
   product: linux
@@ -14,7 +15,7 @@ detection:
     - added
     - modified
   condition: sel
-level: high
+level: medium
 tags:
 - attack.t1098.004
 falsepositives:

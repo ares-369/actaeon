@@ -1,8 +1,10 @@
 title: Download saved directly into a system binary folder
 id: 3164ea83-9a33-4466-afaa-83d6a02d5d45
 status: experimental
-description: wget or curl wrote a file straight into a folder on the default PATH;
-  installers and package managers do not do this.
+description: 'wget or curl wrote a file straight into a folder on the default PATH;
+  installers and package managers do not do this. Medium on purpose: on its own it
+  cannot tell an attack from an administrator doing the same thing (held-out test,
+  docs/benchmarks.md).'
 author: Actaeon
 logsource:
   product: linux
@@ -11,7 +13,7 @@ detection:
   dl:
     full_log|re: (?i)\b(wget|curl)\b[^\n]*\s-(O|o|-output|-output-document)[=\s]+/(usr/local/bin|usr/local/sbin|usr/bin|usr/sbin|bin|sbin)/
   condition: dl
-level: high
+level: medium
 tags:
 - attack.t1105
 falsepositives:

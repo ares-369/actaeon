@@ -322,6 +322,20 @@ rule signals it cannot overrule. On the two attacks no rule covers it was wrong 
 `ld.so.preload` "false positive"), and both still went to an analyst because a high-severity alert is not
 dismissed without a second confirmation. It correctly called the certbot job benign.
 
+After this test, the three rules that cannot tell intent (any `authorized_keys` change, any download into a binary
+folder, any executable in a hidden directory) were set to **medium**: a match now sends the case to an analyst
+with the hint instead of confirming it. Cron running a hidden-path program and inline code opening a socket stay
+high. The effect, rules only, measured on the same sets (so in-sample for the held-out set now):
+
+| Set | Attacks confirmed by rules | False alarms | Handed to an analyst | Wrong closures |
+|---|---|---|---|---|
+| 2026-11-16 lab set | 4/4 | 0 | 5 | 0 |
+| 2026-11-17 unseen set | 1/6 | 0 | 9 | 0 |
+| held-out set | 1/6 | 0 | 10 | 0 |
+
+The choice: no false alarm on ordinary admin work, and the attacks those rules described now reach a person
+with the matched rule shown rather than being confirmed automatically.
+
 ## Token usage
 
 Every hunt records model calls and tokens per model: input, the part of the input the provider served from

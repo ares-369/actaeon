@@ -1,8 +1,10 @@
 title: Executable file added inside a hidden directory
 id: d0615595-6bc3-4b9d-8116-01c8058c454c
 status: experimental
-description: Integrity monitoring saw a new file in a hidden directory under a system
-  or application path (/usr, /opt, /var/lib, /srv, /etc).
+description: 'Integrity monitoring saw a new file in a hidden directory under a system
+  or application path (/usr, /opt, /var/lib, /srv, /etc). Medium on purpose: on its
+  own it cannot tell an attack from an administrator doing the same thing (held-out
+  test, docs/benchmarks.md).'
 author: Actaeon
 logsource:
   product: linux
@@ -12,7 +14,7 @@ detection:
     syscheck.event: added
     syscheck.path|re: ^/(usr|opt|var/lib|srv|etc)/(.*/)?\.[^/]+/[^/]+$
   condition: sel
-level: high
+level: medium
 tags:
 - attack.t1564.001
 falsepositives:
